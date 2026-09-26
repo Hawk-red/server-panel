@@ -1,0 +1,26 @@
+[Unit]
+Description=Mac Mini server admin panel (http://<LAN|VPN>:7575)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=panel
+Group=panel
+WorkingDirectory=/opt/server-panel/backend
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/server-panel/backend/dist/server.js
+Restart=on-failure
+RestartSec=5
+
+# Бюджет по ТЗ: в покое < 150 МБ; при превышении MemoryHigh ядро начнёт поджимать,
+# MemoryMax — жёсткий предел.
+MemoryHigh=150M
+MemoryMax=250M
+
+# NoNewPrivileges/ProtectSystem/ProtectHome НЕ включены: с этапа 5 панель вызывает
+# sudo по whitelist (ufw, authorized_keys), а эти опции наследуются дочерним sudo.
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
