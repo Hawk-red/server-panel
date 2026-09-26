@@ -1,0 +1,35 @@
+# Docker API для панели без группы docker: панель ходит только сюда (http://127.0.0.1:2375).
+# Разрешено: GET containers/info/images/version + логи контейнеров + POST только start/stop/restart.
+# POST=0 — создание контейнеров, exec, удаление и т.п. запрещены.
+name: docker-socket-proxy
+
+services:
+  docker-socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2375:2375" # только localhost, наружу не публикуется
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - CONTAINERS=1
+      - INFO=1
+      - IMAGES=1
+      - VERSION=1
+      - POST=0
+      - ALLOW_START=1
+      - ALLOW_STOP=1
+      - ALLOW_RESTARTS=1 # по документации включает и /kill
+      - ALLOW_LOGS=1 # только чтение логов контейнеров
+      - EVENTS=0
+      - PING=0
+      - LOG_LEVEL=warning
+    read_only: true
+    tmpfs:
+      - /run:rw,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
