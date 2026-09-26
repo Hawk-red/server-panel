@@ -1,12 +1,19 @@
+import { z } from 'zod'
 import { createFileRoute } from '@tanstack/react-router'
-import { SectionStub } from '@/features/section'
+import { System, SYSTEM_TABS } from '@/features/system'
+
+const searchSchema = z.object({
+  tab: z.enum(SYSTEM_TABS).optional().catch(undefined),
+  source: z.string().optional(),
+})
 
 export const Route = createFileRoute('/_authenticated/system/')({
-  component: () => (
-    <SectionStub
-      title='Система'
-      description='CPU, память, температура, диски, cron, автозагрузка, службы и логи'
-      stage={2}
-    />
-  ),
+  validateSearch: searchSchema,
+  component: RouteComponent,
 })
+
+// eslint-disable-next-line react-refresh/only-export-components
+function RouteComponent() {
+  const { tab, source } = Route.useSearch()
+  return <System tab={tab ?? 'resources'} source={source} />
+}

@@ -61,8 +61,8 @@
 }
 
 @theme inline {
-  --font-inter: 'Inter', 'sans-serif';
-  --font-manrope: 'Manrope', 'sans-serif';
+  /* Inter — локально из @fontsource-variable/inter (есть кириллица), дальше системный стек */
+  --font-inter: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

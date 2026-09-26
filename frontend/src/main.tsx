@@ -14,7 +14,8 @@ import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
-// Styles
+// Styles: шрифт Inter (variable, латиница + кириллица) хранится в бандле
+import '@fontsource-variable/inter'
 import './styles/index.css'
 
 const queryClient = new QueryClient({
