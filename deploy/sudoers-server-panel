@@ -1,0 +1,54 @@
+# /etc/sudoers.d/server-panel — whitelist для веб-панели (пользователь panel).
+# Только конкретные команды; никакого NOPASSWD: ALL. Источник: /opt/server-panel/deploy/sudoers-server-panel
+# Проверка перед установкой: visudo -cf <файл>
+
+# Этап 2: SMART (без пробуждения спящих дисков), чтение crontab, управление службами из белого списка
+Cmnd_Alias SP_SMART = /usr/sbin/smartctl -j -a -n standby /dev/sd[a-z]
+Cmnd_Alias SP_CRONTAB = /usr/bin/crontab -l -u root, /usr/bin/crontab -l -u hawk, /usr/bin/crontab -l -u macmini
+Cmnd_Alias SP_UNITS = /usr/bin/systemctl start nginx.service, \
+    /usr/bin/systemctl stop nginx.service, \
+    /usr/bin/systemctl restart nginx.service, \
+    /usr/bin/systemctl start php8.3-fpm.service, \
+    /usr/bin/systemctl stop php8.3-fpm.service, \
+    /usr/bin/systemctl restart php8.3-fpm.service, \
+    /usr/bin/systemctl start mariadb.service, \
+    /usr/bin/systemctl stop mariadb.service, \
+    /usr/bin/systemctl restart mariadb.service, \
+    /usr/bin/systemctl start mongod.service, \
+    /usr/bin/systemctl stop mongod.service, \
+    /usr/bin/systemctl restart mongod.service, \
+    /usr/bin/systemctl start smbd.service, \
+    /usr/bin/systemctl stop smbd.service, \
+    /usr/bin/systemctl restart smbd.service, \
+    /usr/bin/systemctl start nmbd.service, \
+    /usr/bin/systemctl stop nmbd.service, \
+    /usr/bin/systemctl restart nmbd.service, \
+    /usr/bin/systemctl start xrdp.service, \
+    /usr/bin/systemctl stop xrdp.service, \
+    /usr/bin/systemctl restart xrdp.service, \
+    /usr/bin/systemctl start fail2ban.service, \
+    /usr/bin/systemctl stop fail2ban.service, \
+    /usr/bin/systemctl restart fail2ban.service, \
+    /usr/bin/systemctl start triggerhappy.service, \
+    /usr/bin/systemctl stop triggerhappy.service, \
+    /usr/bin/systemctl restart triggerhappy.service, \
+    /usr/bin/systemctl start alert_monitor.service, \
+    /usr/bin/systemctl stop alert_monitor.service, \
+    /usr/bin/systemctl restart alert_monitor.service, \
+    /usr/bin/systemctl start pulsdev-api.service, \
+    /usr/bin/systemctl stop pulsdev-api.service, \
+    /usr/bin/systemctl restart pulsdev-api.service, \
+    /usr/bin/systemctl start thermal-watchdog.service, \
+    /usr/bin/systemctl stop thermal-watchdog.service, \
+    /usr/bin/systemctl restart thermal-watchdog.service, \
+    /usr/bin/systemctl start mbpfan.service, \
+    /usr/bin/systemctl stop mbpfan.service, \
+    /usr/bin/systemctl restart mbpfan.service, \
+    /usr/bin/systemctl start smartmontools.service, \
+    /usr/bin/systemctl stop smartmontools.service, \
+    /usr/bin/systemctl restart smartmontools.service, \
+    /usr/bin/systemctl start cron.service, \
+    /usr/bin/systemctl stop cron.service, \
+    /usr/bin/systemctl restart cron.service
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS
