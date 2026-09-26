@@ -38,6 +38,13 @@ const migrations: string[] = [
   );
   CREATE INDEX audit_log_ts ON audit_log (ts);
   `,
+  `
+  CREATE TABLE metric_raw (ts INTEGER NOT NULL, name TEXT NOT NULL, value REAL NOT NULL);
+  CREATE INDEX metric_raw_name_ts ON metric_raw (name, ts);
+  CREATE INDEX metric_raw_ts ON metric_raw (ts);
+  CREATE TABLE metric_5m (ts INTEGER NOT NULL, name TEXT NOT NULL, avg REAL NOT NULL, max REAL NOT NULL, PRIMARY KEY (name, ts)) WITHOUT ROWID;
+  CREATE TABLE metric_1h (ts INTEGER NOT NULL, name TEXT NOT NULL, avg REAL NOT NULL, max REAL NOT NULL, PRIMARY KEY (name, ts)) WITHOUT ROWID;
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number
