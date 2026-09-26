@@ -1,0 +1,7 @@
+{
+  "_comment": "Иконки из github.com/walkxcode/dashboard-icons, скачиваются один раз: npm run fetch-icons. Файлы лежат в public/icons и коммитятся.",
+  "slugs": [
+    "adguard-home", "apple", "docker", "filebrowser", "jellyfin", "linux", "mariadb", "minimserver",
+    "mongodb", "nginx", "nodejs", "php", "portainer", "qbittorrent", "telegram", "wireguard", "wordpress"
+  ]
+}

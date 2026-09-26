@@ -1,0 +1,19 @@
+{
+  "adguard-home": "svg",
+  "apple": "svg",
+  "docker": "svg",
+  "filebrowser": "svg",
+  "jellyfin": "svg",
+  "linux": "svg",
+  "mariadb": "svg",
+  "minimserver": "png",
+  "mongodb": "svg",
+  "nginx": "svg",
+  "nodejs": "svg",
+  "php": "svg",
+  "portainer": "svg",
+  "qbittorrent": "svg",
+  "telegram": "svg",
+  "wireguard": "svg",
+  "wordpress": "svg"
+}
