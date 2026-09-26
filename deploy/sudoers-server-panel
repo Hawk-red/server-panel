@@ -51,4 +51,7 @@ Cmnd_Alias SP_UNITS = /usr/bin/systemctl start nginx.service, \
     /usr/bin/systemctl stop cron.service, \
     /usr/bin/systemctl restart cron.service
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS
+# Этап 3: размер журнала запросов AdGuard (файл в volume Docker, только root)
+Cmnd_Alias SP_ADGUARD = /usr/bin/stat -c %s /var/lib/docker/volumes/adguardhome_work/_data/data/querylog.json
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD
