@@ -4,9 +4,11 @@ import fastifyCookie from '@fastify/cookie'
 import fastifyStatic from '@fastify/static'
 import Fastify, { LogController } from 'fastify'
 import { authRoutes, cleanupAuth } from './auth.js'
+import { startCollector, stopCollector } from './collector/index.js'
 import { config } from './config.js'
 import { db } from './db.js'
 import { isAllowed, normalizeIp } from './net.js'
+import { systemRoutes } from './routes/system.js'
 
 const app = Fastify({
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
@@ -34,12 +36,13 @@ app.addHook('onSend', async (_req, reply) => {
   reply.header('Referrer-Policy', 'same-origin')
   reply.header(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   )
 })
 
 await app.register(fastifyCookie)
 await app.register(authRoutes)
+await app.register(systemRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',
@@ -79,6 +82,7 @@ cleanupAuth()
 async function shutdown(signal: string) {
   app.log.info({ signal }, 'остановка')
   clearInterval(cleanupTimer)
+  stopCollector()
   await app.close()
   db.close()
   process.exit(0)
@@ -89,3 +93,5 @@ process.on('SIGINT', () => void shutdown('SIGINT'))
 if (!config.passwordHash) app.log.warn('PANEL_PASSWORD_HASH не задан — вход невозможен, запустите set-password')
 
 await app.listen({ host: config.host, port: config.port })
+// Коллектор стартует после API: его сбои не влияют на запуск сервера
+startCollector(app.log)
