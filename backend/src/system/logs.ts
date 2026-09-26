@@ -1,10 +1,11 @@
 import { open, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { run } from '../exec.js'
+import { containerLogs, listContainers } from '../services/docker.js'
 
 export type LogLevel = 'error' | 'warning' | 'info' | 'debug'
 export type LogLine = { ts: number | null; level: LogLevel; text: string }
-export type LogSource = { id: string; title: string; kind: 'journal' | 'file'; group: string; path?: string; size?: number; readable?: boolean }
+export type LogSource = { id: string; title: string; kind: 'journal' | 'file' | 'container'; group: string; path?: string; size?: number; readable?: boolean }
 
 // Известные логи вне /var/log или с понятными названиями
 const KNOWN_FILES: { path: string; title: string; group: string }[] = [
@@ -65,6 +66,11 @@ async function discoverVarLog(): Promise<string[]> {
 
 export async function listSources(): Promise<LogSource[]> {
   const sources: LogSource[] = JOURNAL_UNITS.map((u) => ({ id: `journal:${u.unit}`, title: u.title, kind: 'journal', group: u.group }))
+  try {
+    for (const c of await listContainers(false)) sources.push({ id: `container:${c.name}`, title: c.name, kind: 'container', group: 'Docker' })
+  } catch {
+    /* прокси недоступен — без контейнеров */
+  }
   const known = new Set(KNOWN_FILES.map((f) => f.path))
   const files = [...KNOWN_FILES, ...(await discoverVarLog()).filter((p) => !known.has(p)).map((p) => ({ path: p, title: path.relative('/var/log', p), group: 'Прочие логи' }))]
   for (const f of files) {
@@ -127,12 +133,26 @@ const LEVEL_RANK: Record<LogLevel, number> = { error: 0, warning: 1, info: 2, de
 
 export async function readLog(sourceId: string, opts: { lines: number; level?: LogLevel; q?: string }) {
   const sources = await listSources()
-  const src = sources.find((s) => s.id === sourceId)
+  let src = sources.find((s) => s.id === sourceId)
+  // Журнал любой загруженной службы (ссылка «логи» из таблицы служб)
+  if (!src && /^journal:[\w@.:-]+\.(service|timer|socket)$/.test(sourceId)) {
+    src = { id: sourceId, title: sourceId.slice(8), kind: 'journal', group: 'Службы' }
+  }
   if (!src) throw Object.assign(new Error('неизвестный источник лога'), { statusCode: 404 })
   const lines = Math.min(Math.max(opts.lines, 10), 5000)
   let out: LogLine[]
 
-  if (src.kind === 'journal') {
+  if (src.kind === 'container') {
+    const q = opts.q?.toLowerCase()
+    const raw = await containerLogs(sourceId.slice('container:'.length), opts.level || opts.q ? lines * 10 : lines)
+    out = raw
+      .map((l) => {
+        const lvl = detectLevel(l.text)
+        return { ts: l.ts, level: l.stream === 'stderr' && lvl === 'info' ? ('warning' as LogLevel) : lvl, text: l.text }
+      })
+      .filter((l) => (!opts.level || LEVEL_RANK[l.level] <= LEVEL_RANK[opts.level]) && (!q || l.text.toLowerCase().includes(q)))
+      .slice(-lines)
+  } else if (src.kind === 'journal') {
     const unit = sourceId.slice('journal:'.length)
     const args = ['-u', unit, '-n', String(lines), '-o', 'json', '--output-fields=MESSAGE,PRIORITY,__REALTIME_TIMESTAMP', '--no-pager']
     if (opts.level) args.push('-p', { error: 'err', warning: 'warning', info: 'info', debug: 'debug' }[opts.level])

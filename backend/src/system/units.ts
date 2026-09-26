@@ -1,4 +1,5 @@
 import { run, sudo } from '../exec.js'
+import { listContainers } from '../services/docker.js'
 
 // Службы, которыми можно управлять из панели (start/stop/restart через sudoers).
 // ssh, wg-quick@wg0, docker — не здесь: ими займутся этапы 3 и 5 с отдельными предупреждениями.
@@ -145,25 +146,9 @@ export async function listAutostart() {
 
   let containers: { name: string; image: string; restart: string; state: string }[] | null = null
   try {
-    const ids = (await run('/usr/bin/docker', ['ps', '-aq'], { timeoutMs: 8000 })).split('\n').filter(Boolean)
-    containers = ids.length
-      ? (
-          await run('/usr/bin/docker', [
-            'inspect',
-            '-f',
-            '{{.Name}}\t{{.Config.Image}}\t{{.HostConfig.RestartPolicy.Name}}\t{{.State.Status}}',
-            ...ids,
-          ])
-        )
-          .split('\n')
-          .filter(Boolean)
-          .map((l) => {
-            const [name, image, restart, state] = l.split('\t')
-            return { name: name.replace(/^\//, ''), image, restart: restart || 'no', state }
-          })
-      : []
+    containers = (await listContainers(false)).map((c) => ({ name: c.name, image: c.image, restart: c.restartPolicy ?? 'no', state: c.state }))
   } catch {
-    containers = null // нет доступа к docker — «нет данных»
+    containers = null // docker-socket-proxy недоступен — «нет данных»
   }
   return { units, containers }
 }

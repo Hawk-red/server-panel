@@ -41,6 +41,13 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  // Внешние сервисы (секреты — только в .env, на фронт не уходят)
+  dockerProxy: env.DOCKER_PROXY ?? 'http://127.0.0.1:2375',
+  qbt: { url: env.QBT_URL ?? 'http://127.0.0.1:8090', user: env.QBT_USER ?? '', password: env.QBT_PASSWORD ?? '' },
+  adguard: { url: env.ADGUARD_URL ?? 'http://127.0.0.1:3000', user: env.ADGUARD_USER ?? '', password: env.ADGUARD_PASSWORD ?? '' },
+  jellyfin: { url: env.JELLYFIN_URL ?? 'http://127.0.0.1:8096', apiKey: env.JELLYFIN_API_KEY ?? '' },
+  marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 8080 },
+  torrentsDir: env.TORRENTS_DIR ?? '/home/torrents-tmp',
   sessionDays: 30,
   loginMaxFailures: 5,
   loginWindowMin: 15,

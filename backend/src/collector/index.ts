@@ -3,11 +3,24 @@
 import type { FastifyBaseLogger } from 'fastify'
 import { listDisks, refreshAllSmart, type DiskInfo } from '../system/disks.js'
 import * as src from './sources.js'
-import { rollupAndPrune, writeSample } from './store.js'
+import * as adguard from '../services/adguard.js'
+import * as qbt from '../services/qbittorrent.js'
+import { rollupAndPrune, writeHourly, writeSample } from './store.js'
 
 export const SAMPLE_INTERVAL = 30_000
 
-export type SourceName = 'cpu' | 'load' | 'memory' | 'temperature' | 'fan' | 'network' | 'uptime' | 'disks' | 'smart'
+export type SourceName =
+  | 'cpu'
+  | 'load'
+  | 'memory'
+  | 'temperature'
+  | 'fan'
+  | 'network'
+  | 'uptime'
+  | 'disks'
+  | 'smart'
+  | 'qbittorrent'
+  | 'adguard'
 
 export type Snapshot = {
   ts: number
@@ -82,6 +95,7 @@ async function sample() {
     return out
   })
   const disks = await safe('disks', listDisks)
+  const torrents = await safe('qbittorrent', qbt.transferSpeed)
 
   latest = { ts, cpu, load, memory, temperature, fan, network, uptimeSec, disks, errors: { ...errors } }
 
@@ -108,11 +122,27 @@ async function sample() {
     if (d.mount && d.percent !== null) values[`disk.${d.mount}.used_pct`] = d.percent
     if (d.smart?.temperature != null) values[`temp.disk.${d.disk}`] = d.smart.temperature
   }
+  if (torrents) {
+    values['torrent.dl'] = torrents.dl
+    values['torrent.ul'] = torrents.ul
+  }
   try {
     writeSample(ts, values)
   } catch (e) {
     log?.error({ err: (e as Error).message }, 'не удалось записать метрики')
   }
+}
+
+// AdGuard отдаёт массив за свой интервал; копим почасовые значения у себя,
+// чтобы графики за неделю/месяц не зависели от настроек статистики AdGuard
+async function sampleAdguard() {
+  const s = await adguard.stats()
+  if (s.timeUnits !== 'hours') throw new Error('статистика AdGuard в днях — почасовая история не пишется')
+  const hour = Math.floor(Date.now() / 3_600_000) * 3_600_000
+  const n = s.series.queries.length
+  const at = (i: number) => hour - (n - 1 - i) * 3_600_000
+  writeHourly('adguard.queries', s.series.queries.map((v, i) => [at(i), v] as [number, number]))
+  writeHourly('adguard.blocked', s.series.blocked.map((v, i) => [at(i), v] as [number, number]))
 }
 
 function every(ms: number, fn: () => unknown) {
@@ -130,6 +160,7 @@ export function startCollector(logger: FastifyBaseLogger) {
   every(SAMPLE_INTERVAL, sample)
   every(5 * 60_000, () => rollupAndPrune())
   every(10 * 60_000, () => safe('smart', refreshAllSmart))
+  every(5 * 60_000, () => safe('adguard', sampleAdguard))
 }
 
 export function stopCollector() {

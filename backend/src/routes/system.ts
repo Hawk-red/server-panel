@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
 import { getSnapshot, SAMPLE_INTERVAL } from '../collector/index.js'
+import { summary as torrentSummary } from '../services/qbittorrent.js'
 import { listSeriesNames, querySeries, RANGES, type Range } from '../collector/store.js'
 import { listCron } from '../system/cron.js'
 import { listDisks, refreshAllSmart } from '../system/disks.js'
@@ -52,7 +53,9 @@ export async function systemRoutes(app: FastifyInstance) {
         .then((a) => (a.containers ? { running: a.containers.filter((c) => c.state === 'running').length, total: a.containers.length } : null))
         .catch(() => null),
       devices: null, // этап 6
-      torrents: null, // этап 3
+      torrents: await torrentSummary()
+        .then((t) => ({ active: t.active.length, downloading: t.counts.downloading, seeding: t.counts.seeding }))
+        .catch(() => null),
       problems: await collectProblems(),
     }
   })

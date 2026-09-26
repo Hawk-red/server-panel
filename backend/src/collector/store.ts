@@ -18,6 +18,15 @@ export function writeSample(ts: number, values: Record<string, number>) {
   insertMany(ts, values)
 }
 
+// Готовые почасовые значения (например, статистика AdGuard) — сразу в metric_1h
+const upsertHourly = db.prepare('INSERT OR REPLACE INTO metric_1h (ts, name, avg, max) VALUES (?, ?, ?, ?)')
+export const writeHourly = db.transaction((name: string, points: [number, number][]) => {
+  for (const [ts, v] of points) if (Number.isFinite(v)) upsertHourly.run(ts, name, v, v)
+})
+
+// Серии, которые существуют только в почасовой таблице
+const HOURLY_ONLY = (name: string) => name.startsWith('adguard.')
+
 const rollup5m = db.prepare(`
   INSERT OR REPLACE INTO metric_5m (ts, name, avg, max)
   SELECT (ts / 300000) * 300000 AS b, name, AVG(value), MAX(value)
@@ -65,9 +74,14 @@ export function querySeries(names: string[], range: Range, now = Date.now()) {
       : `SELECT (ts / ${plan.step}) * ${plan.step} AS t, AVG(${col}) AS v, MAX(${colMax}) AS m
          FROM ${plan.table} WHERE name = ? AND ts >= ? GROUP BY t ORDER BY t`
   const stmt = db.prepare(sql)
+  const hourStep = Math.max(plan.step, HOUR)
+  const hourlyStmt = db.prepare(
+    `SELECT (ts / ${hourStep}) * ${hourStep} AS t, SUM(avg) AS v, MAX(max) AS m FROM metric_1h WHERE name = ? AND ts >= ? GROUP BY t ORDER BY t`
+  )
   const out: Record<string, [number, number, number][]> = {}
   for (const name of names) {
-    out[name] = (stmt.all(name, from) as { t: number; v: number; m: number }[]).map((r) => [
+    const rows = (HOURLY_ONLY(name) ? hourlyStmt : stmt).all(name, from) as { t: number; v: number; m: number }[]
+    out[name] = rows.map((r) => [
       r.t,
       Math.round(r.v * 100) / 100,
       Math.round(r.m * 100) / 100,
