@@ -1,0 +1,198 @@
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { AxiosError } from 'axios'
+import { Container as ContainerIcon, ExternalLink, HardDrive, Layers, Play, RotateCw, ScrollText, Square } from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@/lib/api'
+import { formatBytes, formatDuration } from '@/lib/format'
+import type { Container, DockerData } from '@/lib/types'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { Page } from '@/components/layout/page'
+import { NoData } from '@/components/no-data'
+import { webUrl } from '@/components/service-card'
+import { StatTile } from '@/components/stat-tile'
+import { StatusBadge } from '@/components/status-badge'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+
+type Action = 'start' | 'stop' | 'restart'
+const LABEL: Record<Action, string> = { start: 'Запустить', stop: 'Остановить', restart: 'Перезапустить' }
+
+export function Docker() {
+  const qc = useQueryClient()
+  const [pending, setPending] = useState<{ c: Container; a: Action } | null>(null)
+  const { data, isError } = useQuery({
+    queryKey: ['docker'],
+    queryFn: async () => (await api.get<DockerData>('/docker')).data,
+    refetchInterval: 15_000,
+  })
+  const control = useMutation({
+    mutationFn: ({ c, a }: { c: Container; a: Action }) => api.post(`/docker/containers/${encodeURIComponent(c.name)}/${a}`, {}),
+    onSuccess: (_d, { c, a }) => {
+      toast.success(`${c.name}: ${LABEL[a].toLowerCase()} — выполнено`)
+      qc.invalidateQueries({ queryKey: ['docker'] })
+    },
+    onError: (e, { c }) => toast.error(`${c.name}: ${(e instanceof AxiosError && e.response?.data?.message) || 'ошибка'}`),
+    onSettled: () => setPending(null),
+  })
+
+  const containers = data?.containers.data ?? []
+  const images = data?.images.data ?? []
+  const running = containers.filter((c) => c.state === 'running').length
+  const unused = images.filter((i) => !i.used)
+  const portainer = containers.find((c) => c.name === 'portainer')
+
+  return (
+    <Page
+      title='Docker'
+      description='Контейнеры, образы и compose-стеки (через docker-socket-proxy)'
+      actions={
+        portainer && (
+          <Button asChild variant='outline'>
+            <a href={webUrl(9000)} target='_blank' rel='noreferrer'>
+              <ExternalLink /> Portainer
+            </a>
+          </Button>
+        )
+      }
+    >
+      {isError && <NoData reason='бэкенд не ответил' />}
+      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+        <StatTile
+          title='Docker'
+          icon={ContainerIcon}
+          value={data?.version.data?.engine ?? null}
+          sub={data?.version.data ? `Compose ${data.version.data.compose?.split('+')[0] ?? '—'} · API ${data.version.data.api}` : undefined}
+          noDataReason={data?.version.error}
+        />
+        <StatTile
+          title='Контейнеры'
+          icon={Layers}
+          value={data?.containers.data ? `${running} работает` : null}
+          sub={data?.containers.data ? `остановлено: ${containers.length - running}` : undefined}
+          noDataReason={data?.containers.error}
+        />
+        <StatTile
+          title='Образы'
+          icon={HardDrive}
+          value={data?.images.data ? `${images.length} шт.` : null}
+          sub={data?.images.data ? `занимают ${formatBytes(images.reduce((a, i) => a + i.size, 0))}` : undefined}
+          noDataReason={data?.images.error}
+        />
+        <StatTile
+          title='Неиспользуемые образы'
+          icon={HardDrive}
+          value={data?.images.data ? `${unused.length} шт.` : null}
+          sub={unused.length ? `${formatBytes(unused.reduce((a, i) => a + i.size, 0))}: ${unused.map((i) => i.tags[0] ?? i.id.slice(7, 19)).join(', ')}` : 'всё используется'}
+        />
+      </div>
+
+      <Card className='mt-4 gap-2'>
+        <CardHeader>
+          <CardTitle className='text-sm font-medium'>Контейнеры</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {data?.containers.error ? (
+            <NoData reason={data.containers.error} />
+          ) : (
+            <div className='overflow-x-auto rounded-md border'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Контейнер</TableHead>
+                    <TableHead>Статус</TableHead>
+                    <TableHead className='hidden md:table-cell'>Аптайм</TableHead>
+                    <TableHead className='hidden lg:table-cell'>Порты</TableHead>
+                    <TableHead className='hidden sm:table-cell'>CPU / RAM</TableHead>
+                    <TableHead className='hidden xl:table-cell'>Restart</TableHead>
+                    <TableHead className='hidden xl:table-cell'>Стек</TableHead>
+                    <TableHead className='text-end'>Действия</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {containers
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className='max-w-[16rem]'>
+                          <div className='truncate font-medium'>{c.name}</div>
+                          <div className='truncate text-xs text-muted-foreground'>{c.image}</div>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
+                        </TableCell>
+                        <TableCell className='hidden whitespace-nowrap md:table-cell'>
+                          {c.startedAt ? formatDuration(Math.round((Date.now() - c.startedAt) / 1000)) : '—'}
+                        </TableCell>
+                        <TableCell className='hidden lg:table-cell'>
+                          {c.networkMode === 'host' && <Badge variant='outline' className='me-1'>host</Badge>}
+                          {c.ports.map((p) => `${p.host}${p.proto === 'udp' ? '/udp' : ''}`).join(', ') || '—'}
+                        </TableCell>
+                        <TableCell className='hidden whitespace-nowrap tabular-nums sm:table-cell'>
+                          {c.cpuPercent != null ? `${c.cpuPercent}%` : '—'} / {c.memUsage != null ? formatBytes(c.memUsage) : '—'}
+                        </TableCell>
+                        <TableCell className='hidden xl:table-cell'>{c.restartPolicy ?? '—'}</TableCell>
+                        <TableCell className='hidden xl:table-cell' title={c.composeDir ?? undefined}>
+                          {c.composeProject ?? '—'}
+                        </TableCell>
+                        <TableCell>
+                          <div className='flex justify-end gap-1'>
+                            {!c.protected && (
+                              <>
+                                {c.state === 'running' ? (
+                                  <Button size='icon' variant='ghost' title='Остановить' onClick={() => setPending({ c, a: 'stop' })}>
+                                    <Square />
+                                  </Button>
+                                ) : (
+                                  <Button size='icon' variant='ghost' title='Запустить' onClick={() => setPending({ c, a: 'start' })}>
+                                    <Play />
+                                  </Button>
+                                )}
+                                <Button size='icon' variant='ghost' title='Перезапустить' onClick={() => setPending({ c, a: 'restart' })}>
+                                  <RotateCw />
+                                </Button>
+                              </>
+                            )}
+                            <Button size='icon' variant='ghost' title='Логи' asChild>
+                              <Link to='/system' search={{ tab: 'logs', source: `container:${c.name}` }}>
+                                <ScrollText />
+                              </Link>
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <p className='mt-2 text-xs text-muted-foreground'>
+            docker-socket-proxy панелью не управляется: без него панель потеряет доступ к Docker.
+          </p>
+        </CardContent>
+      </Card>
+
+      {pending && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && !control.isPending && setPending(null)}
+          title={`${LABEL[pending.a]} ${pending.c.name}?`}
+          desc={
+            <div className='space-y-2'>
+              <p>{pending.c.image}</p>
+              {pending.a !== 'start' && pending.c.warning && <p className='font-medium text-red-600'>⚠ {pending.c.warning}</p>}
+            </div>
+          }
+          confirmText={LABEL[pending.a]}
+          destructive={pending.a !== 'start'}
+          isLoading={control.isPending}
+          handleConfirm={() => control.mutate(pending)}
+        />
+      )}
+    </Page>
+  )
+}

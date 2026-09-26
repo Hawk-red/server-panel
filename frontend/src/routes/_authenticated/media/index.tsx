@@ -1,12 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { SectionStub } from '@/features/section'
+import { Media } from '@/features/media'
 
 export const Route = createFileRoute('/_authenticated/media/')({
-  component: () => (
-    <SectionStub
-      title='Медиа'
-      description='Jellyfin, MinimServer, BubbleUPnP, ресивер Marantz'
-      stage={3}
-    />
-  ),
+  component: Media,
 })

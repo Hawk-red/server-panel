@@ -88,3 +88,105 @@ export type LogLine = { ts: number | null; level: LogLevel; text: string }
 
 export type Range = 'hour' | 'day' | 'week' | 'month' | 'quarter'
 export type MetricsResponse = { range: Range; from: number; to: number; step: number; series: Record<string, [number, number, number][]> }
+
+// ---------- Этап 3 ----------
+export type Part<T> = { data: T; error: null } | { data: null; error: string }
+
+export type Container = {
+  id: string
+  name: string
+  image: string
+  state: string
+  status: string
+  startedAt: number | null
+  ports: { host: number | null; container: number; proto: string; ip: string | null }[]
+  networkMode: string | null
+  restartPolicy: string | null
+  composeProject: string | null
+  composeDir: string | null
+  version: string | null
+  cpuPercent: number | null
+  memUsage: number | null
+  memLimit: number | null
+  protected: boolean
+  warning?: string
+}
+
+export type DockerData = {
+  version: Part<{ engine: string; api: string; compose: string | null }>
+  containers: Part<Container[]>
+  images: Part<{ id: string; tags: string[]; size: number; created: number; used: boolean }[]>
+}
+
+export type MediaData = {
+  jellyfin: {
+    container: Part<Container>
+    info: Part<{ version: string; name: string }>
+    sessions: Part<
+      {
+        user: string
+        client: string
+        device: string
+        lastActivity: number
+        playing: { title: string; type: string; paused: boolean; progress: number | null } | null
+      }[]
+    >
+  }
+  minimserver: { container: Part<Container> }
+  bubbleupnpserver: { container: Part<Container> }
+  marantz: Part<{ host: string; webPort: number; online: boolean; power: string | null; source: string | null }>
+}
+
+export type TorrentSummary = {
+  version: string
+  connection: string
+  speed: { dl: number; ul: number }
+  session: { dl: number; ul: number }
+  alltime: { dl: number; ul: number; ratio: number }
+  counts: { total: number; downloading: number; seeding: number; stopped: number; errored: number }
+  active: {
+    hash: string
+    name: string
+    progress: number
+    dlspeed: number
+    upspeed: number
+    seeds: number
+    seedsTotal: number
+    peers: number
+    peersTotal: number
+    eta: number | null
+    size: number
+    state: string
+  }[]
+}
+
+export type SpaceGuard = {
+  scriptReadable: boolean
+  thresholdGb: number | null
+  resumeGb: number | null
+  watchedPath: string | null
+  watchedFree: number | null
+  downloadsPath: string
+  downloadsFree: number | null
+  downloadsTotal: number | null
+  mismatch: boolean
+  lastPause: { at: number | null; text: string } | null
+}
+
+export type TorrentsData = { container: Part<Container>; summary: Part<TorrentSummary>; guard: Part<SpaceGuard> }
+
+export type AdguardData = {
+  container: Part<Container>
+  status: Part<{ version: string; running: boolean; protection_enabled: boolean; protection_disabled_duration?: number; dns_port: number; http_port: number }>
+  stats: Part<{
+    timeUnits: 'hours' | 'days'
+    queries: number
+    blocked: number
+    blockedPercent: number
+    avgMs: number
+    topClients: { name: string; count: number }[]
+    topBlocked: { name: string; count: number }[]
+  }>
+  interval: Part<number | null>
+  querylogSize: Part<number | null>
+}
