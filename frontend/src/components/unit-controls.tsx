@@ -59,7 +59,7 @@ export function UnitControls({ unit, title, active, warning, invalidate = [], la
           open
           onOpenChange={(o) => !o && !control.isPending && setPending(null)}
           title={`${label(pending)}: ${title}?`}
-          desc={<div className='space-y-2'>{pending !== 'start' && warning ? <div className='font-medium text-red-600'>⚠ {warning}</div> : <p>Служба {unit}.</p>}</div>}
+          desc={<div className='space-y-2'>{pending !== 'start' && warning ? <div className='font-medium text-danger-foreground'>⚠ {warning}</div> : <p>Служба {unit}.</p>}</div>}
           confirmText={label(pending)}
           destructive={pending !== 'start'}
           isLoading={control.isPending}

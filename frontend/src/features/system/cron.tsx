@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { Value } from '@/components/value'
 import { TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatDateTime, formatRelative } from '@/lib/format'
+import { formatDateTime } from '@/lib/format'
 import type { CronJob } from '@/lib/types'
 import { NoData } from '@/components/no-data'
 import { StatusBadge } from '@/components/status-badge'
@@ -26,7 +27,7 @@ export function Cron() {
   return (
     <div className='space-y-3'>
       {data?.errors.map((e) => (
-        <p key={e} className='flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-400'>
+        <p key={e} className='flex items-center gap-2 text-sm text-warn-foreground'>
           <TriangleAlert className='size-4' /> {e}
         </p>
       ))}
@@ -49,7 +50,7 @@ export function Cron() {
                   {j.next ? (
                     <>
                       <div className='tabular-nums'>{formatDateTime(j.next)}</div>
-                      <div className='text-xs text-muted-foreground'>{formatRelative(j.next)}</div>
+                      <Value kind='ago' value={j.next} className='text-xs' />
                     </>
                   ) : (
                     <span className='text-muted-foreground'>{j.schedule === '@reboot' ? 'при загрузке' : '—'}</span>
@@ -77,7 +78,7 @@ export function Cron() {
                   {j.lastRun ? (
                     <>
                       <div className='tabular-nums'>{formatDateTime(j.lastRun)}</div>
-                      <div className='text-xs text-muted-foreground'>{formatRelative(j.lastRun)}</div>
+                      <Value kind='ago' value={j.lastRun} className='text-xs' />
                     </>
                   ) : (
                     <NoData reason={j.kind === 'cron' ? 'нет записи в журнале за 8 дней' : undefined} />

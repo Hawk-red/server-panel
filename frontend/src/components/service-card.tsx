@@ -1,11 +1,11 @@
 import { useState } from 'react'
+import { Value } from './value'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
 import { ExternalLink, Play, RotateCw, ScrollText, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { formatDuration } from '@/lib/format'
 import type { Container, Part } from '@/lib/types'
 import { ConfirmDialog } from './confirm-dialog'
 import { NoData } from './no-data'
@@ -86,11 +86,11 @@ export function ServiceCard({
       <CardContent className='space-y-3 text-sm'>
         <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
           <dt className='text-muted-foreground'>Версия</dt>
-          <dd>{version ?? <NoData />}</dd>
+          <dd>{version ? <span className='text-info'>{version}</span> : <NoData />}</dd>
           <dt className='text-muted-foreground'>Порт(ы)</dt>
-          <dd>{ports?.length ? ports.join(', ') : '—'}</dd>
+          <dd>{ports?.length ? <Value kind='address' value={ports.join(', ')} /> : '—'}</dd>
           <dt className='text-muted-foreground'>Аптайм</dt>
-          <dd>{uptime != null ? formatDuration(uptime) : '—'}</dd>
+          <dd>{uptime != null ? <Value kind='duration' value={uptime} /> : '—'}</dd>
         </dl>
         {children}
         <div className='flex flex-wrap gap-2'>
@@ -132,7 +132,7 @@ export function ServiceCard({
           desc={
             <div className='space-y-2'>
               <p>Контейнер {c.name}.</p>
-              {pending !== 'start' && c.warning && <p className='font-medium text-red-600'>⚠ {c.warning}</p>}
+              {pending !== 'start' && c.warning && <p className='font-medium text-danger-foreground'>⚠ {c.warning}</p>}
             </div>
           }
           confirmText={LABEL[pending]}

@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { Value } from '@/components/value'
 import { Link } from '@tanstack/react-router'
 import { ScrollText } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatDateTime, formatDuration, formatRelative } from '@/lib/format'
+import { formatDateTime, formatRelative } from '@/lib/format'
 import type { TelegramData } from '@/lib/types'
 import { Page } from '@/components/layout/page'
 import { NoData } from '@/components/no-data'
@@ -45,9 +46,19 @@ export function Telegram() {
             ) : (
               <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
                 <dt className='text-muted-foreground'>В сети</dt>
-                <dd>{amUnit?.since ? `${formatDuration(Math.round((Date.now() - amUnit.since) / 1000))} (с ${formatDateTime(amUnit.since)})` : '—'}</dd>
+                <dd>
+                  {amUnit?.since ? (
+                    <>
+                      <Value kind='duration' value={Math.round((Date.now() - amUnit.since) / 1000)} /> (с {formatDateTime(amUnit.since)})
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </dd>
                 <dt className='text-muted-foreground'>Подписчиков</dt>
-                <dd>{am?.subscribers ?? '—'}</dd>
+                <dd>
+                  <Value kind='count' value={am?.subscribers} />
+                </dd>
                 <dt className='text-muted-foreground'>Доставка за сутки</dt>
                 <dd>
                   {am?.delivery ? (
@@ -60,16 +71,18 @@ export function Telegram() {
                   )}
                 </dd>
                 <dt className='text-muted-foreground'>Рассылок за сутки</dt>
-                <dd>{am?.alertsToday ?? '—'}</dd>
+                <dd>
+                  <Value kind='count' value={am?.alertsToday} />
+                </dd>
                 <dt className='text-muted-foreground'>Последнее из канала</dt>
-                <dd>{am?.lastChannelMessage ? formatRelative(am.lastChannelMessage) : '—'}</dd>
+                <dd>{am?.lastChannelMessage ? <Value kind='ago' value={am.lastChannelMessage} /> : '—'}</dd>
                 <dt className='text-muted-foreground'>Последняя тревога</dt>
                 <dd>{am?.lastAlert ? `${formatDateTime(am.lastAlert.ts)} — ${am.lastAlert.text}` : '—'}</dd>
               </dl>
             )}
             {am && am.problems.length > 0 && (
               <details className='text-xs'>
-                <summary className='cursor-pointer text-yellow-700 dark:text-yellow-400'>Ошибки и предупреждения в логе: {am.problems.length}</summary>
+                <summary className='cursor-pointer text-warn-foreground'>Ошибки и предупреждения в логе: {am.problems.length}</summary>
                 <pre className='mt-1 max-h-48 overflow-auto rounded bg-muted p-2 whitespace-pre-wrap'>
                   {am.problems.map((p) => `${formatDateTime(p.ts)}  ${p.text}`).join('\n')}
                 </pre>
@@ -108,7 +121,7 @@ export function Telegram() {
                   <NoData reason='токен в закрытом .env pulsdev-api (600, hawk)' />
                 </dd>
                 <dt className='text-muted-foreground'>В сети</dt>
-                <dd>{pUnit?.since ? formatDuration(Math.round((Date.now() - pUnit.since) / 1000)) : '—'}</dd>
+                <dd>{pUnit?.since ? <Value kind='duration' value={Math.round((Date.now() - pUnit.since) / 1000)} /> : '—'}</dd>
                 <dt className='text-muted-foreground'>Ошибки опроса за сутки</dt>
                 <dd>
                   <StatusBadge

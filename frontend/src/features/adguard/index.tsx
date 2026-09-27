@@ -1,10 +1,11 @@
 import { useState } from 'react'
+import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { Shield, ShieldOff, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { formatBytes, formatDuration } from '@/lib/format'
+import { formatDuration } from '@/lib/format'
 import type { AdguardData, Range } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
@@ -41,10 +42,10 @@ function TopList({ title, items }: { title: string; items?: { name: string; coun
             <div key={i.name} className='text-sm'>
               <div className='flex justify-between gap-2'>
                 <span className='truncate'>{i.name}</span>
-                <span className='tabular-nums text-muted-foreground'>{i.count.toLocaleString('ru-RU')}</span>
+                <Value kind='count' value={i.count} className='font-medium' />
               </div>
               <div className='h-1 overflow-hidden rounded-full bg-muted'>
-                <div className='h-full bg-primary/70' style={{ width: `${(i.count / max) * 100}%` }} />
+                <div className='h-full bg-info/70' style={{ width: `${(i.count / max) * 100}%` }} />
               </div>
             </div>
           ))
@@ -125,18 +126,30 @@ export function Adguard() {
         <div className='grid gap-4 sm:grid-cols-2 lg:col-span-2'>
           <StatTile
             title='DNS-запросов'
-            value={stats ? stats.queries.toLocaleString('ru-RU') : null}
+            value={stats ? <Value kind='count' value={stats.queries} /> : null}
             sub={intervalDays ? `за ${intervalDays} д (настройка статистики AdGuard)` : undefined}
             noDataReason={data?.stats.error}
           />
-          <StatTile title='Заблокировано' value={stats ? stats.blocked.toLocaleString('ru-RU') : null} sub={stats ? `${stats.blockedPercent}% запросов` : undefined} percent={stats?.blockedPercent} />
-          <StatTile title='Среднее время ответа' value={stats ? `${stats.avgMs} мс` : null} />
+          <StatTile
+            title='Заблокировано'
+            value={stats ? <Value kind='count' value={stats.blocked} /> : null}
+            sub={
+              stats ? (
+                <>
+                  <Value kind='percent' value={stats.blockedPercent} digits={1} direction='neutral' /> запросов
+                </>
+              ) : undefined
+            }
+            percent={stats?.blockedPercent}
+            direction='neutral'
+          />
+          <StatTile title='Среднее время ответа' value={stats ? <Value kind='number' value={stats.avgMs} suffix=' мс' /> : null} />
           <StatTile
             title='Журнал запросов'
-            value={qlog != null ? formatBytes(qlog) : null}
+            value={qlog != null ? <Value kind='bytes' value={qlog} /> : null}
             sub={
               qlog != null && qlog > QUERYLOG_WARN ? (
-                <span className='flex items-center gap-1 text-yellow-700 dark:text-yellow-400'>
+                <span className='flex items-center gap-1 text-warn-foreground'>
                   <TriangleAlert className='size-3' /> большой и растёт — сократите срок хранения в настройках AdGuard
                 </span>
               ) : (

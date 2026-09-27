@@ -13,7 +13,8 @@ export const RANGE_LABELS: Record<Range, string> = {
   quarter: '3 месяца',
 }
 
-const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', '#64748b']
+// Единая палитра серий (theme.css): фиолетовый, голубой, зелёный, синий, индиго, серый
+const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--chart-6)']
 
 export type SeriesDef = { name: string; label: string }
 

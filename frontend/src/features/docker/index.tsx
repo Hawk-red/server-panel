@@ -1,11 +1,11 @@
 import { useState } from 'react'
+import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
 import { Container as ContainerIcon, ExternalLink, HardDrive, Layers, Play, RotateCw, ScrollText, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { formatBytes, formatDuration } from '@/lib/format'
 import type { Container, DockerData } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
@@ -64,29 +64,49 @@ export function Docker() {
         <StatTile
           title='Docker'
           icon={ContainerIcon}
-          value={data?.version.data?.engine ?? null}
+          value={data?.version.data ? <span className='text-info'>{data.version.data.engine}</span> : null}
           sub={data?.version.data ? `Compose ${data.version.data.compose?.split('+')[0] ?? '—'} · API ${data.version.data.api}` : undefined}
           noDataReason={data?.version.error}
         />
         <StatTile
           title='Контейнеры'
           icon={Layers}
-          value={data?.containers.data ? `${running} работает` : null}
+          value={
+            data?.containers.data ? (
+              <>
+                <Value kind='count' value={running} /> <span className='text-base font-normal text-muted-foreground'>работает</span>
+              </>
+            ) : null
+          }
           sub={data?.containers.data ? `остановлено: ${containers.length - running}` : undefined}
           noDataReason={data?.containers.error}
         />
         <StatTile
           title='Образы'
           icon={HardDrive}
-          value={data?.images.data ? `${images.length} шт.` : null}
-          sub={data?.images.data ? `занимают ${formatBytes(images.reduce((a, i) => a + i.size, 0))}` : undefined}
+          value={data?.images.data ? <Value kind='count' value={images.length} suffix=' шт.' /> : null}
+          sub={
+            data?.images.data ? (
+              <>
+                занимают <Value kind='bytes' value={images.reduce((a, i) => a + i.size, 0)} />
+              </>
+            ) : undefined
+          }
           noDataReason={data?.images.error}
         />
         <StatTile
           title='Неиспользуемые образы'
           icon={HardDrive}
-          value={data?.images.data ? `${unused.length} шт.` : null}
-          sub={unused.length ? `${formatBytes(unused.reduce((a, i) => a + i.size, 0))}: ${unused.map((i) => i.tags[0] ?? i.id.slice(7, 19)).join(', ')}` : 'всё используется'}
+          value={data?.images.data ? <Value kind='count' value={unused.length} suffix=' шт.' /> : null}
+          sub={
+            unused.length ? (
+              <>
+                <Value kind='bytes' value={unused.reduce((a, i) => a + i.size, 0)} />: {unused.map((i) => i.tags[0] ?? i.id.slice(7, 19)).join(', ')}
+              </>
+            ) : (
+              'всё используется'
+            )
+          }
         />
       </div>
 
@@ -107,8 +127,8 @@ export function Docker() {
                     <TableHead className='hidden md:table-cell'>Аптайм</TableHead>
                     <TableHead className='hidden lg:table-cell'>Порты</TableHead>
                     <TableHead className='hidden sm:table-cell'>CPU / RAM</TableHead>
-                    <TableHead className='hidden xl:table-cell'>Restart</TableHead>
-                    <TableHead className='hidden xl:table-cell'>Стек</TableHead>
+                    <TableHead className='hidden 2xl:table-cell'>Restart</TableHead>
+                    <TableHead className='hidden 2xl:table-cell'>Стек</TableHead>
                     <TableHead className='text-end'>Действия</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -127,17 +147,18 @@ export function Docker() {
                           <StatusBadge status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
                         </TableCell>
                         <TableCell className='hidden whitespace-nowrap md:table-cell'>
-                          {c.startedAt ? formatDuration(Math.round((Date.now() - c.startedAt) / 1000)) : '—'}
+                          {c.startedAt ? <Value kind='duration' value={Math.round((Date.now() - c.startedAt) / 1000)} /> : '—'}
                         </TableCell>
                         <TableCell className='hidden lg:table-cell'>
                           {c.networkMode === 'host' && <Badge variant='outline' className='me-1'>host</Badge>}
-                          {c.ports.map((p) => `${p.host}${p.proto === 'udp' ? '/udp' : ''}`).join(', ') || '—'}
+                          {c.ports.length ? <Value kind='address' value={c.ports.map((p) => `${p.host}${p.proto === 'udp' ? '/udp' : ''}`).join(', ')} /> : '—'}
                         </TableCell>
                         <TableCell className='hidden whitespace-nowrap tabular-nums sm:table-cell'>
-                          {c.cpuPercent != null ? `${c.cpuPercent}%` : '—'} / {c.memUsage != null ? formatBytes(c.memUsage) : '—'}
+                          <Value kind='percent' value={c.cpuPercent} digits={1} direction='higher-worse' noDataReason='нет статистики' /> /{' '}
+                          <Value kind='bytes' value={c.memUsage} noDataReason='нет статистики' />
                         </TableCell>
-                        <TableCell className='hidden xl:table-cell'>{c.restartPolicy ?? '—'}</TableCell>
-                        <TableCell className='hidden xl:table-cell' title={c.composeDir ?? undefined}>
+                        <TableCell className='hidden 2xl:table-cell'>{c.restartPolicy ?? '—'}</TableCell>
+                        <TableCell className='hidden 2xl:table-cell' title={c.composeDir ?? undefined}>
                           {c.composeProject ?? '—'}
                         </TableCell>
                         <TableCell>
@@ -185,7 +206,7 @@ export function Docker() {
           desc={
             <div className='space-y-2'>
               <p>{pending.c.image}</p>
-              {pending.a !== 'start' && pending.c.warning && <p className='font-medium text-red-600'>⚠ {pending.c.warning}</p>}
+              {pending.a !== 'start' && pending.c.warning && <p className='font-medium text-danger-foreground'>⚠ {pending.c.warning}</p>}
             </div>
           }
           confirmText={LABEL[pending.a]}

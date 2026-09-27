@@ -1,5 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import type { Direction } from '@/lib/levels'
+import { Meter } from './meter'
 import { NoData } from './no-data'
 
 type StatTileProps = {
@@ -8,18 +10,14 @@ type StatTileProps = {
   value: React.ReactNode | null
   sub?: React.ReactNode
   percent?: number | null
+  /** как красить полоску: больше = хуже (по умолчанию), больше = лучше, нейтрально */
+  direction?: Direction
   noDataReason?: string | null
   className?: string
 }
 
-function barColor(p: number) {
-  if (p >= 90) return 'bg-red-500'
-  if (p >= 85) return 'bg-yellow-500'
-  return 'bg-primary'
-}
-
 // Плитка метрики: значение, подпись и (опционально) полоска заполненности
-export function StatTile({ title, icon: Icon, value, sub, percent, noDataReason, className }: StatTileProps) {
+export function StatTile({ title, icon: Icon, value, sub, percent, direction, noDataReason, className }: StatTileProps) {
   return (
     <Card className={cn('gap-2', className)}>
       <CardHeader className='flex flex-row items-center justify-between space-y-0'>
@@ -34,14 +32,10 @@ export function StatTile({ title, icon: Icon, value, sub, percent, noDataReason,
             <NoData reason={noDataReason} className='text-lg' />
           )
         ) : (
-          <div className='text-xl font-bold break-words tabular-nums sm:text-2xl'>{value}</div>
+          <div className='text-xl font-bold break-words tabular-nums sm:text-2xl xl:text-xl 2xl:text-2xl'>{value}</div>
         )}
         {sub && <div className='text-xs text-muted-foreground'>{sub}</div>}
-        {percent != null && (
-          <div className='h-2 w-full overflow-hidden rounded-full bg-muted'>
-            <div className={cn('h-full rounded-full transition-all', barColor(percent))} style={{ width: `${Math.min(100, percent)}%` }} />
-          </div>
-        )}
+        {percent != null && <Meter value={percent} direction={direction} label={title} />}
       </CardContent>
     </Card>
   )

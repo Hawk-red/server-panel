@@ -4,6 +4,8 @@ type BaseNavItem = {
   title: string
   badge?: string
   icon?: React.ElementType
+  /** цвет иконки раздела (класс text-*) — один на сайдбар и заголовок страницы */
+  color?: string
 }
 
 type NavLink = BaseNavItem & {

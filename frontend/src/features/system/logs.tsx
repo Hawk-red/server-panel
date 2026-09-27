@@ -13,8 +13,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Switch } from '@/components/ui/switch'
 
 const LEVEL_CLASS: Record<LogLevel, string> = {
-  error: 'text-red-600 dark:text-red-400',
-  warning: 'text-yellow-700 dark:text-yellow-400',
+  error: 'text-danger-foreground',
+  warning: 'text-warn-foreground',
   info: '',
   debug: 'text-muted-foreground',
 }

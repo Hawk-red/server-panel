@@ -3,12 +3,12 @@ import { Link } from '@tanstack/react-router'
 import { Activity, CircleAlert, Clock, Cpu, HardDrive, MemoryStick, Network, Thermometer, TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
 import { meQuery } from '@/lib/auth'
-import { formatBps, formatBytes, formatDuration, formatPercent } from '@/lib/format'
 import type { Overview as OverviewData } from '@/lib/types'
-import { cn } from '@/lib/utils'
 import { Page } from '@/components/layout/page'
 import { NoData } from '@/components/no-data'
+import { Meter } from '@/components/meter'
 import { StatTile } from '@/components/stat-tile'
+import { Value } from '@/components/value'
 import { StatusBadge } from '@/components/status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -58,42 +58,67 @@ export function Overview() {
         <StatTile
           title='CPU'
           icon={Cpu}
-          value={s?.cpu ? formatPercent(s.cpu.total) : null}
+          value={s?.cpu ? <Value kind='percent' value={s.cpu.total} direction='higher-worse' /> : null}
           sub={s?.load ? `нагрузка ${s.load.l1.toFixed(2)} / ${s.load.l5.toFixed(2)} / ${s.load.l15.toFixed(2)}` : undefined}
           percent={s?.cpu?.total}
+          direction='higher-worse'
           noDataReason={err('cpu')}
         />
         <StatTile
           title='Температура'
           icon={Thermometer}
-          value={s?.temperature ? `${Math.round(s.temperature.cpu)} °C` : null}
-          sub={s?.fan ? `вентилятор ${s.fan.rpm} об/мин` : 'вентилятор: нет данных'}
+          value={s?.temperature ? <Value kind='temp-cpu' value={s.temperature.cpu} /> : null}
+          sub={
+            s?.fan ? (
+              <>
+                вентилятор <Value kind='count' value={s.fan.rpm} /> об/мин
+              </>
+            ) : (
+              'вентилятор: нет данных'
+            )
+          }
           noDataReason={err('temperature')}
         />
         <StatTile
           title='Память'
           icon={MemoryStick}
-          value={mem ? formatBytes(mem.used) : null}
-          sub={mem ? `из ${formatBytes(mem.total)} · swap ${formatBytes(mem.swapUsed)}` : undefined}
+          value={mem ? <Value kind='bytes' value={mem.used} /> : null}
+          sub={
+            mem ? (
+              <>
+                из <Value kind='bytes' value={mem.total} /> · <Value kind='percent' value={(mem.used / mem.total) * 100} direction='higher-worse' /> · swap{' '}
+                <Value kind='bytes' value={mem.swapUsed} />
+              </>
+            ) : undefined
+          }
           percent={mem ? (mem.used / mem.total) * 100 : null}
+          direction='higher-worse'
           noDataReason={err('memory')}
         />
-        <StatTile title='Аптайм' icon={Clock} value={s?.uptimeSec != null ? formatDuration(s.uptimeSec) : null} noDataReason={err('uptime')} />
+        <StatTile title='Аптайм' icon={Clock} value={s?.uptimeSec != null ? <Value kind='duration' value={s.uptimeSec} /> : null} noDataReason={err('uptime')} />
         <StatTile
           title='Сеть (LAN)'
           icon={Network}
-          value={net ? `↓ ${formatBps(net.rxBps)}` : null}
-          sub={net ? `↑ ${formatBps(net.txBps)}` : undefined}
+          value={net ? <Value kind='speed' value={net.rxBps} prefix='↓ ' /> : null}
+          sub={net ? <Value kind='speed' value={net.txBps} prefix='↑ ' /> : undefined}
           noDataReason={err('network')}
         />
         <StatTile
           title='Службы'
           icon={Activity}
-          value={o?.services ? `${o.services.running} работают` : null}
+          value={
+            o?.services ? (
+              <>
+                <Value kind='count' value={o.services.running} /> <span className='text-base font-normal text-muted-foreground'>работают</span>
+              </>
+            ) : null
+          }
           sub={
             o?.services ? (
               o.services.failed > 0 ? (
-                <span className='text-red-600'>упало: {o.services.failed}</span>
+                <span className='inline-flex items-center gap-1 text-danger-foreground'>
+                  <CircleAlert className='size-3' /> упало: {o.services.failed}
+                </span>
               ) : (
                 'упавших нет'
               )
@@ -124,19 +149,13 @@ export function Overview() {
                       {d.state === 'missing' ? (
                         <StatusBadge status='error' label='не подключён' />
                       ) : (
-                        <span className='text-muted-foreground tabular-nums'>
-                          {formatBytes(d.used)} из {formatBytes(d.size)} · {formatPercent(d.percent)}
+                        <span className='text-muted-foreground'>
+                          <Value kind='bytes' value={d.used} /> из <Value kind='bytes' value={d.size} /> ·{' '}
+                          <Value kind='percent' value={d.percent} direction='higher-worse' className='font-medium' />
                         </span>
                       )}
                     </div>
-                    {d.percent != null && (
-                      <div className='h-2 overflow-hidden rounded-full bg-muted'>
-                        <div
-                          className={cn('h-full rounded-full', d.percent >= 90 ? 'bg-red-500' : d.percent >= 85 ? 'bg-yellow-500' : 'bg-primary')}
-                          style={{ width: `${d.percent}%` }}
-                        />
-                      </div>
-                    )}
+                    <Meter value={d.percent} direction='higher-worse' label={`Диск ${d.mount}`} />
                   </div>
                 ))
             )}
@@ -149,16 +168,40 @@ export function Overview() {
           </CardHeader>
           <CardContent className='divide-y'>
             <SummaryRow label='Службы' to='/system'>
-              {o?.services ? `${o.services.running} работают · ${o.services.failed} упало` : <NoData />}
+              {o?.services ? (
+                <>
+                  <Value kind='count' value={o.services.running} /> работают · <Value kind='count' value={o.services.failed} className={o.services.failed ? 'text-danger-foreground' : undefined} /> упало
+                </>
+              ) : (
+                <NoData />
+              )}
             </SummaryRow>
             <SummaryRow label='Контейнеры' to='/docker'>
-              {o?.containers ? `${o.containers.running} из ${o.containers.total} запущено` : <NoData />}
+              {o?.containers ? (
+                <>
+                  <Value kind='count' value={o.containers.running} /> из <Value kind='count' value={o.containers.total} /> запущено
+                </>
+              ) : (
+                <NoData />
+              )}
             </SummaryRow>
             <SummaryRow label='Устройства в сети' to='/network'>
-              {o?.devices ? `${o.devices.online} онлайн` : <NoData reason='появится на этапе 6' />}
+              {o?.devices ? (
+                <>
+                  <Value kind='count' value={o.devices.online} /> онлайн
+                  {o.devices.unknown > 0 && (
+                    <span className='text-warn-foreground'>
+                      {' '}
+                      · <Value kind='count' value={o.devices.unknown} className='text-warn-foreground' /> новых
+                    </span>
+                  )}
+                </>
+              ) : (
+                <NoData />
+              )}
             </SummaryRow>
             <SummaryRow label='Активные торренты' to='/torrents'>
-              {o?.torrents ? o.torrents.active : <NoData reason='появится на этапе 3' />}
+              {o?.torrents ? <Value kind='count' value={o.torrents.active} /> : <NoData />}
             </SummaryRow>
             <SummaryRow label='Бэкенд панели'>
               {health.isError ? (
@@ -169,7 +212,15 @@ export function Overview() {
                 <NoData />
               )}
             </SummaryRow>
-            <SummaryRow label='Ваше подключение'>{me ? `${me.ip} · ${NETWORK_LABEL[me.network]}` : '…'}</SummaryRow>
+            <SummaryRow label='Ваше подключение'>
+              {me ? (
+                <>
+                  <Value kind='address' value={me.ip} /> · {NETWORK_LABEL[me.network]}
+                </>
+              ) : (
+                '…'
+              )}
+            </SummaryRow>
           </CardContent>
         </Card>
       </div>
@@ -190,9 +241,9 @@ export function Overview() {
               {o.problems.map((p, i) => (
                 <li key={i} className='flex items-start gap-2 text-sm'>
                   {p.level === 'error' ? (
-                    <CircleAlert className='mt-0.5 size-4 shrink-0 text-red-600' />
+                    <CircleAlert className='mt-0.5 size-4 shrink-0 text-danger-foreground' />
                   ) : (
-                    <TriangleAlert className='mt-0.5 size-4 shrink-0 text-yellow-600' />
+                    <TriangleAlert className='mt-0.5 size-4 shrink-0 text-warn-foreground' />
                   )}
                   <span>{p.text}</span>
                 </li>

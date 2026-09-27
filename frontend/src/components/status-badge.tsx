@@ -2,10 +2,11 @@ import { cn } from '@/lib/utils'
 
 export type Status = 'ok' | 'warning' | 'error' | 'unknown'
 
+// Единый индикатор статуса: цветная точка + текст (смысл всегда продублирован словом)
 const STYLE: Record<Status, { dot: string; text: string; label: string }> = {
-  ok: { dot: 'bg-green-500', text: 'text-green-700 dark:text-green-400', label: 'работает' },
-  warning: { dot: 'bg-yellow-500', text: 'text-yellow-700 dark:text-yellow-400', label: 'проблемы' },
-  error: { dot: 'bg-red-500', text: 'text-red-700 dark:text-red-400', label: 'не работает' },
+  ok: { dot: 'bg-ok', text: 'text-ok-foreground', label: 'работает' },
+  warning: { dot: 'bg-warn', text: 'text-warn-foreground', label: 'проблемы' },
+  error: { dot: 'bg-danger', text: 'text-danger-foreground', label: 'не работает' },
   unknown: { dot: 'bg-muted-foreground/40', text: 'text-muted-foreground', label: 'нет данных' },
 }
 
@@ -15,7 +16,6 @@ type StatusBadgeProps = {
   className?: string
 }
 
-// Единый индикатор статуса: цветная точка + текст (без дублирующих иконок)
 export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   const s = STYLE[status]
   return (

@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { Value } from '@/components/value'
 import { Link } from '@tanstack/react-router'
 import { ExternalLink, FolderOpen, Globe, ScrollText, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatBytes, formatDateTime, formatDuration, formatRelative } from '@/lib/format'
+import { formatDateTime, formatRelative } from '@/lib/format'
 import type { Part, SitesData, UnitInfo } from '@/lib/types'
 import { Page } from '@/components/layout/page'
 import { NoData } from '@/components/no-data'
@@ -26,8 +27,13 @@ function UnitRow({ title, icon, u, version }: { title: string; icon: string; u: 
       <div className='min-w-0 flex-1'>
         <div className='text-sm font-medium'>{title}</div>
         <div className='text-xs text-muted-foreground'>
-          {version ? `v${version}` : 'версия: нет данных'}
-          {u?.since ? ` · работает ${formatDuration(Math.round((Date.now() - u.since) / 1000))}` : ''}
+          {version ? <span className='text-info'>v{version}</span> : 'версия: нет данных'}
+          {u?.since && (
+            <>
+              {' '}
+              · работает <Value kind='duration' value={Math.round((Date.now() - u.since) / 1000)} />
+            </>
+          )}
         </div>
       </div>
       {u ? <StatusBadge status={unitStatus(u.active)} label={u.active === 'active' ? 'работает' : u.active} /> : <NoData />}
@@ -83,9 +89,9 @@ function WpChanges() {
           ) : (
             files.data?.data?.slice(0, 20).map((f) => (
               <div key={f.path} className='flex justify-between gap-3'>
-                <code className='truncate text-xs'>{f.path}</code>
+                <Value kind='address' value={f.path} className='truncate text-xs' />
                 <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>
-                  {formatBytes(f.size)} · {formatDateTime(f.mtime)}
+                  <Value kind='bytes' value={f.size} /> · {formatDateTime(f.mtime)}
                 </span>
               </div>
             ))
@@ -125,11 +131,11 @@ export function Sites() {
         <CardContent className='space-y-4 text-sm'>
           {data?.exposure.data &&
             (data.exposure.data.restricted ? (
-              <p className='flex items-center gap-2 text-green-700 dark:text-green-400'>
+              <p className='flex items-center gap-2 text-ok-foreground'>
                 <ShieldCheck className='size-4' /> Закрыто от интернета: доступ только {data.exposure.data.allows.join(', ')}.
               </p>
             ) : (
-              <p className='flex items-center gap-2 font-medium text-red-600'>
+              <p className='flex items-center gap-2 font-medium text-danger-foreground'>
                 <TriangleAlert className='size-4' /> Зеркало (копия продовой БД) доступно из интернета через порт 80 — в nginx нет allow/deny.
               </p>
             ))}
@@ -185,11 +191,12 @@ export function Sites() {
               {sync && (
                 <>
                   <p className='text-muted-foreground'>
-                    {formatDateTime(sync.started)} · длительность {sync.durationSec != null ? formatDuration(sync.durationSec) : '—'} · {formatRelative(sync.started)}
+                    {formatDateTime(sync.started)} · длительность {sync.durationSec != null ? <Value kind='duration' value={sync.durationSec} /> : '—'} ·{' '}
+                    <Value kind='ago' value={sync.started} />
                   </p>
                   {sync.errors.length > 0 && (
                     <details className='text-xs'>
-                      <summary className='cursor-pointer text-yellow-700 dark:text-yellow-400'>Предупреждения: {sync.errors.length}</summary>
+                      <summary className='cursor-pointer text-warn-foreground'>Предупреждения: {sync.errors.length}</summary>
                       <pre className='mt-1 max-h-48 overflow-auto rounded bg-muted p-2 whitespace-pre-wrap'>{sync.errors.join('\n')}</pre>
                     </details>
                   )}
@@ -241,9 +248,9 @@ export function Sites() {
           <CardContent className='space-y-3 text-sm'>
             <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
               <dt className='text-muted-foreground'>Версия</dt>
-              <dd>{data?.pulsdev.version.data?.version ?? <NoData reason={data?.pulsdev.version.error} />}</dd>
+              <dd>{data?.pulsdev.version.data ? <span className='text-info'>{data.pulsdev.version.data.version}</span> : <NoData reason={data?.pulsdev.version.error} />}</dd>
               <dt className='text-muted-foreground'>Аптайм</dt>
-              <dd>{puls?.since ? formatDuration(Math.round((Date.now() - puls.since) / 1000)) : '—'}</dd>
+              <dd>{puls?.since ? <Value kind='duration' value={Math.round((Date.now() - puls.since) / 1000)} /> : '—'}</dd>
               <dt className='text-muted-foreground'>/health</dt>
               <dd>
                 {data?.pulsdev.health.data ? (
@@ -273,7 +280,7 @@ export function Sites() {
               </dd>
             </dl>
             {cert && cert.daysLeft < CERT_WARN_DAYS && (
-              <p className='flex items-start gap-2 font-medium text-yellow-700 dark:text-yellow-400'>
+              <p className='flex items-start gap-2 font-medium text-warn-foreground'>
                 <TriangleAlert className='mt-0.5 size-4 shrink-0' /> Сертификат истекает через {cert.daysLeft} дн. Автопродление сейчас не работает (ручной DNS-01) — см. план продления.
               </p>
             )}

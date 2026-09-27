@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Value } from '@/components/value'
+import { Meter } from '@/components/meter'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { Pause, Play, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { formatBps, formatBytes, formatDateTime, formatDuration } from '@/lib/format'
+import { formatBps, formatDateTime } from '@/lib/format'
 import type { MetricsResponse, Range, TorrentsData } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
@@ -88,17 +90,38 @@ export function Torrents() {
         </ServiceCard>
 
         <div className='grid gap-4 sm:grid-cols-2 lg:col-span-2'>
-          <StatTile title='Скорость сейчас' value={s ? `↓ ${formatBps(s.speed.dl)}` : null} sub={s ? `↑ ${formatBps(s.speed.ul)}` : undefined} noDataReason={data?.summary.error} />
+          <StatTile
+            title='Скорость сейчас'
+            value={s ? <Value kind='speed' value={s.speed.dl} prefix='↓ ' /> : null}
+            sub={s ? <Value kind='speed' value={s.speed.ul} prefix='↑ ' /> : undefined}
+            noDataReason={data?.summary.error}
+          />
           <StatTile
             title='Торренты'
-            value={s ? `${s.counts.total} всего` : null}
+            value={
+              s ? (
+                <>
+                  <Value kind='count' value={s.counts.total} /> <span className='text-base font-normal text-muted-foreground'>всего</span>
+                </>
+              ) : null
+            }
             sub={s ? `качается ${s.counts.downloading} · раздаётся ${s.counts.seeding} · на паузе ${s.counts.stopped}${s.counts.errored ? ` · ошибок ${s.counts.errored}` : ''}` : undefined}
           />
-          <StatTile title='За сессию' value={s ? `↓ ${formatBytes(s.session.dl)}` : null} sub={s ? `↑ ${formatBytes(s.session.ul)}` : undefined} />
+          <StatTile
+            title='За сессию'
+            value={s ? <Value kind='bytes' value={s.session.dl} prefix='↓ ' /> : null}
+            sub={s ? <Value kind='bytes' value={s.session.ul} prefix='↑ ' /> : undefined}
+          />
           <StatTile
             title='За всё время'
-            value={s ? `↓ ${formatBytes(s.alltime.dl)}` : null}
-            sub={s ? `↑ ${formatBytes(s.alltime.ul)} · рейтинг ${s.alltime.ratio.toFixed(2)}` : undefined}
+            value={s ? <Value kind='bytes' value={s.alltime.dl} prefix='↓ ' /> : null}
+            sub={
+              s ? (
+                <>
+                  <Value kind='bytes' value={s.alltime.ul} prefix='↑ ' /> · рейтинг <Value kind='number' value={s.alltime.ratio} digits={2} />
+                </>
+              ) : undefined
+            }
           />
         </div>
       </div>
@@ -144,20 +167,21 @@ export function Torrents() {
                         {t.name}
                       </TableCell>
                       <TableCell className='min-w-28'>
-                        <div className='text-xs tabular-nums'>{(t.progress * 100).toFixed(1)}%</div>
-                        <div className='h-1.5 overflow-hidden rounded-full bg-muted'>
-                          <div className='h-full bg-primary' style={{ width: `${t.progress * 100}%` }} />
-                        </div>
+                        <Value kind='percent' value={t.progress * 100} digits={1} direction='neutral' className='text-xs' />
+                        <Meter value={t.progress * 100} direction='neutral' className='h-1.5' label='Прогресс' />
                       </TableCell>
                       <TableCell className='whitespace-nowrap text-xs tabular-nums'>
-                        ↓ {formatBps(t.dlspeed)}
-                        <br />↑ {formatBps(t.upspeed)}
+                        <Value kind='speed' value={t.dlspeed} prefix='↓ ' />
+                        <br />
+                        <Value kind='speed' value={t.upspeed} prefix='↑ ' />
                       </TableCell>
                       <TableCell className='hidden tabular-nums md:table-cell'>
                         {t.seeds} ({t.seedsTotal}) / {t.peers} ({t.peersTotal})
                       </TableCell>
-                      <TableCell className='hidden whitespace-nowrap sm:table-cell'>{t.eta != null ? formatDuration(t.eta) : '∞'}</TableCell>
-                      <TableCell className='hidden whitespace-nowrap sm:table-cell'>{formatBytes(t.size)}</TableCell>
+                      <TableCell className='hidden whitespace-nowrap sm:table-cell'>{t.eta != null ? <Value kind='duration' value={t.eta} /> : '∞'}</TableCell>
+                      <TableCell className='hidden whitespace-nowrap sm:table-cell'>
+                        <Value kind='bytes' value={t.size} />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -177,7 +201,7 @@ export function Torrents() {
           ) : (
             <>
               {g.mismatch && (
-                <p className='flex items-start gap-2 font-medium text-yellow-700 dark:text-yellow-400'>
+                <p className='flex items-start gap-2 font-medium text-warn-foreground'>
                   <TriangleAlert className='mt-0.5 size-4 shrink-0' />
                   Скрипт проверяет {g.watchedPath}, а закачки идут в {g.downloadsPath} (другой диск) — корневой SSD он не защищает.
                 </p>
@@ -189,11 +213,12 @@ export function Torrents() {
                 </dd>
                 <dt className='text-muted-foreground'>Проверяет</dt>
                 <dd>
-                  {g.watchedPath ?? '—'}: свободно {formatBytes(g.watchedFree)}
+                  <Value kind='address' value={g.watchedPath ?? '—'} />: свободно <Value kind='bytes' value={g.watchedFree} />
                 </dd>
                 <dt className='text-muted-foreground'>Закачки</dt>
                 <dd>
-                  {g.downloadsPath}: свободно {formatBytes(g.downloadsFree)} из {formatBytes(g.downloadsTotal)}
+                  <Value kind='address' value={g.downloadsPath} />: свободно <Value kind='bytes' value={g.downloadsFree} /> из{' '}
+                  <Value kind='bytes' value={g.downloadsTotal} />
                 </dd>
                 <dt className='text-muted-foreground'>Последняя пауза</dt>
                 <dd>{g.lastPause ? `${formatDateTime(g.lastPause.at)} — ${g.lastPause.text.replace(/^\S+ \S+ /, '')}` : 'ни разу не ставил'}</dd>

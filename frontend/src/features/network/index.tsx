@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import {
@@ -117,14 +118,14 @@ function DeviceCard({ d, scanningMac, onEdit, onScan, onDelete }: { d: Device; s
   const T = TYPES[d.type] ?? TYPES.unknown
   const scanning = scanningMac === d.mac
   return (
-    <Card className={cn('gap-2 py-4', !d.known && 'border-yellow-500/60 bg-yellow-500/5', !d.online && 'opacity-70')}>
+    <Card className={cn('gap-2 py-4', !d.known && 'border-warn/60 bg-warn/5', !d.online && 'opacity-70')}>
       <CardContent className='space-y-2 px-4 text-sm'>
         <div className='flex items-start gap-3'>
           <T.icon className='mt-0.5 size-6 shrink-0 text-muted-foreground' />
           <div className='min-w-0 flex-1'>
             <div className='flex flex-wrap items-center gap-2'>
               <span className='truncate font-medium'>{d.name ?? d.hostname ?? d.vendor ?? 'Без названия'}</span>
-              {!d.known && <Badge className='bg-yellow-500 text-black hover:bg-yellow-500'>новое</Badge>}
+              {!d.known && <Badge className='bg-warn text-black hover:bg-warn'>новое</Badge>}
             </div>
             <div className='text-xs text-muted-foreground'>
               {T.label}
@@ -135,10 +136,12 @@ function DeviceCard({ d, scanningMac, onEdit, onScan, onDelete }: { d: Device; s
         </div>
         <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs'>
           <dt className='text-muted-foreground'>IP</dt>
-          <dd className='tabular-nums'>{d.ip}</dd>
+          <dd>
+            <Value kind='address' value={d.ip} />
+          </dd>
           <dt className='text-muted-foreground'>MAC</dt>
-          <dd className='font-mono'>
-            {d.mac}
+          <dd>
+            <Value kind='address' value={d.mac} />
             {d.randomMac && <span className='ms-1 text-muted-foreground'>(случайный)</span>}
           </dd>
           <dt className='text-muted-foreground'>Производитель</dt>
@@ -146,7 +149,7 @@ function DeviceCard({ d, scanningMac, onEdit, onScan, onDelete }: { d: Device; s
           <dt className='text-muted-foreground'>Появилось</dt>
           <dd>{formatDateTime(d.firstSeen)}</dd>
           <dt className='text-muted-foreground'>Последний раз</dt>
-          <dd>{d.online ? 'сейчас в сети' : formatRelative(d.lastSeen)}</dd>
+          <dd>{d.online ? 'сейчас в сети' : <Value kind='ago' value={d.lastSeen} />}</dd>
         </dl>
         {d.portsScannedAt && (
           <div className='space-y-1'>
@@ -247,17 +250,17 @@ export function Network() {
       }
     >
       <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'>
-        <StatTile title='Устройств' value={data ? data.summary.total : null} sub='за всё время наблюдения' />
-        <StatTile title='Сейчас онлайн' value={data ? data.summary.online : null} />
+        <StatTile title='Устройств' value={data ? <Value kind='count' value={data.summary.total} /> : null} sub='за всё время наблюдения' />
+        <StatTile title='Сейчас онлайн' value={data ? <Value kind='count' value={data.summary.online} /> : null} />
         <StatTile
           title='Новые неизвестные'
-          value={data ? data.summary.unknown : null}
+          value={data ? <Value kind='count' value={data.summary.unknown} className={data.summary.unknown ? 'text-warn-foreground' : undefined} /> : null}
           sub={data?.summary.unknown ? 'подпишите их — кнопка «Подписать»' : 'все устройства известны'}
         />
         <StatTile
           className='col-span-2 lg:col-span-1'
           title='Сканирование'
-          value={st?.lastDiscovery ? formatRelative(st.lastDiscovery) : null}
+          value={st?.lastDiscovery ? <Value kind='ago' value={st.lastDiscovery} /> : null}
           sub={
             <>
               раз в 5 мин · {st?.arpScan ? 'arp-scan + nmap' : 'nmap + ARP-таблица (arp-scan не установлен)'}

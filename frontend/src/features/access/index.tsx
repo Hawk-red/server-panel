@@ -1,10 +1,11 @@
 import { useState } from 'react'
+import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { Ban, ExternalLink, KeyRound, LogOut, Play, ShieldOff, Square, TriangleAlert, Unlock } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { formatBytes, formatDateTime, formatRelative } from '@/lib/format'
+import { formatDateTime } from '@/lib/format'
 import type { AccessData, SshKey } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -115,7 +116,7 @@ function SshCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => void }
             title='Отключить SSH целиком?'
             desc={
               <div className='space-y-2'>
-                <p className='font-medium text-red-600'>⚠ Все SSH-входы станут невозможны: ваш терминал, Claude Code по SSH, бэкапы iPad (rsync от MacBook) и доступ с других устройств.</p>
+                <p className='font-medium text-danger-foreground'>⚠ Все SSH-входы станут невозможны: ваш терминал, Claude Code по SSH, бэкапы iPad (rsync от MacBook) и доступ с других устройств.</p>
                 <p>Текущие SSH-сессии останутся, новые — нет. Вернуть SSH можно будет только из этой панели (или с монитором и клавиатурой у Mac Mini).</p>
               </div>
             }
@@ -156,8 +157,8 @@ function KeysCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => void 
           <p>
             Ключ будет закомментирован в authorized_keys пользователя <b>{k.user}</b> (бэкап файла сохраняется, ключ можно вернуть).
           </p>
-          {k.user === 'ipadbackup' && <p className='font-medium text-red-600'>⚠ MacBook перестанет присылать бэкапы iPad.</p>}
-          {k.user === 'hawk' && <p className='font-medium text-red-600'>⚠ С устройства с этим ключом нельзя будет войти по SSH как hawk.</p>}
+          {k.user === 'ipadbackup' && <p className='font-medium text-danger-foreground'>⚠ MacBook перестанет присылать бэкапы iPad.</p>}
+          {k.user === 'hawk' && <p className='font-medium text-danger-foreground'>⚠ С устройства с этим ключом нельзя будет войти по SSH как hawk.</p>}
         </div>
       ),
       confirm: k.disabled ? 'Вернуть ключ' : 'Отключить ключ',
@@ -200,15 +201,15 @@ function KeysCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => void 
                     </TableCell>
                     <TableCell>{k.user}</TableCell>
                     <TableCell className='hidden md:table-cell'>
-                      <code className='text-xs' title={k.fingerprint}>
-                        {shortFp(k.fingerprint)}
-                      </code>
+                      <span title={k.fingerprint}>
+                        <Value kind='address' value={shortFp(k.fingerprint)} className='text-xs' />
+                      </span>
                     </TableCell>
                     <TableCell className='hidden whitespace-nowrap sm:table-cell'>
                       {k.lastUsed ? (
                         <>
-                          <div>{formatRelative(k.lastUsed.ts)}</div>
-                          <div className='text-xs text-muted-foreground'>{k.lastUsed.ip}</div>
+                          <Value kind='ago' value={k.lastUsed.ts} />
+                          <Value kind='address' value={k.lastUsed.ip} className='block text-xs' />
                         </>
                       ) : (
                         <span className='text-muted-foreground'>не за 90 дней</span>
@@ -259,7 +260,13 @@ function SessionsCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => v
                     {s.user} <span className='font-normal text-muted-foreground'>· {s.service ?? s.type}</span>
                   </div>
                   <div className='text-xs text-muted-foreground'>
-                    {s.from ? `с ${s.from}` : 'локально'}
+                    {s.from ? (
+                      <>
+                        с <Value kind='address' value={s.from} />
+                      </>
+                    ) : (
+                      'локально'
+                    )}
                     {s.tty ? ` · ${s.tty}` : ''} · с {formatDateTime(s.since)}
                   </div>
                 </div>
@@ -273,7 +280,7 @@ function SessionsCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => v
                         desc: (
                           <div className='space-y-2'>
                             <p>Все процессы этой сессии будут остановлены, несохранённая работа в терминале пропадёт.</p>
-                            <p className='text-yellow-700 dark:text-yellow-400'>Если это ваш собственный терминал (или Claude Code) — он будет закрыт.</p>
+                            <p className='text-warn-foreground'>Если это ваш собственный терминал (или Claude Code) — он будет закрыт.</p>
                           </div>
                         ),
                         confirm: 'Завершить сессию',
@@ -313,7 +320,7 @@ function SessionsCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => v
               <div key={i} className='flex items-center justify-between gap-2'>
                 <StatusBadge status={h.ok ? 'ok' : 'error'} label={`${h.user}${h.ok ? '' : ` (${h.method})`}`} />
                 <span className='text-xs text-muted-foreground tabular-nums'>
-                  {h.ip} · {formatDateTime(h.ts)}
+                  <Value kind='address' value={h.ip} /> · {formatDateTime(h.ts)}
                 </span>
               </div>
             ))
@@ -351,7 +358,7 @@ function BlockingCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => v
                   </div>
                   {j.banned.map((b) => (
                     <div key={b} className='flex items-center justify-between rounded bg-muted/50 px-2 py-1'>
-                      <code className='text-xs'>{b}</code>
+                      <Value kind='address' value={b} className='text-xs' />
                       <Button
                         size='sm'
                         variant='ghost'
@@ -365,7 +372,7 @@ function BlockingCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => v
               ))}
               <p className='text-xs text-muted-foreground'>Не банятся: {f2b.ignoreip.join(', ') || '—'}</p>
               {!vpnIgnored && (
-                <p className='flex items-start gap-1 text-xs text-yellow-700 dark:text-yellow-400'>
+                <p className='flex items-start gap-1 text-xs text-warn-foreground'>
                   <TriangleAlert className='mt-0.5 size-3 shrink-0' /> VPN-сеть 10.10.10.0/24 не в ignoreip — клиента WireGuard можно случайно забанить.
                 </p>
               )}
@@ -386,7 +393,11 @@ function BlockingCard({ data, ask }: { data?: AccessData; ask: (p: Pending) => v
             data.ufw.data.map((r) => (
               <div key={r.num} className='flex items-center justify-between rounded bg-muted/50 px-2 py-1'>
                 <span>
-                  <code className='text-xs'>{r.from}</code> <span className='text-xs text-muted-foreground'>→ {r.to}{r.panel ? ' · из панели' : ''}</span>
+                  <Value kind='address' value={r.from} className='text-xs' />{' '}
+                  <span className='text-xs text-muted-foreground'>
+                    → {r.to}
+                    {r.panel ? ' · из панели' : ''}
+                  </span>
                 </span>
                 <Button
                   size='sm'
@@ -515,13 +526,19 @@ function RemoteCard({ data }: { data?: AccessData }) {
               <div key={p.publicKey} className='rounded border p-2'>
                 <div className='flex items-center justify-between'>
                   <span className='font-medium'>
-                    {p.name ?? 'клиент без имени'} <span className='font-normal text-muted-foreground'>{p.allowedIps}</span>
+                    {p.name ?? 'клиент без имени'} <Value kind='address' value={p.allowedIps} className='font-normal' />
                   </span>
                   <StatusBadge status={online ? 'ok' : 'unknown'} label={online ? 'на связи' : 'не на связи'} />
                 </div>
                 <div className='text-xs text-muted-foreground'>
-                  handshake: {p.handshake ? formatRelative(p.handshake) : 'никогда'} · ↓ {formatBytes(p.rx)} ↑ {formatBytes(p.tx)}
-                  {p.endpoint ? ` · ${p.endpoint}` : ''}
+                  handshake: {p.handshake ? <Value kind='ago' value={p.handshake} /> : 'никогда'} · <Value kind='bytes' value={p.rx} prefix='↓ ' />{' '}
+                  <Value kind='bytes' value={p.tx} prefix='↑ ' />
+                  {p.endpoint && (
+                    <>
+                      {' '}
+                      · <Value kind='address' value={p.endpoint} />
+                    </>
+                  )}
                 </div>
               </div>
             )

@@ -47,7 +47,7 @@ export function Media() {
                       s.playing.paused ? (
                         <Pause className='mt-0.5 size-4 shrink-0' />
                       ) : (
-                        <Play className='mt-0.5 size-4 shrink-0 text-green-600' />
+                        <Play className='mt-0.5 size-4 shrink-0 text-ok-foreground' />
                       )
                     ) : (
                       <span className='mt-1.5 size-2 shrink-0 rounded-full bg-muted-foreground/40' />

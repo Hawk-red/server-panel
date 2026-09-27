@@ -1,11 +1,11 @@
 import { useState } from 'react'
+import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
 import { ChevronDown, Play, RotateCw, ScrollText, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { formatBytes, formatRelative } from '@/lib/format'
 import type { ServiceRow } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { NoData } from '@/components/no-data'
@@ -53,9 +53,9 @@ function ServicesTable({ rows, onAction }: { rows: ServiceRow[]; onAction: (s: S
                 <StatusBadge status={s.active === 'inactive' ? 'unknown' : unitStatus(s.active)} label={statusLabel(s)} />
               </TableCell>
               <TableCell className='hidden whitespace-nowrap md:table-cell'>
-                {s.since ? formatRelative(s.since).replace(' назад', '') : '—'}
+                {s.since ? <Value kind='duration' value={Math.round((Date.now() - s.since) / 1000)} /> : '—'}
               </TableCell>
-              <TableCell className='hidden tabular-nums lg:table-cell'>{s.memory ? formatBytes(s.memory) : '—'}</TableCell>
+              <TableCell className='hidden lg:table-cell'>{s.memory ? <Value kind='bytes' value={s.memory} /> : '—'}</TableCell>
               <TableCell className='hidden sm:table-cell'>{s.enabled ?? '—'}</TableCell>
               <TableCell>
                 <div className='flex justify-end gap-1'>
@@ -142,7 +142,7 @@ export function Services() {
           desc={
             <div className='space-y-2'>
               <p>{pending.s.description}</p>
-              {pending.a !== 'start' && pending.s.warning && <p className='font-medium text-red-600'>⚠ {pending.s.warning}</p>}
+              {pending.a !== 'start' && pending.s.warning && <p className='font-medium text-danger-foreground'>⚠ {pending.s.warning}</p>}
               {pending.a === 'restart' && <p>Служба будет недоступна несколько секунд.</p>}
             </div>
           }
