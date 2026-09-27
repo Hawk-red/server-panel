@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static'
 import Fastify, { LogController } from 'fastify'
 import { authRoutes, cleanupAuth } from './auth.js'
 import { startCollector, stopCollector } from './collector/index.js'
+import { startDetectors } from './detectors.js'
 import { config } from './config.js'
 import { db } from './db.js'
 import { isAllowed, normalizeIp } from './net.js'
@@ -109,3 +110,4 @@ if (!config.passwordHash) app.log.warn('PANEL_PASSWORD_HASH не задан — 
 await app.listen({ host: config.host, port: config.port })
 // Коллектор стартует после API: его сбои не влияют на запуск сервера
 startCollector(app.log)
+startDetectors(app.log)

@@ -68,6 +68,23 @@ const migrations: string[] = [
     PRIMARY KEY (mac, port, proto)
   ) WITHOUT ROWID;
   `,
+  `
+  -- Этап 9: настройки панели, порядок/расположение/заметка устройств, системные события
+  CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+  ALTER TABLE devices ADD COLUMN sort_order INTEGER;
+  ALTER TABLE devices ADD COLUMN location TEXT;
+  ALTER TABLE devices ADD COLUMN note TEXT;
+  CREATE TABLE events (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts      INTEGER NOT NULL,
+    kind    TEXT NOT NULL,   -- unit.failed, unit.recovered, disk.threshold, device.new, f2b.ban, container.restart, sync.error …
+    level   TEXT NOT NULL,   -- info | warning | error
+    text    TEXT NOT NULL,
+    target  TEXT,            -- юнит / точка монтирования / MAC / IP / контейнер
+    details TEXT
+  );
+  CREATE INDEX events_ts ON events (ts);
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number
