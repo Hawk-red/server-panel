@@ -55,3 +55,8 @@ Cmnd_Alias SP_UNITS = /usr/bin/systemctl start nginx.service, \
 Cmnd_Alias SP_ADGUARD = /usr/bin/stat -c %s /var/lib/docker/volumes/adguardhome_work/_data/data/querylog.json
 
 panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD
+
+# Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
+# (wp-config.php читает только www-data; любые другие аргументы wp запрещены)
+Cmnd_Alias SP_WPCLI = /usr/local/bin/wp --path\=/var/www/www/jetsetter.ua --skip-plugins --skip-themes post list --post_type\=post\,page --orderby\=modified --order\=DESC --posts_per_page\=15 --fields\=ID\,post_title\,post_type\,post_status\,post_modified --format\=json
+panel ALL=(www-data) NOPASSWD: SP_WPCLI
