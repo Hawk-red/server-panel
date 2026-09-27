@@ -137,6 +137,12 @@ case "$cmd" in
     awk '/^[ \t]*#/ {c=$0; sub(/^[ \t]*#[ \t]*/, "", c); next} /^[ \t]*\[Peer\]/ {name=c; c=""; next} /^[ \t]*PublicKey[ \t]*=/ && name!="" {k=$0; sub(/^[^=]*=[ \t]*/, "", k); print "name\t" k "\t" name; name=""} /^[ \t]*\[/ {c=""}' /etc/wireguard/wg0.conf
     ;;
 
+  arp-scan)
+    # Этап 6: ARP-сканирование домашней сети (нужен пакет arp-scan; без него панель работает через nmap + ip neigh)
+    command -v arp-scan >/dev/null || die "arp-scan не установлен"
+    arp-scan --localnet --interface=enp3s0f0 --plain --retry=2 --format='${ip}\t${mac}\t${vendor}'
+    ;;
+
   *)
     die "неизвестная команда"
     ;;
