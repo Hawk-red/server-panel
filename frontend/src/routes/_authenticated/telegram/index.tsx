@@ -1,12 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { SectionStub } from '@/features/section'
+import { Telegram } from '@/features/telegram'
 
 export const Route = createFileRoute('/_authenticated/telegram/')({
-  component: () => (
-    <SectionStub
-      title='Telegram-бот'
-      description='Air Alert Monitor: статус, логи, управление'
-      stage={4}
-    />
-  ),
+  component: Telegram,
 })

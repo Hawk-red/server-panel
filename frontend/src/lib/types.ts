@@ -190,3 +190,48 @@ export type AdguardData = {
   interval: Part<number | null>
   querylogSize: Part<number | null>
 }
+
+// ---------- Этап 4 ----------
+export type UnitInfo = { unit: string; active: string; sub: string; since: number | null }
+
+export type SitesData = {
+  units: Part<UnitInfo[]>
+  versions: Part<Record<'nginx' | 'php' | 'mariadb' | 'mongod' | 'wordpress', string | null>>
+  sync: Part<{
+    started: number | null
+    finished: number | null
+    durationSec: number | null
+    status: 'ok' | 'warnings' | 'running-or-failed'
+    errors: string[]
+    tail: string[]
+  } | null>
+  backup: Part<{ count: number; dates: string[]; latest: string | null; latestMtime: number | null }>
+  exposure: Part<{ restricted: boolean; allows: string[] }>
+  pulsdev: {
+    version: Part<{ name: string; version: string }>
+    health: Part<{ ok: boolean; ms: number; body: string }>
+    healthTls: Part<{ status: number; ms: number }>
+    cert: Part<{ validTo: number; daysLeft: number; issuer: string | null; subject: string | null }>
+  }
+  filebrowser: Part<{ vhostEnabled: boolean; listening: boolean; backendUp: boolean }>
+}
+
+export type TelegramData = {
+  units: Part<UnitInfo[]>
+  alertMonitor: Part<{
+    bot: string | null
+    channel: string | null
+    subscribers: number
+    delivery: { avgSec: number; maxSec: number; messages: number } | null
+    alertsToday: number
+    lastAlert: { ts: number | null; text: string } | null
+    lastChannelMessage: number | null
+    problems: { ts: number | null; text: string }[]
+  }>
+  leadBot: Part<{
+    pollErrors24h: number
+    lastPollError: { ts: number; text: string } | null
+    leadEvents24h: number
+    recent: { ts: number; text: string }[]
+  }>
+}
