@@ -1,210 +1,106 @@
 import { useMemo, useState } from 'react'
-import { Value } from '@/components/value'
+import { closestCenter, DndContext, type DragEndEvent, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import {
-  CircleHelp,
-  Cpu,
-  ExternalLink,
-  Laptop,
-  Loader2,
-  Pencil,
-  Printer,
-  Radar,
-  Radio,
-  RefreshCw,
-  Router,
-  Server,
-  Smartphone,
-  Speaker,
-  Tablet,
-  Trash2,
-  Tv,
-} from 'lucide-react'
+import { ExternalLink, GripVertical, Loader2, Radio, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { formatDateTime, formatRelative } from '@/lib/format'
-import type { Device, DeviceType, NetworkData } from '@/lib/types'
+import type { Device, NetworkData } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
-import { StatTile } from '@/components/stat-tile'
 import { StatusBadge } from '@/components/status-badge'
+import { Value } from '@/components/value'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
+import { DeviceSheet } from './device-sheet'
+import { displayName, TYPE_GROUPS, TYPES, webHref } from './device-meta'
 
-const TYPES: Record<DeviceType, { label: string; icon: React.ElementType }> = {
-  router: { label: 'Роутер', icon: Router },
-  server: { label: 'Сервер', icon: Server },
-  laptop: { label: 'Ноутбук', icon: Laptop },
-  phone: { label: 'Телефон', icon: Smartphone },
-  tablet: { label: 'Планшет', icon: Tablet },
-  tv: { label: 'ТВ / приставка', icon: Tv },
-  receiver: { label: 'Ресивер / аудио', icon: Speaker },
-  ir: { label: 'ИК-передатчик', icon: Radio },
-  iot: { label: 'Умный дом / IoT', icon: Cpu },
-  printer: { label: 'Принтер', icon: Printer },
-  unknown: { label: 'Неизвестно', icon: CircleHelp },
-}
+type StatusFilter = 'all' | 'online' | 'offline' | 'new'
+const PORT_PREVIEW = 4
 
-type Filter = 'all' | 'online' | 'new'
-
-function EditDialog({ device, onClose }: { device: Device; onClose: () => void }) {
-  const qc = useQueryClient()
-  const [name, setName] = useState(device.name ?? '')
-  const [type, setType] = useState<DeviceType>(device.type)
-  const [known, setKnown] = useState(true)
-  const save = useMutation({
-    mutationFn: () => api.patch(`/network/devices/${device.mac}`, { name: name.trim() || null, type, known }),
-    onSuccess: () => {
-      toast.success('Сохранено')
-      qc.invalidateQueries({ queryKey: ['network'] })
-      onClose()
-    },
-    onError: (e) => toast.error((e instanceof AxiosError && e.response?.data?.message) || 'ошибка'),
-  })
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className='sm:max-w-md'>
-        <DialogHeader>
-          <DialogTitle>
-            {device.ip} · {device.vendor ?? device.mac}
-          </DialogTitle>
-        </DialogHeader>
-        <div className='space-y-3'>
-          <div className='space-y-1'>
-            <Label>Название</Label>
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={device.hostname ?? 'например, «Телефон Ани»'} />
-          </div>
-          <div className='space-y-1'>
-            <Label>Тип</Label>
-            <Select value={type} onValueChange={(v) => setType(v as DeviceType)}>
-              <SelectTrigger className='w-full'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(TYPES) as DeviceType[]).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {TYPES[t].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <label className='flex items-center gap-2 text-sm'>
-            <Switch checked={known} onCheckedChange={setKnown} /> Известное устройство (не подсвечивать)
-          </label>
-        </div>
-        <DialogFooter>
-          <Button variant='outline' onClick={onClose}>
-            Отмена
-          </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
-            Сохранить
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function DeviceCard({ d, scanningMac, onEdit, onScan, onDelete }: { d: Device; scanningMac: string | null; onEdit: () => void; onScan: () => void; onDelete: () => void }) {
+function DeviceCard({ d, scanning, onOpen, dragDisabled }: { d: Device; scanning: boolean; onOpen: () => void; dragDisabled: boolean }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: d.mac, disabled: dragDisabled })
   const T = TYPES[d.type] ?? TYPES.unknown
-  const scanning = scanningMac === d.mac
+  const web = d.ports.find((p) => p.web)
   return (
-    <Card className={cn('gap-2 py-4', !d.known && 'border-warn/60 bg-warn/5', !d.online && 'opacity-70')}>
-      <CardContent className='space-y-2 px-4 text-sm'>
-        <div className='flex items-start gap-3'>
-          <T.icon className='mt-0.5 size-6 shrink-0 text-muted-foreground' />
-          <div className='min-w-0 flex-1'>
-            <div className='flex flex-wrap items-center gap-2'>
-              <span className='truncate font-medium'>{d.name ?? d.hostname ?? d.vendor ?? 'Без названия'}</span>
-              {!d.known && <Badge className='bg-warn text-black hover:bg-warn'>новое</Badge>}
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn('min-w-0', isDragging && 'z-10 opacity-80')}>
+      <Card className={cn('h-full gap-2 py-3', !d.known && 'border-warn/60 bg-warn/5', !d.online && 'opacity-70')}>
+        <CardContent className='flex h-full gap-2 px-3 text-sm'>
+          {!dragDisabled && (
+            <button
+              type='button'
+              ref={setActivatorNodeRef}
+              {...attributes}
+              {...listeners}
+              className='-ms-1 flex w-6 shrink-0 cursor-grab touch-none items-start justify-center pt-1 text-muted-foreground active:cursor-grabbing'
+              aria-label={`Перетащить ${displayName(d)}`}
+            >
+              <GripVertical className='size-4' />
+            </button>
+          )}
+          {/* Вся карточка — кнопка открытия (удобно с пульта ТВ и с телефона) */}
+          <button type='button' onClick={onOpen} className='min-w-0 flex-1 space-y-1.5 rounded-md text-start focus-visible:outline-none'>
+            <div className='flex items-start gap-2'>
+              <T.icon className='mt-0.5 size-5 shrink-0 text-muted-foreground' aria-hidden='true' />
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-1.5'>
+                  <span className='truncate font-medium'>{displayName(d)}</span>
+                  {!d.known && <Badge className='bg-warn text-black hover:bg-warn'>новое</Badge>}
+                </div>
+                <div className='truncate text-xs text-muted-foreground'>
+                  {T.label}
+                  {d.location ? ` · ${d.location}` : ''}
+                </div>
+              </div>
+              <StatusBadge status={d.online ? 'ok' : 'unknown'} label={d.online ? 'онлайн' : 'офлайн'} className='text-xs' />
             </div>
-            <div className='text-xs text-muted-foreground'>
-              {T.label}
-              {d.hostname && d.name ? ` · ${d.hostname}` : ''}
+            <div className='flex flex-wrap gap-x-3 text-xs'>
+              <Value kind='address' value={d.ip} />
+              <span className='truncate text-muted-foreground'>{d.vendor ?? (d.randomMac ? 'приватный MAC' : '')}</span>
             </div>
-          </div>
-          <StatusBadge status={d.online ? 'ok' : 'unknown'} label={d.online ? 'онлайн' : 'офлайн'} />
-        </div>
-        <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs'>
-          <dt className='text-muted-foreground'>IP</dt>
-          <dd>
-            <Value kind='address' value={d.ip} />
-          </dd>
-          <dt className='text-muted-foreground'>MAC</dt>
-          <dd>
-            <Value kind='address' value={d.mac} />
-            {d.randomMac && <span className='ms-1 text-muted-foreground'>(случайный)</span>}
-          </dd>
-          <dt className='text-muted-foreground'>Производитель</dt>
-          <dd>{d.vendor ?? (d.randomMac ? 'скрыт (приватный MAC)' : '—')}</dd>
-          <dt className='text-muted-foreground'>Появилось</dt>
-          <dd>{formatDateTime(d.firstSeen)}</dd>
-          <dt className='text-muted-foreground'>Последний раз</dt>
-          <dd>{d.online ? 'сейчас в сети' : <Value kind='ago' value={d.lastSeen} />}</dd>
-        </dl>
-        {d.portsScannedAt && (
-          <div className='space-y-1'>
-            <div className='text-xs text-muted-foreground'>
-              Открытые порты (TCP, проверено {formatRelative(d.portsScannedAt)}): {d.ports.length === 0 && 'нет'}
-            </div>
-            <div className='flex flex-wrap gap-1'>
-              {d.ports.map((p) =>
-                p.web ? (
-                  <a
-                    key={p.port}
-                    href={`${p.port === 443 || p.port === 8443 || p.service === 'https' ? 'https' : 'http'}://${d.ip}:${p.port}/`}
-                    target='_blank'
-                    rel='noreferrer'
-                    className='inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs hover:bg-muted'
-                  >
-                    {p.port} {p.service} <ExternalLink className='size-3' />
-                  </a>
-                ) : (
-                  <span key={p.port} className='rounded bg-muted px-1.5 py-0.5 text-xs'>
-                    {p.port} {p.service}
+            {scanning ? (
+              <div className='flex items-center gap-1 text-xs text-info'>
+                <Loader2 className='size-3 animate-spin' /> сканирую порты…
+              </div>
+            ) : d.portsScannedAt ? (
+              <div className='flex flex-wrap gap-1'>
+                {d.ports.length === 0 && <span className='text-xs text-muted-foreground'>открытых портов нет</span>}
+                {d.ports.slice(0, PORT_PREVIEW).map((p) => (
+                  <span key={p.port} className='rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-address'>
+                    {p.port}
                   </span>
-                )
-              )}
-            </div>
-          </div>
-        )}
-        <div className='flex flex-wrap gap-1 pt-1'>
-          <Button size='sm' variant='outline' onClick={onEdit}>
-            <Pencil /> Подписать
-          </Button>
-          <Button size='sm' variant='outline' onClick={onScan} disabled={!d.online || Boolean(scanningMac)}>
-            {scanning ? <Loader2 className='animate-spin' /> : <Radar />} Порты
-          </Button>
-          {!d.online && (
-            <Button size='sm' variant='ghost' onClick={onDelete} title='Удалить из списка'>
-              <Trash2 />
+                ))}
+                {d.ports.length > PORT_PREVIEW && <span className='text-xs text-muted-foreground'>ещё {d.ports.length - PORT_PREVIEW}</span>}
+              </div>
+            ) : null}
+          </button>
+          {web && (
+            <Button size='icon' variant='ghost' className='shrink-0' asChild title={`Веб-интерфейс :${web.port}`}>
+              <a href={webHref(d, web)} target='_blank' rel='noreferrer'>
+                <ExternalLink />
+              </a>
             </Button>
           )}
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
-export function Network() {
+export function Network({ initialDevice }: { initialDevice?: string } = {}) {
   const qc = useQueryClient()
-  const [filter, setFilter] = useState<Filter>('all')
+  const [status, setStatus] = useState<StatusFilter>('all')
+  const [group, setGroup] = useState<string | null>(null)
   const [q, setQ] = useState('')
-  const [edit, setEdit] = useState<Device | null>(null)
-  const [del, setDel] = useState<Device | null>(null)
+  const [openMac, setOpenMac] = useState<string | null>(initialDevice?.toLowerCase() ?? null)
   const { data } = useQuery({
     queryKey: ['network'],
     queryFn: async () => (await api.get<NetworkData>('/network')).data,
-    refetchInterval: (query) => (query.state.data?.status.scanning ? 3_000 : 15_000),
+    refetchInterval: (query) => (query.state.data?.status.scanning ? 2_000 : 15_000),
   })
   const discover = useMutation({
     mutationFn: () => api.post<{ online: number }>('/network/discover', {}),
@@ -214,30 +110,51 @@ export function Network() {
     },
     onError: (e) => toast.error((e instanceof AxiosError && e.response?.data?.message) || 'ошибка'),
   })
-  const scan = useMutation({
-    mutationFn: (d: Device) => api.post(`/network/devices/${d.mac}/scan`, {}),
-    onSuccess: (_r, d) => {
-      toast.info(`Сканирую порты ${d.ip} (top-1000, до пары минут)…`)
+  const reorder = useMutation({
+    mutationFn: (macs: string[]) => api.put('/network/order', { macs }),
+    onError: () => {
+      toast.error('Порядок не сохранился')
       qc.invalidateQueries({ queryKey: ['network'] })
     },
-    onError: (e) => toast.error((e instanceof AxiosError && e.response?.data?.message) || 'ошибка'),
-  })
-  const remove = useMutation({
-    mutationFn: (d: Device) => api.delete(`/network/devices/${d.mac}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['network'] }),
-    onSettled: () => setDel(null),
   })
 
+  const all = data?.devices ?? []
   const devices = useMemo(() => {
     const s = q.toLowerCase()
-    return (data?.devices ?? []).filter(
+    const types = group ? TYPE_GROUPS.find((g) => g.id === group)?.types : null
+    return all.filter(
       (d) =>
-        (filter === 'all' || (filter === 'online' ? d.online : !d.known)) &&
-        (!s || [d.name, d.hostname, d.vendor, d.ip, d.mac].some((x) => x?.toLowerCase().includes(s)))
+        (status === 'all' || (status === 'online' ? d.online : status === 'offline' ? !d.online : !d.known)) &&
+        (!types || types.includes(d.type)) &&
+        (!s || [d.name, d.hostname, d.vendor, d.ip, d.mac, d.location, d.note].some((x) => x?.toLowerCase().includes(s)))
     )
-  }, [data, filter, q])
+  }, [all, status, group, q])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  // Перетаскивание внутри отфильтрованного списка: видимые карточки меняются местами,
+  // остальные остаются на своих позициях; порядок сохраняется на сервере
+  const onDragEnd = (e: DragEndEvent) => {
+    if (!e.over || e.active.id === e.over.id) return
+    const visible = devices.map((d) => d.mac)
+    const moved = arrayMove(visible, visible.indexOf(String(e.active.id)), visible.indexOf(String(e.over.id)))
+    const slots = new Set(visible)
+    let k = 0
+    const order = all.map((d) => (slots.has(d.mac) ? moved[k++] : d.mac))
+    qc.setQueryData<NetworkData>(['network'], (old) =>
+      old ? { ...old, devices: order.map((mac) => old.devices.find((x) => x.mac === mac)!).filter(Boolean) } : old
+    )
+    reorder.mutate(order)
+  }
+
   const st = data?.status
-  const ir = data?.devices.find((d) => d.type === 'ir')
+  const ir = all.find((d) => d.type === 'ir')
+  const open = all.find((d) => d.mac === openMac) ?? null
+  const counts = (g: (typeof TYPE_GROUPS)[number]) => all.filter((d) => g.types.includes(d.type)).length
 
   return (
     <Page
@@ -249,74 +166,76 @@ export function Network() {
         </Button>
       }
     >
-      <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'>
-        <StatTile title='Устройств' value={data ? <Value kind='count' value={data.summary.total} /> : null} sub='за всё время наблюдения' />
-        <StatTile title='Сейчас онлайн' value={data ? <Value kind='count' value={data.summary.online} /> : null} />
-        <StatTile
-          title='Новые неизвестные'
-          value={data ? <Value kind='count' value={data.summary.unknown} className={data.summary.unknown ? 'text-warn-foreground' : undefined} /> : null}
-          sub={data?.summary.unknown ? 'подпишите их — кнопка «Подписать»' : 'все устройства известны'}
-        />
-        <StatTile
-          className='col-span-2 lg:col-span-1'
-          title='Сканирование'
-          value={st?.lastDiscovery ? <Value kind='ago' value={st.lastDiscovery} /> : null}
-          sub={
-            <>
-              раз в 5 мин · {st?.arpScan ? 'arp-scan + nmap' : 'nmap + ARP-таблица (arp-scan не установлен)'}
-              <br />
-              порты — по кнопке и ночью в 03:30{st?.nightly.lastRun ? ` (последний раз ${st.nightly.lastRun})` : ''}
-            </>
-          }
-        />
-      </div>
+      {/* Сводка — одна компактная строка */}
+      <Card className='py-3'>
+        <CardContent className='grid grid-cols-2 gap-x-6 gap-y-2 px-4 text-sm md:grid-cols-4'>
+          <div>
+            <div className='text-xs text-muted-foreground'>Устройств</div>
+            <Value kind='count' value={data?.summary.total} className='text-lg' />
+          </div>
+          <div>
+            <div className='text-xs text-muted-foreground'>Онлайн</div>
+            <Value kind='count' value={data?.summary.online} className='text-lg' />
+          </div>
+          <div>
+            <div className='text-xs text-muted-foreground'>Неизвестных</div>
+            <Value kind='count' value={data?.summary.unknown} className={cn('text-lg', data?.summary.unknown && 'text-warn-foreground')} />
+          </div>
+          <div>
+            <div className='text-xs text-muted-foreground'>Последний скан</div>
+            {st?.lastDiscovery ? <Value kind='ago' value={st.lastDiscovery} className='text-lg' /> : <span className='text-lg text-muted-foreground'>—</span>}
+            <div className='text-[11px] text-muted-foreground'>{st?.arpScan ? 'arp-scan + nmap' : 'nmap + ARP'}, раз в 5 мин; порты — ночью в 03:30</div>
+          </div>
+        </CardContent>
+      </Card>
 
       {ir && (
-        <p className='mt-4 flex items-start gap-2 rounded-md border p-3 text-sm'>
+        <p className='mt-3 hidden items-start gap-2 text-sm text-muted-foreground sm:flex'>
           <Radio className='mt-0.5 size-4 shrink-0' />
           <span>
-            <b>ИК-передатчик:</b> по MAC-производителю это {ir.vendor} — {ir.ip} ({ir.mac}). Открытых TCP-портов у таких устройств обычно нет:
-            управление идёт по UDP. Служба ИК-пульта на сервере (triggerhappy) с ним не связана — она работает со встроенным USB-приёмником Apple
-            IR в самом Mac Mini, IP-адресов в её конфиге нет.
+            ИК-передатчик: {ir.vendor} — <Value kind='address' value={ir.ip} />. Служба ИК-пульта на сервере (triggerhappy) с ним не связана: она
+            работает со встроенным USB-приёмником Apple IR.
           </span>
         </p>
       )}
 
-      <div className='mt-4 flex flex-wrap items-center gap-2'>
-        {(['all', 'online', 'new'] as Filter[]).map((f) => (
-          <Button key={f} size='sm' variant={filter === f ? 'default' : 'outline'} onClick={() => setFilter(f)}>
-            {f === 'all' ? 'Все' : f === 'online' ? 'Онлайн' : `Новые${data?.summary.unknown ? ` (${data.summary.unknown})` : ''}`}
+      <div className='mt-4 space-y-2'>
+        {/* На телефоне фильтры — горизонтальные прокручиваемые строки, чтобы карточки были видны сразу */}
+        <div className='-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0'>
+          {(['all', 'online', 'offline', 'new'] as StatusFilter[]).map((f) => (
+            <Button key={f} size='sm' className='shrink-0' variant={status === f ? 'default' : 'outline'} onClick={() => setStatus(f)}>
+              {f === 'all' ? 'Все' : f === 'online' ? 'Онлайн' : f === 'offline' ? 'Офлайн' : `Неизвестные${data?.summary.unknown ? ` (${data.summary.unknown})` : ''}`}
+            </Button>
+          ))}
+          <Input className='ms-auto hidden max-w-xs sm:block' placeholder='Поиск: имя, IP, MAC, производитель, место' value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div className='-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0'>
+          <Button size='sm' className='shrink-0' variant={group === null ? 'secondary' : 'ghost'} onClick={() => setGroup(null)}>
+            Все типы
           </Button>
-        ))}
-        <Input className='ms-auto max-w-xs' placeholder='Поиск: имя, IP, MAC, производитель' value={q} onChange={(e) => setQ(e.target.value)} />
+          {TYPE_GROUPS.map((g) => (
+            <Button key={g.id} size='sm' className='shrink-0' variant={group === g.id ? 'secondary' : 'ghost'} onClick={() => setGroup(group === g.id ? null : g.id)}>
+              {g.label} <span className='text-xs text-muted-foreground'>{counts(g)}</span>
+            </Button>
+          ))}
+        </div>
+        <Input className='sm:hidden' placeholder='Поиск: имя, IP, MAC, место' value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
-      <div className='mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
-        {devices.map((d) => (
-          <DeviceCard
-            key={d.mac}
-            d={d}
-            scanningMac={st?.scanning?.mac ?? null}
-            onEdit={() => setEdit(d)}
-            onScan={() => scan.mutate(d)}
-            onDelete={() => setDel(d)}
-          />
-        ))}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={devices.map((d) => d.mac)} strategy={rectSortingStrategy}>
+          <div className='mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'>
+            {devices.map((d) => (
+              <DeviceCard key={d.mac} d={d} scanning={st?.scanning?.mac === d.mac} onOpen={() => setOpenMac(d.mac)} dragDisabled={false} />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+      <p className='mt-3 text-xs text-muted-foreground'>
+        Карточки можно перетаскивать за <GripVertical className='inline size-3' /> — порядок хранится на сервере и одинаков на телефоне, iPad и ПК.
+      </p>
 
-      {edit && <EditDialog device={edit} onClose={() => setEdit(null)} />}
-      {del && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setDel(null)}
-          title={`Удалить ${del.name ?? del.ip} из списка?`}
-          desc='Если устройство снова появится в сети, оно будет добавлено заново как новое.'
-          confirmText='Удалить'
-          destructive
-          isLoading={remove.isPending}
-          handleConfirm={() => remove.mutate(del)}
-        />
-      )}
+      <DeviceSheet device={open} scanning={st?.scanning ?? null} onClose={() => setOpenMac(null)} />
     </Page>
   )
 }

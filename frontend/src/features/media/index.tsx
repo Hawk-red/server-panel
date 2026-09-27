@@ -107,11 +107,14 @@ export function Media() {
               <dd>{mz?.data?.power ? (mz.data.power === 'ON' ? 'включён' : 'в режиме ожидания') : <NoData />}</dd>
               <dt className='text-muted-foreground'>Вход</dt>
               <dd>{mz?.data?.source ?? <NoData />}</dd>
-              <dt className='text-muted-foreground'>Веб-порт</dt>
-              <dd>8080</dd>
+              <dt className='text-muted-foreground'>Веб-интерфейс</dt>
+              <dd>
+                <span className='font-mono text-address'>192.168.31.94:80</span>
+              </dd>
             </dl>
             <Button size='sm' asChild>
-              <a href='http://192.168.31.94:8080/' target='_blank' rel='noreferrer'>
+              {/* Настоящий веб-интерфейс — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP */}
+              <a href='http://192.168.31.94/' target='_blank' rel='noreferrer'>
                 <ExternalLink /> Открыть
               </a>
             </Button>

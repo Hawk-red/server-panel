@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Value } from '@/components/value'
 import { Link } from '@tanstack/react-router'
-import { ExternalLink, FolderOpen, Globe, ScrollText, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { ExternalLink, ScrollText, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import type { Part, SitesData, UnitInfo } from '@/lib/types'
@@ -52,52 +52,60 @@ function WpChanges() {
     queryFn: async () => (await api.get<Part<{ path: string; size: number; mtime: number }[]>>('/sites/jetsetter/files')).data,
     staleTime: 10 * 60_000,
   })
+  const fileList = files.data?.data ?? []
   return (
-    <div className='grid gap-4 lg:grid-cols-2'>
+    <div className='space-y-4'>
       <Card className='gap-2'>
         <CardHeader>
           <CardTitle className='text-sm font-medium'>Последние изменённые записи WordPress</CardTitle>
         </CardHeader>
-        <CardContent className='space-y-1 text-sm'>
+        <CardContent className='text-sm'>
           {posts.isPending ? (
             <span className='text-muted-foreground'>Загрузка (WP-CLI)…</span>
           ) : posts.data?.error ? (
             <NoData reason={posts.data.error} />
           ) : (
-            posts.data?.data?.map((p) => (
-              <div key={p.id} className='flex justify-between gap-3'>
-                <span className='truncate'>
-                  {p.title || '(без названия)'} <span className='text-xs text-muted-foreground'>· {p.type === 'page' ? 'страница' : 'запись'}{p.status !== 'publish' ? `, ${p.status}` : ''}</span>
-                </span>
-                <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{formatDateTime(p.modified)}</span>
-              </div>
-            ))
+            <div className='grid gap-x-8 gap-y-1 lg:grid-cols-2'>
+              {posts.data?.data?.map((p) => (
+                <div key={p.id} className='flex justify-between gap-3 border-b border-border/50 py-1'>
+                  <span className='truncate'>
+                    {p.title || '(без названия)'}{' '}
+                    <span className='text-xs text-muted-foreground'>
+                      · {p.type === 'page' ? 'страница' : 'запись'}
+                      {p.status !== 'publish' ? `, ${p.status}` : ''}
+                    </span>
+                  </span>
+                  <span className='shrink-0 text-xs text-time tabular-nums'>{formatDateTime(p.modified)}</span>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
-      <Card className='gap-2'>
-        <CardHeader>
-          <CardTitle className='text-sm font-medium'>Изменённые файлы сайта за 3 дня (без uploads)</CardTitle>
-        </CardHeader>
-        <CardContent className='space-y-1 text-sm'>
-          {files.isPending ? (
-            <span className='text-muted-foreground'>Загрузка…</span>
-          ) : files.data?.error ? (
-            <NoData reason={files.data.error} />
-          ) : files.data?.data?.length === 0 ? (
-            <span className='text-muted-foreground'>Изменений нет — код сайта не менялся.</span>
-          ) : (
-            files.data?.data?.slice(0, 20).map((f) => (
+      {/* Изменённые файлы: если пусто — одна строка, без пустой карточки */}
+      {files.isPending ? null : files.data?.error ? (
+        <p className='text-sm text-muted-foreground'>
+          Изменённые файлы сайта: <NoData reason={files.data.error} />
+        </p>
+      ) : fileList.length === 0 ? (
+        <p className='text-sm text-muted-foreground'>Изменённые файлы сайта за 3 дня (без uploads): изменений нет.</p>
+      ) : (
+        <Card className='gap-2'>
+          <CardHeader>
+            <CardTitle className='text-sm font-medium'>Изменённые файлы сайта за 3 дня (без uploads): {fileList.length}</CardTitle>
+          </CardHeader>
+          <CardContent className='space-y-1 text-sm'>
+            {fileList.slice(0, 20).map((f) => (
               <div key={f.path} className='flex justify-between gap-3'>
                 <Value kind='address' value={f.path} className='truncate text-xs' />
                 <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>
                   <Value kind='bytes' value={f.size} /> · {formatDateTime(f.mtime)}
                 </span>
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
@@ -113,11 +121,10 @@ export function Sites() {
   const puls = unit(data?.units, 'pulsdev-api.service')
   const sync = data?.sync.data
   const cert = data?.pulsdev.cert.data
-  const fb = data?.filebrowser.data
   const siteStatus = !nginx ? 'unknown' : ['nginx.service', 'php8.3-fpm.service', 'mariadb.service', 'mongod.service'].every((n) => unit(data?.units, n)?.active === 'active') ? 'ok' : 'error'
 
   return (
-    <Page title='Сайты и API' description='Зеркало jetsetter.ua, api.pulsdev.net, File Browser'>
+    <Page title='Сайты и API' description='Зеркало jetsetter.ua и api.pulsdev.net'>
       {/* ---------- jetsetter ---------- */}
       <Card className='gap-3'>
         <CardHeader className='flex flex-row items-start gap-3'>
@@ -167,8 +174,8 @@ export function Sites() {
                 invalidate={['sites']}
                 warning={
                   <>
-                    Остановка сайта = остановка nginx. Вместе с зеркалом перестанут работать <b>pulsdev-api (api.pulsdev.net)</b> — снаружи и по HTTPS — и{' '}
-                    <b>File Browser</b>. Панель продолжит работать: она не зависит от nginx.
+                    Остановка сайта = остановка nginx. Вместе с зеркалом перестанет работать <b>pulsdev-api (api.pulsdev.net)</b> — снаружи и по HTTPS.
+                    Панель продолжит работать: она не зависит от nginx.
                   </>
                 }
               />
@@ -234,7 +241,7 @@ export function Sites() {
         <WpChanges />
       </div>
 
-      <div className='mt-4 grid gap-4 lg:grid-cols-2'>
+      <div className='mt-4'>
         {/* ---------- pulsdev-api ---------- */}
         <Card className='gap-3'>
           <CardHeader className='flex flex-row items-start gap-3'>
@@ -293,38 +300,6 @@ export function Sites() {
           </CardContent>
         </Card>
 
-        {/* ---------- File Browser ---------- */}
-        <Card className='gap-3'>
-          <CardHeader className='flex flex-row items-start gap-3'>
-            <ServiceIcon slug='filebrowser' className='size-10 shrink-0' />
-            <div className='min-w-0 flex-1'>
-              <CardTitle className='text-base'>File Browser</CardTitle>
-              <p className='text-xs text-muted-foreground'>Файловый менеджер, nginx :8081 → 127.0.0.1:8080</p>
-            </div>
-            {fb ? <StatusBadge status={fb.backendUp ? 'ok' : 'error'} /> : <NoData />}
-          </CardHeader>
-          <CardContent className='space-y-2 text-sm'>
-            {fb && !fb.backendUp && (
-              <p className='flex items-start gap-2 text-muted-foreground'>
-                <FolderOpen className='mt-0.5 size-4 shrink-0' />
-                {fb.vhostEnabled
-                  ? 'vhost nginx включён, но бэкенд на :8080 не запущен (502).'
-                  : 'vhost nginx отключён, порт 8081 никто не слушает, службы или контейнера File Browser на сервере нет — управлять нечем.'}
-              </p>
-            )}
-            <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
-              <dt className='text-muted-foreground'>vhost nginx</dt>
-              <dd>{fb ? (fb.vhostEnabled ? 'включён' : 'отключён') : '—'}</dd>
-              <dt className='text-muted-foreground'>Порт 8081</dt>
-              <dd>{fb ? (fb.listening ? 'слушается' : 'не слушается') : '—'}</dd>
-            </dl>
-            <Button size='sm' variant='outline' asChild disabled={!fb?.backendUp}>
-              <a href={webUrl(8081)} target='_blank' rel='noreferrer'>
-                <Globe /> Открыть
-              </a>
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     </Page>
   )

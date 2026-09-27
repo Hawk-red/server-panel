@@ -19,8 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const SERIES = [
-  { name: 'torrent.dl', label: 'Загрузка' },
-  { name: 'torrent.ul', label: 'Отдача' },
+  { name: 'torrent.dl', label: 'Загрузка', color: 'var(--info)' },
+  { name: 'torrent.ul', label: 'Отдача', color: 'var(--ok)' },
 ]
 
 function SpeedStats({ range }: { range: Range }) {

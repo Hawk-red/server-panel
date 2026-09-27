@@ -38,7 +38,15 @@ export type Snapshot = {
   errors: Partial<Record<string, { message: string; since: number }>>
 }
 
-export type Problem = { level: 'error' | 'warning'; text: string }
+export type Problem = {
+  level: 'error' | 'warning'
+  text: string
+  kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source'
+  ref: string
+  link: string
+}
+
+export type Diagnostics = { kind: string; ref: string; status: string; logSource: string | null; lines: string[]; copy: string }
 
 export type Overview = {
   snapshot: Snapshot | null
@@ -110,6 +118,7 @@ export type Container = {
   memLimit: number | null
   protected: boolean
   warning?: string
+  web: { port: number; path?: string } | null
 }
 
 export type DockerData = {
@@ -276,7 +285,7 @@ export type AccessData = {
 }
 
 // ---------- Этап 6 ----------
-export type DeviceType = 'router' | 'server' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'receiver' | 'ir' | 'iot' | 'printer' | 'unknown'
+export type DeviceType = 'router' | 'server' | 'desktop' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'receiver' | 'ir' | 'iot' | 'printer' | 'unknown'
 export type Device = {
   mac: string
   ip: string
@@ -290,6 +299,9 @@ export type Device = {
   firstSeen: number
   lastSeen: number
   portsScannedAt: number | null
+  sortOrder: number | null
+  location: string | null
+  note: string | null
   ports: { port: number; proto: string; service: string | null; web: boolean }[]
 }
 export type NetworkData = {
@@ -302,4 +314,58 @@ export type NetworkData = {
     scanning: { mac: string; ip: string; started: number } | null
     nightly: { lastRun: string | null; running: boolean }
   }
+}
+
+// ---------- Этап 9: Telegram-боты из реестра ----------
+export type FileInfo = { path: string; mtime: number | null; size: number | null; access: boolean; missing?: boolean } | null
+export type BotInfo = {
+  id: string
+  title: string
+  description: string | null
+  kind: 'alert-monitor' | 'lead-api' | 'generic'
+  unit: string
+  logSource: string | null
+  links: { title: string; url: string }[]
+  paths: { dir: FileInfo; entry: FileInfo; config: FileInfo; log: FileInfo }
+  service: Part<{ active: string; sub: string; since: number | null; restarts: number; pid: number | null; memory: number | null }>
+  runtime: Part<string | null>
+  telegram: Part<{ username: string | null; name?: string; error: string | null }>
+  problems: Part<{ ts: number | null; text: string }[]>
+  analytics: Part<unknown>
+}
+export type AlertAnalytics = {
+  channel: string | null
+  subscribers: number
+  keywords: { key: string; title: string; words: string[] }[]
+  alertsPerDay: { day: string; count: number }[]
+  lastAlerts: { ts: number; reason: string; text: string }[]
+  delivery: { avgSec: number; maxSec: number; messages: number } | null
+}
+export type LeadAnalytics = {
+  loggingEnabled: boolean
+  leadsPerDay: { day: string; count: number }[]
+  lastLeads: { ts: number; ok: boolean; contact: string | null; task: boolean | null }[]
+  rejected30d: number
+  greeted30d: number
+  pollErrors24h: number
+}
+
+// ---------- Этап 9: журнал (действия + системные события) ----------
+export type FeedRow = {
+  type: 'user' | 'system'
+  id: number
+  ts: number
+  ip: string | null
+  user: string | null
+  kind: string
+  target: string | null
+  details: unknown
+  level: 'ok' | 'error' | 'denied' | 'info' | 'warning'
+  text: string | null
+}
+export type AuditSummary = {
+  actions: { day: number; week: number }
+  events: { day: number; week: number }
+  problems: { day: number; week: number }
+  perDay: { day: string; type: 'user' | 'system'; problems: number; n: number }[]
 }

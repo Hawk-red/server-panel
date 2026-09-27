@@ -3,6 +3,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { api } from '@/lib/api'
 import type { MetricsResponse, Range } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { NoData } from './no-data'
 
 export const RANGE_LABELS: Record<Range, string> = {
@@ -13,10 +14,11 @@ export const RANGE_LABELS: Record<Range, string> = {
   quarter: '3 месяца',
 }
 
-// Единая палитра серий (theme.css): фиолетовый, голубой, зелёный, синий, индиго, серый
+// Единая палитра серий (theme.css): синий, зелёный, фиолетовый, серый, индиго, голубой
 const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--chart-6)']
 
-export type SeriesDef = { name: string; label: string }
+/** color — явный цвет серии (CSS-переменная), иначе по порядку из палитры */
+export type SeriesDef = { name: string; label: string; color?: string }
 
 type MetricChartProps = {
   title: string
@@ -24,6 +26,8 @@ type MetricChartProps = {
   range: Range
   format: (v: number) => string
   domain?: [number | 'auto', number | 'auto']
+  /** высота области графика (класс Tailwind); по умолчанию компактная, чтобы 8 графиков помещались на экран */
+  heightClass?: string
 }
 
 function tickTime(ts: number, range: Range) {
@@ -32,7 +36,7 @@ function tickTime(ts: number, range: Range) {
   return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
 }
 
-export function MetricChart({ title, series, range, format, domain }: MetricChartProps) {
+export function MetricChart({ title, series, range, format, domain, heightClass = 'h-44 xl:h-40 2xl:h-48' }: MetricChartProps) {
   const { data, isError } = useQuery({
     queryKey: ['metrics', range, series.map((s) => s.name).join(',')],
     queryFn: async () =>
@@ -52,11 +56,11 @@ export function MetricChart({ title, series, range, format, domain }: MetricChar
   const points = [...rows.values()].sort((a, b) => a.t - b.t)
 
   return (
-    <Card className='gap-2'>
-      <CardHeader>
+    <Card className='gap-1 py-3'>
+      <CardHeader className='px-4'>
         <CardTitle className='text-sm font-medium'>{title}</CardTitle>
       </CardHeader>
-      <CardContent className='h-56 px-2'>
+      <CardContent className={cn('px-1', heightClass)}>
         {isError || (data && points.length === 0) ? (
           <div className='flex h-full items-center justify-center'>
             <NoData reason={isError ? 'ошибка запроса' : 'источник пока не собрал данных за этот период'} />
@@ -70,23 +74,23 @@ export function MetricChart({ title, series, range, format, domain }: MetricChar
                 type='number'
                 domain={['dataMin', 'dataMax']}
                 tickFormatter={(t) => tickTime(t, range)}
-                fontSize={11}
+                fontSize={10}
                 minTickGap={40}
               />
-              <YAxis tickFormatter={format} fontSize={11} width={64} domain={domain ?? ['auto', 'auto']} />
+              <YAxis tickFormatter={format} fontSize={10} width={56} domain={domain ?? ['auto', 'auto']} />
               <Tooltip
                 labelFormatter={(t) => new Date(Number(t)).toLocaleString('ru-RU')}
                 formatter={(v, name) => [format(Number(v)), series.find((s) => s.name === name)?.label ?? String(name)]}
                 contentStyle={{ background: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
               />
               {series.length > 1 && (
-                <Legend formatter={(name) => series.find((s) => s.name === name)?.label ?? name} wrapperStyle={{ fontSize: 12 }} />
+                <Legend formatter={(name) => series.find((s) => s.name === name)?.label ?? name} wrapperStyle={{ fontSize: 11 }} iconSize={8} />
               )}
               {series.map((s, i) => (
                 <Line
                   key={s.name}
                   dataKey={s.name}
-                  stroke={COLORS[i % COLORS.length]}
+                  stroke={s.color ?? COLORS[i % COLORS.length]}
                   dot={false}
                   strokeWidth={1.75}
                   isAnimationActive={false}

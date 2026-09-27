@@ -42,6 +42,35 @@
     }
   }
 
+  /* Видимый фокус для клавиатуры и пульта ТВ (стрелки + OK): яркая обводка на всём кликабельном */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  [role='tab']:focus-visible,
+  [role='menuitem']:focus-visible,
+  [role='option']:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible,
+  [tabindex]:not([tabindex='-1']):focus-visible {
+    outline: 3px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* 4K-экраны (ТВ): интерфейс в rem — увеличиваем базовый шрифт, чтобы на 3840 px текст не был мелким */
+  @media (min-width: 2400px) {
+    html {
+      font-size: 22px;
+    }
+  }
+  @media (min-width: 3200px) {
+    html {
+      font-size: 30px;
+    }
+  }
+
   /* Вырез и закруглённые углы iPhone (viewport-fit=cover) */
   body {
     padding-left: env(safe-area-inset-left);

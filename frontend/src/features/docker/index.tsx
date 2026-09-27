@@ -3,7 +3,7 @@ import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
-import { Container as ContainerIcon, ExternalLink, HardDrive, Layers, Play, RotateCw, ScrollText, Square } from 'lucide-react'
+import { AppWindow, Container as ContainerIcon, ExternalLink, HardDrive, Layers, Play, RotateCw, ScrollText, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { Container, DockerData } from '@/lib/types'
@@ -16,13 +16,53 @@ import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 type Action = 'start' | 'stop' | 'restart'
 const LABEL: Record<Action, string> = { start: 'Запустить', stop: 'Остановить', restart: 'Перезапустить' }
 
+// Номер окружения Portainer (из адреса #!/N/…) — хранится в настройках панели
+function usePortainerEndpoint() {
+  const qc = useQueryClient()
+  const q = useQuery({
+    queryKey: ['settings', 'portainer'],
+    queryFn: async () => (await api.get<{ endpointId: number | null }>('/settings/portainer')).data.endpointId,
+  })
+  const save = useMutation({
+    mutationFn: (endpointId: number) => api.put('/settings/portainer', { endpointId }),
+    onSuccess: () => {
+      toast.success('Номер окружения Portainer сохранён')
+      qc.invalidateQueries({ queryKey: ['settings', 'portainer'] })
+    },
+    onError: () => toast.error('Не удалось сохранить'),
+  })
+  return { endpointId: q.data ?? null, loaded: q.isSuccess, save }
+}
+
+function PortainerSetting({ endpointId, onSave, pending }: { endpointId: number | null; onSave: (n: number) => void; pending: boolean }) {
+  const [v, setV] = useState(endpointId ? String(endpointId) : '')
+  return (
+    <form
+      className='flex flex-wrap items-center gap-2 text-sm'
+      onSubmit={(e) => {
+        e.preventDefault()
+        const n = Number(v)
+        if (Number.isInteger(n) && n > 0) onSave(n)
+      }}
+    >
+      <span className='text-muted-foreground'>Окружение Portainer (число после «#!/» в адресе Portainer):</span>
+      <Input className='h-8 w-20' inputMode='numeric' value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ''))} placeholder='2' />
+      <Button size='sm' variant='outline' type='submit' disabled={pending || !v}>
+        Сохранить
+      </Button>
+    </form>
+  )
+}
+
 export function Docker() {
   const qc = useQueryClient()
+  const portainerEp = usePortainerEndpoint()
   const [pending, setPending] = useState<{ c: Container; a: Action } | null>(null)
   const { data, isError } = useQuery({
     queryKey: ['docker'],
@@ -139,7 +179,19 @@ export function Docker() {
                     .map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className='max-w-[10rem] sm:max-w-[16rem]'>
-                          <div className='truncate font-medium'>{c.name}</div>
+                          {portainer && portainerEp.endpointId ? (
+                            <a
+                              href={webUrl(9000, `/#!/${portainerEp.endpointId}/docker/containers/${c.id}`)}
+                              target='_blank'
+                              rel='noreferrer'
+                              className='flex items-center gap-1 truncate font-medium hover:underline'
+                              title='Открыть контейнер в Portainer'
+                            >
+                              {c.name} <ExternalLink className='size-3 shrink-0 text-muted-foreground' />
+                            </a>
+                          ) : (
+                            <div className='truncate font-medium'>{c.name}</div>
+                          )}
                           <div className='truncate text-xs text-muted-foreground'>{c.image}</div>
                           <StatusBadge className='mt-1 sm:hidden' status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
                         </TableCell>
@@ -163,6 +215,13 @@ export function Docker() {
                         </TableCell>
                         <TableCell>
                           <div className='flex justify-end gap-1'>
+                            {c.web && c.state === 'running' && (
+                              <Button size='icon' variant='ghost' title='Веб-интерфейс сервиса' asChild>
+                                <a href={webUrl(c.web.port, c.web.path)} target='_blank' rel='noreferrer'>
+                                  <AppWindow />
+                                </a>
+                              </Button>
+                            )}
                             {!c.protected && (
                               <>
                                 {c.state === 'running' ? (
@@ -192,9 +251,20 @@ export function Docker() {
               </Table>
             </div>
           )}
-          <p className='mt-2 text-xs text-muted-foreground'>
-            docker-socket-proxy панелью не управляется: без него панель потеряет доступ к Docker.
-          </p>
+          <div className='mt-3 space-y-2 text-xs text-muted-foreground'>
+            <p>
+              Имя контейнера открывает его в Portainer; значок <AppWindow className='inline size-3' /> — веб-интерфейс самого сервиса. docker-socket-proxy
+              панелью не управляется: без него панель потеряет доступ к Docker.
+            </p>
+            {portainer && portainerEp.loaded && (
+              <PortainerSetting
+                key={portainerEp.endpointId ?? 'none'}
+                endpointId={portainerEp.endpointId}
+                pending={portainerEp.save.isPending}
+                onSave={(n) => portainerEp.save.mutate(n)}
+              />
+            )}
+          </div>
         </CardContent>
       </Card>
 

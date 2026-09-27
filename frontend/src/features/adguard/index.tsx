@@ -172,8 +172,8 @@ export function Adguard() {
         <MetricChart
           title='Запросы и блокировки'
           series={[
-            { name: 'adguard.queries', label: 'Запросы' },
-            { name: 'adguard.blocked', label: 'Заблокировано' },
+            { name: 'adguard.queries', label: 'Запросы', color: 'var(--info)' },
+            { name: 'adguard.blocked', label: 'Заблокировано', color: 'var(--brand)' },
           ]}
           range={range}
           format={(v) => Math.round(v).toLocaleString('ru-RU')}

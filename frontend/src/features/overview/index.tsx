@@ -1,16 +1,19 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Activity, CircleAlert, Clock, Cpu, HardDrive, MemoryStick, Network, Thermometer, TriangleAlert } from 'lucide-react'
+import { Activity, CircleAlert, Clock, Cpu, HardDrive, MemoryStick, Network, Thermometer, TriangleAlert, Tv } from 'lucide-react'
 import { api } from '@/lib/api'
 import { meQuery } from '@/lib/auth'
-import type { Overview as OverviewData } from '@/lib/types'
+import type { Overview as OverviewData, Problem } from '@/lib/types'
 import { Page } from '@/components/layout/page'
 import { NoData } from '@/components/no-data'
 import { Meter } from '@/components/meter'
 import { StatTile } from '@/components/stat-tile'
 import { Value } from '@/components/value'
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ProblemSheet } from './problem-sheet'
 
 type Health = { status: 'ok'; version: string; uptimeSec: number; node: string; memoryMb: number }
 
@@ -34,6 +37,7 @@ function SummaryRow({ label, children, to }: { label: string; children: React.Re
 }
 
 export function Overview() {
+  const [openProblem, setOpenProblem] = useState<Problem | null>(null)
   const overview = useQuery({
     queryKey: ['overview'],
     queryFn: async () => (await api.get<OverviewData>('/overview')).data,
@@ -53,7 +57,17 @@ export function Overview() {
   const mem = s?.memory
 
   return (
-    <Page title='Обзор' description='Состояние сервера Mac Mini'>
+    <Page
+      title='Обзор'
+      description='Состояние сервера Mac Mini'
+      actions={
+        <Button variant='outline' asChild>
+          <Link to='/tv'>
+            <Tv /> Режим ТВ
+          </Link>
+        </Button>
+      }
+    >
       <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6'>
         <StatTile
           title='CPU'
@@ -237,21 +251,29 @@ export function Overview() {
           ) : o.problems.length === 0 ? (
             <StatusBadge status='ok' label='Проблем не обнаружено' />
           ) : (
-            <ul className='space-y-2'>
+            <ul className='divide-y'>
               {o.problems.map((p, i) => (
-                <li key={i} className='flex items-start gap-2 text-sm'>
-                  {p.level === 'error' ? (
-                    <CircleAlert className='mt-0.5 size-4 shrink-0 text-danger-foreground' />
-                  ) : (
-                    <TriangleAlert className='mt-0.5 size-4 shrink-0 text-warn-foreground' />
-                  )}
-                  <span>{p.text}</span>
+                <li key={i}>
+                  <button
+                    type='button'
+                    onClick={() => setOpenProblem(p)}
+                    className='flex w-full items-start gap-2 rounded-md px-2 py-2 text-start text-sm hover:bg-muted focus-visible:bg-muted'
+                  >
+                    {p.level === 'error' ? (
+                      <CircleAlert className='mt-0.5 size-4 shrink-0 text-danger-foreground' aria-label='ошибка' />
+                    ) : (
+                      <TriangleAlert className='mt-0.5 size-4 shrink-0 text-warn-foreground' aria-label='предупреждение' />
+                    )}
+                    <span className='flex-1'>{p.text}</span>
+                    <span className='shrink-0 text-xs text-muted-foreground'>подробнее →</span>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
         </CardContent>
       </Card>
+      <ProblemSheet problem={openProblem} onClose={() => setOpenProblem(null)} />
     </Page>
   )
 }
