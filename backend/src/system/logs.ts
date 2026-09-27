@@ -17,6 +17,7 @@ const KNOWN_FILES: { path: string; title: string; group: string }[] = [
   { path: '/var/log/auth.log', title: 'auth.log (входы, sudo)', group: 'Безопасность' },
   { path: '/home/hawk/disk-monitor.log', title: 'disk-monitor', group: 'Диски' },
   { path: '/var/log/torrent-move.log', title: 'torrent-space-guard', group: 'Торренты' },
+  { path: '/opt/alert_monitor/alert_monitor.log', title: 'Air Alert Monitor (бот тревог)', group: 'Автоматизация' },
   { path: '/var/log/syslog', title: 'syslog', group: 'Система' },
   { path: '/var/log/kern.log', title: 'Ядро (kern.log)', group: 'Система' },
 ]

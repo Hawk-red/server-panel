@@ -9,6 +9,7 @@ import { config } from './config.js'
 import { db } from './db.js'
 import { isAllowed, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
+import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 
 const app = Fastify({
@@ -45,6 +46,7 @@ await app.register(fastifyCookie)
 await app.register(authRoutes)
 await app.register(systemRoutes)
 await app.register(serviceRoutes)
+await app.register(siteRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',

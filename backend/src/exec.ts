@@ -36,3 +36,10 @@ export function run(
 export function sudo(args: string[], opts?: { timeoutMs?: number; maxBuffer?: number }) {
   return run('/usr/bin/sudo', ['-n', ...args], opts)
 }
+
+// Для утилит, которые печатают версию в stderr (nginx -v)
+export function runMerged(cmd: string, args: string[], timeoutMs = 5000): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout: timeoutMs, env: { ...process.env, LC_ALL: 'C' } }, (_e, stdout, stderr) => resolve(`${stdout}${stderr}`))
+  })
+}

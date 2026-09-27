@@ -6,7 +6,8 @@ import { listContainers } from '../services/docker.js'
 export const CONTROLLABLE: Record<string, { title: string; warning?: string }> = {
   'nginx.service': {
     title: 'nginx',
-    warning: 'Вместе с nginx перестанут открываться зеркало jetsetter, api.pulsdev.net (снаружи) и File Browser.',
+    warning:
+      'Остановка nginx = остановка сайта: вместе с ним перестанут отвечать зеркало jetsetter, api.pulsdev.net (pulsdev-api снаружи и через HTTPS) и File Browser (:8081).',
   },
   'php8.3-fpm.service': { title: 'PHP-FPM 8.3', warning: 'Зеркало jetsetter перестанет отвечать (502).' },
   'mariadb.service': { title: 'MariaDB', warning: 'Зеркало jetsetter потеряет базу данных.' },
