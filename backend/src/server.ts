@@ -13,6 +13,8 @@ import { serviceRoutes } from './routes/services.js'
 import { accessRoutes } from './routes/access.js'
 import { auditRoutes } from './routes/audit.js'
 import { networkRoutes } from './routes/network.js'
+import { notifyRoutes } from './routes/notify.js'
+import { startNotifier } from './notifier.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 
@@ -54,6 +56,7 @@ await app.register(siteRoutes)
 await app.register(accessRoutes)
 await app.register(networkRoutes)
 await app.register(auditRoutes)
+await app.register(notifyRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',
@@ -111,3 +114,4 @@ await app.listen({ host: config.host, port: config.port })
 // Коллектор стартует после API: его сбои не влияют на запуск сервера
 startCollector(app.log)
 startDetectors(app.log)
+startNotifier(app.log)

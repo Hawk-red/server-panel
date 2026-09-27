@@ -4,9 +4,10 @@ import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordi
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { ExternalLink, GripVertical, Loader2, Radio, RefreshCw } from 'lucide-react'
+import { ExternalLink, GripVertical, Loader2, Pencil, Radar, Radio, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { formatDateTime } from '@/lib/format'
 import type { Device, NetworkData } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Page } from '@/components/layout/page'
@@ -20,71 +21,119 @@ import { DeviceSheet } from './device-sheet'
 import { displayName, TYPE_GROUPS, TYPES, webHref } from './device-meta'
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'new'
-const PORT_PREVIEW = 4
 
-function DeviceCard({ d, scanning, onOpen, dragDisabled }: { d: Device; scanning: boolean; onOpen: () => void; dragDisabled: boolean }) {
+function DeviceCard({ d, scanning, busy, onOpen, onScan, dragDisabled }: { d: Device; scanning: boolean; busy: boolean; onOpen: () => void; onScan: () => void; dragDisabled: boolean }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: d.mac, disabled: dragDisabled })
   const T = TYPES[d.type] ?? TYPES.unknown
   const web = d.ports.find((p) => p.web)
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn('min-w-0', isDragging && 'z-10 opacity-80')}>
-      <Card className={cn('h-full gap-2 py-3', !d.known && 'border-warn/60 bg-warn/5', !d.online && 'opacity-70')}>
-        <CardContent className='flex h-full gap-2 px-3 text-sm'>
-          {!dragDisabled && (
-            <button
-              type='button'
-              ref={setActivatorNodeRef}
-              {...attributes}
-              {...listeners}
-              className='-ms-1 flex w-6 shrink-0 cursor-grab touch-none items-start justify-center pt-1 text-muted-foreground active:cursor-grabbing'
-              aria-label={`Перетащить ${displayName(d)}`}
-            >
-              <GripVertical className='size-4' />
-            </button>
-          )}
-          {/* Вся карточка — кнопка открытия (удобно с пульта ТВ и с телефона) */}
-          <button type='button' onClick={onOpen} className='min-w-0 flex-1 space-y-1.5 rounded-md text-start focus-visible:outline-none'>
-            <div className='flex items-start gap-2'>
-              <T.icon className='mt-0.5 size-5 shrink-0 text-muted-foreground' aria-hidden='true' />
-              <div className='min-w-0 flex-1'>
-                <div className='flex flex-wrap items-center gap-1.5'>
-                  <span className='truncate font-medium'>{displayName(d)}</span>
-                  {!d.known && <Badge className='bg-warn text-black hover:bg-warn'>новое</Badge>}
-                </div>
-                <div className='truncate text-xs text-muted-foreground'>
-                  {T.label}
-                  {d.location ? ` · ${d.location}` : ''}
-                </div>
+      <Card className={cn('h-full gap-2 py-3', !d.known && 'border-warn/60 bg-warn/5', !d.online && 'opacity-75')}>
+        <CardContent className='flex h-full flex-col gap-2 px-3 text-sm'>
+          <div className='flex items-start gap-2'>
+            {!dragDisabled && (
+              <button
+                type='button'
+                ref={setActivatorNodeRef}
+                {...attributes}
+                {...listeners}
+                className='-ms-1 flex w-6 shrink-0 cursor-grab touch-none justify-center pt-0.5 text-muted-foreground active:cursor-grabbing'
+                aria-label={`Перетащить ${displayName(d)}`}
+              >
+                <GripVertical className='size-4' />
+              </button>
+            )}
+            <T.icon className='mt-0.5 size-5 shrink-0 text-muted-foreground' aria-hidden='true' />
+            <div className='min-w-0 flex-1'>
+              <div className='flex flex-wrap items-center gap-1.5'>
+                <span className='truncate font-medium'>{displayName(d)}</span>
+                {!d.known && <Badge className='bg-warn text-black hover:bg-warn'>новое</Badge>}
               </div>
-              <StatusBadge status={d.online ? 'ok' : 'unknown'} label={d.online ? 'онлайн' : 'офлайн'} className='text-xs' />
+              <div className='truncate text-xs text-muted-foreground'>
+                {T.label}
+                {d.location ? ` · ${d.location}` : ''}
+              </div>
             </div>
-            <div className='flex flex-wrap gap-x-3 text-xs'>
+            <StatusBadge status={d.online ? 'ok' : 'unknown'} label={d.online ? 'онлайн' : 'офлайн'} className='text-xs' />
+          </div>
+
+          {/* Подробности прямо на карточке — без захода внутрь */}
+          <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs'>
+            <dt className='text-muted-foreground'>IP</dt>
+            <dd>
               <Value kind='address' value={d.ip} />
-              <span className='truncate text-muted-foreground'>{d.vendor ?? (d.randomMac ? 'приватный MAC' : '')}</span>
-            </div>
+            </dd>
+            <dt className='text-muted-foreground'>MAC</dt>
+            <dd className='min-w-0 truncate'>
+              <Value kind='address' value={d.mac} />
+              {d.randomMac && <span className='ms-1 text-muted-foreground'>(приватный)</span>}
+            </dd>
+            <dt className='text-muted-foreground'>Производитель</dt>
+            <dd className='truncate'>{d.vendor ?? (d.randomMac ? 'скрыт' : '—')}</dd>
+            {d.hostname && (
+              <>
+                <dt className='text-muted-foreground'>Имя в сети</dt>
+                <dd className='truncate'>{d.hostname}</dd>
+              </>
+            )}
+            <dt className='text-muted-foreground'>Появилось</dt>
+            <dd className='text-time'>{formatDateTime(d.firstSeen)}</dd>
+            <dt className='text-muted-foreground'>Последний раз</dt>
+            <dd>{d.online ? 'сейчас в сети' : <Value kind='ago' value={d.lastSeen} />}</dd>
+          </dl>
+
+          {d.note && <p className='line-clamp-2 text-xs text-muted-foreground'>{d.note}</p>}
+
+          <div className='space-y-1'>
             {scanning ? (
               <div className='flex items-center gap-1 text-xs text-info'>
                 <Loader2 className='size-3 animate-spin' /> сканирую порты…
               </div>
             ) : d.portsScannedAt ? (
-              <div className='flex flex-wrap gap-1'>
-                {d.ports.length === 0 && <span className='text-xs text-muted-foreground'>открытых портов нет</span>}
-                {d.ports.slice(0, PORT_PREVIEW).map((p) => (
-                  <span key={p.port} className='rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-address'>
-                    {p.port}
-                  </span>
-                ))}
-                {d.ports.length > PORT_PREVIEW && <span className='text-xs text-muted-foreground'>ещё {d.ports.length - PORT_PREVIEW}</span>}
-              </div>
-            ) : null}
-          </button>
-          {web && (
-            <Button size='icon' variant='ghost' className='shrink-0' asChild title={`Веб-интерфейс :${web.port}`}>
-              <a href={webHref(d, web)} target='_blank' rel='noreferrer'>
-                <ExternalLink />
-              </a>
+              <>
+                <div className='text-xs text-muted-foreground'>
+                  Порты (TCP), проверено <Value kind='ago' value={d.portsScannedAt} />:{d.ports.length === 0 && ' открытых нет'}
+                </div>
+                <div className='flex flex-wrap gap-1'>
+                  {d.ports.map((p) =>
+                    p.web ? (
+                      <a
+                        key={p.port}
+                        href={webHref(d, p)}
+                        target='_blank'
+                        rel='noreferrer'
+                        className='inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] text-address hover:bg-muted'
+                      >
+                        {p.port} {p.service} <ExternalLink className='size-3' />
+                      </a>
+                    ) : (
+                      <span key={p.port} className='rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-address'>
+                        {p.port} {p.service}
+                      </span>
+                    )
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className='text-xs text-muted-foreground'>Порты ещё не сканировались.</div>
+            )}
+          </div>
+
+          <div className='mt-auto flex flex-wrap gap-1 pt-1'>
+            <Button size='sm' variant='outline' onClick={onScan} disabled={!d.online || scanning || busy} title={busy && !scanning ? 'Идёт сканирование другого устройства' : undefined}>
+              {scanning ? <Loader2 className='animate-spin' /> : <Radar />} Порты
             </Button>
-          )}
+            <Button size='sm' variant='outline' onClick={onOpen}>
+              <Pencil /> Изменить
+            </Button>
+            {web && (
+              <Button size='sm' variant='ghost' asChild>
+                <a href={webHref(d, web)} target='_blank' rel='noreferrer'>
+                  <ExternalLink /> Веб :{web.port}
+                </a>
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -106,6 +155,14 @@ export function Network({ initialDevice }: { initialDevice?: string } = {}) {
     mutationFn: () => api.post<{ online: number }>('/network/discover', {}),
     onSuccess: (r) => {
       toast.success(`Сеть обновлена: онлайн ${r.data.online}`)
+      qc.invalidateQueries({ queryKey: ['network'] })
+    },
+    onError: (e) => toast.error((e instanceof AxiosError && e.response?.data?.message) || 'ошибка'),
+  })
+  const scan = useMutation({
+    mutationFn: (d: Device) => api.post(`/network/devices/${d.mac}/scan`, {}),
+    onSuccess: (_r, d) => {
+      toast.info(`Сканирую порты ${d.ip} (top-1000, обычно до минуты)…`)
       qc.invalidateQueries({ queryKey: ['network'] })
     },
     onError: (e) => toast.error((e instanceof AxiosError && e.response?.data?.message) || 'ошибка'),
@@ -226,7 +283,15 @@ export function Network({ initialDevice }: { initialDevice?: string } = {}) {
         <SortableContext items={devices.map((d) => d.mac)} strategy={rectSortingStrategy}>
           <div className='mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'>
             {devices.map((d) => (
-              <DeviceCard key={d.mac} d={d} scanning={st?.scanning?.mac === d.mac} onOpen={() => setOpenMac(d.mac)} dragDisabled={false} />
+              <DeviceCard
+                key={d.mac}
+                d={d}
+                scanning={st?.scanning?.mac === d.mac || (scan.isPending && scan.variables?.mac === d.mac)}
+                busy={Boolean(st?.scanning) || scan.isPending}
+                onOpen={() => setOpenMac(d.mac)}
+                onScan={() => scan.mutate(d)}
+                dragDisabled={false}
+              />
             ))}
           </div>
         </SortableContext>

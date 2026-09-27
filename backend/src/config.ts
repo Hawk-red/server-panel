@@ -53,6 +53,8 @@ export const config = {
   // Веб-интерфейс ресивера — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP
   marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 80 },
   torrentsDir: env.TORRENTS_DIR ?? '/home/torrents-tmp',
+  // Бот уведомлений (этап 10.1); chat_id и правила — в настройках панели
+  notifyToken: env.NOTIFY_BOT_TOKEN ?? '',
   sessionDays: 30,
   loginMaxFailures: 5,
   loginWindowMin: 15,

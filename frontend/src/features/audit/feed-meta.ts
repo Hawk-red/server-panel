@@ -29,6 +29,8 @@ export const KIND_LABELS: Record<string, string> = {
   'network.device-update': 'Изменение устройства',
   'network.device-delete': 'Удаление устройства',
   'settings.portainer': 'Настройка Portainer',
+  'settings.notify': 'Настройка уведомлений',
+  'notify.test': 'Тестовое уведомление',
   // системные события
   'unit.failed': 'Служба упала',
   'unit.recovered': 'Служба поднялась',

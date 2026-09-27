@@ -5,7 +5,7 @@ import { Writable } from 'node:stream'
 import readline from 'node:readline/promises'
 import { ENV_FILE } from '../config.js'
 
-const ALLOWED = ['QBT_USER', 'QBT_PASSWORD', 'ADGUARD_USER', 'ADGUARD_PASSWORD', 'JELLYFIN_API_KEY']
+const ALLOWED = ['QBT_USER', 'QBT_PASSWORD', 'ADGUARD_USER', 'ADGUARD_PASSWORD', 'JELLYFIN_API_KEY', 'NOTIFY_BOT_TOKEN']
 const key = process.argv[2]
 if (!key || !ALLOWED.includes(key)) {
   console.error(`Укажите ключ: ${ALLOWED.join(', ')}`)
