@@ -60,3 +60,8 @@ panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)
 Cmnd_Alias SP_WPCLI = /usr/local/bin/wp --path\=/var/www/www/jetsetter.ua --skip-plugins --skip-themes post list --post_type\=post\,page --orderby\=modified --order\=DESC --posts_per_page\=15 --fields\=ID\,post_title\,post_type\,post_status\,post_modified --format\=json
 panel ALL=(www-data) NOPASSWD: SP_WPCLI
+
+# Этап 5: SSH и доступ — одна root-утилита со строгой проверкой команд и аргументов
+# (authorized_keys, ufw deny, fail2ban ban/unban, завершение SSH/RDP-сессий, ssh stop/start, wg show без приватного ключа).
+# Утилита: /usr/local/sbin/server-panel-helper (root:root 755), источник — /opt/server-panel/deploy/server-panel-helper
+panel ALL=(root) NOPASSWD: /usr/local/sbin/server-panel-helper

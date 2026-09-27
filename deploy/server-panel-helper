@@ -1,0 +1,143 @@
+#!/bin/bash
+# /usr/local/sbin/server-panel-helper — привилегированные действия веб-панели (этап 5).
+# Вызывается ТОЛЬКО как: sudo -n /usr/local/sbin/server-panel-helper <команда> [аргументы]
+# Каждая команда и каждый аргумент проверяются здесь; всё остальное — отказ (код 2).
+# Владелец root:root, права 755. Источник: /opt/server-panel/deploy/server-panel-helper
+set -euo pipefail
+export LC_ALL=C PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+die() { echo "server-panel-helper: $*" >&2; exit 2; }
+
+# Файлы authorized_keys, которые панель показывает и может менять
+declare -A KEYFILES=(
+  [root]=/root/.ssh/authorized_keys
+  [hawk]=/home/hawk/.ssh/authorized_keys
+  [macmini]=/home/macmini/.ssh/authorized_keys
+  [ipadbackup]=/var/lib/ipadbackup/.ssh/authorized_keys
+)
+DISABLED_PREFIX='#panel-disabled '
+JAILS_RE='^(sshd|vsftpd)$'
+
+valid_user() { [[ -n "${KEYFILES[$1]+x}" ]] || die "неизвестный пользователь"; }
+valid_fp() { [[ "$1" =~ ^SHA256:[A-Za-z0-9+/]{43}$ ]] || die "некорректный отпечаток"; }
+
+# IPv4 (опционально /8../32) или IPv6; свои сети блокировать нельзя (защита от потери доступа)
+valid_ip() {
+  local ip="$1"
+  if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(/([89]|[12][0-9]|3[0-2]))?$ ]]; then
+    local addr="${ip%%/*}" o
+    IFS=. read -r -a o <<<"$addr"
+    for x in "${o[@]}"; do ((10#$x <= 255)) || die "некорректный IP"; done
+    [[ "$addr" =~ ^(127\.|192\.168\.31\.|10\.10\.10\.|0\.) ]] && die "свои сети (LAN/VPN/localhost) блокировать нельзя"
+  elif [[ "$ip" =~ ^[0-9a-fA-F:]{2,39}(/([0-9]{1,3}))?$ && "$ip" == *:* ]]; then
+    [[ "$ip" == "::1" || "$ip" == "::" ]] && die "localhost блокировать нельзя"
+  else
+    die "некорректный IP"
+  fi
+}
+
+# Отпечаток строки authorized_keys (с опциями или без); пусто, если строка не ключ
+fp_of_line() {
+  local line="${1#"$DISABLED_PREFIX"}"
+  ssh-keygen -lf /dev/stdin <<<"$line" 2>/dev/null | awk '{print $2}' || true
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+
+  keys-list)
+    # USER <TAB> NOMER_STROKI <TAB> СТРОКА (только публичные ключи — приватных в этих файлах нет)
+    for u in "${!KEYFILES[@]}"; do
+      f="${KEYFILES[$u]}"
+      [[ -f "$f" ]] || continue
+      n=0
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        n=$((n + 1))
+        [[ -z "${line// }" ]] && continue
+        printf '%s\t%s\t%s\n' "$u" "$n" "$line"
+      done <"$f"
+    done
+    ;;
+
+  key-disable | key-enable)
+    [[ $# -eq 2 ]] || die "нужно: $cmd USER SHA256:..."
+    valid_user "$1"; valid_fp "$2"
+    f="${KEYFILES[$1]}"; [[ -f "$f" ]] || die "нет файла ключей"
+    tmp=$(mktemp); found=0; active_left=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      fp=$(fp_of_line "$line")
+      if [[ -n "$fp" && "$fp" == "$2" ]]; then
+        found=1
+        if [[ "$cmd" == key-disable && "$line" != "$DISABLED_PREFIX"* ]]; then line="$DISABLED_PREFIX$line"; fi
+        if [[ "$cmd" == key-enable ]]; then line="${line#"$DISABLED_PREFIX"}"; fi
+      fi
+      if [[ -n "$fp" && "$line" != \#* ]]; then active_left=$((active_left + 1)); fi
+      printf '%s\n' "$line" >>"$tmp"
+    done <"$f"
+    [[ $found -eq 1 ]] || { rm -f "$tmp"; die "ключ не найден"; }
+    if [[ "$cmd" == key-disable && "$1" == hawk && $active_left -eq 0 ]]; then
+      rm -f "$tmp"; die "это последний активный ключ hawk — отключение запрещено (потеря доступа)"
+    fi
+    cp -p "$f" "$f.bak-panel-$(date +%Y%m%d-%H%M%S)"
+    cat "$tmp" >"$f"   # запись поверх — сохраняет владельца и права файла
+    rm -f "$tmp"
+    echo ok
+    ;;
+
+  ufw-list)
+    ufw status numbered
+    ;;
+
+  ufw-deny)
+    [[ $# -eq 1 ]] || die "нужно: ufw-deny IP"
+    valid_ip "$1"
+    ufw prepend deny from "$1" comment 'server-panel'
+    ;;
+
+  ufw-undeny)
+    [[ $# -eq 1 ]] || die "нужно: ufw-undeny IP"
+    valid_ip "$1"
+    ufw delete deny from "$1"
+    ;;
+
+  f2b-status)
+    fail2ban-client status
+    for j in $(fail2ban-client status | sed -n 's/.*Jail list:\s*//p' | tr ',' ' '); do
+      echo "=== $j"
+      fail2ban-client status "$j"
+    done
+    ;;
+
+  f2b-ban | f2b-unban)
+    [[ $# -eq 2 ]] || die "нужно: $cmd JAIL IP"
+    [[ "$1" =~ $JAILS_RE ]] || die "неизвестный jail"
+    valid_ip "$2"
+    fail2ban-client set "$1" "${cmd#f2b-}ip" "$2"
+    ;;
+
+  session-kill)
+    [[ $# -eq 1 && "$1" =~ ^[0-9]{1,10}$ ]] || die "нужно: session-kill ID"
+    svc=$(loginctl show-session "$1" -p Service --value 2>/dev/null) || die "сессия не найдена"
+    [[ "$svc" == sshd || "$svc" == xrdp-sesman ]] || die "завершать можно только SSH- и RDP-сессии"
+    loginctl terminate-session "$1"
+    ;;
+
+  ssh-stop)
+    systemctl stop ssh.socket ssh.service
+    ;;
+
+  ssh-start)
+    systemctl start ssh.socket
+    ;;
+
+  wg-dump)
+    # Без приватного ключа: первая строка dump (интерфейс) выводится без поля private-key
+    wg show wg0 dump | awk -F'\t' 'NR==1 {print "interface\t" $2 "\t" $3; next} {print "peer\t" $1 "\t" $3 "\t" $4 "\t" $5 "\t" $6 "\t" $7}'
+    # Имена пиров: комментарий «# Имя» перед [Peer] и его PublicKey
+    awk '/^[ \t]*#/ {c=$0; sub(/^[ \t]*#[ \t]*/, "", c); next} /^[ \t]*\[Peer\]/ {name=c; c=""; next} /^[ \t]*PublicKey[ \t]*=/ && name!="" {k=$0; sub(/^[^=]*=[ \t]*/, "", k); print "name\t" k "\t" name; name=""} /^[ \t]*\[/ {c=""}' /etc/wireguard/wg0.conf
+    ;;
+
+  *)
+    die "неизвестная команда"
+    ;;
+esac
