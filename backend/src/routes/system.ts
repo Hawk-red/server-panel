@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
 import { getSnapshot, SAMPLE_INTERVAL } from '../collector/index.js'
+import { summary as networkSummary } from '../network/scanner.js'
 import { summary as torrentSummary } from '../services/qbittorrent.js'
 import { listSeriesNames, querySeries, RANGES, type Range } from '../collector/store.js'
 import { listCron } from '../system/cron.js'
@@ -26,6 +27,8 @@ async function collectProblems() {
   const t = snap?.temperature?.cpu
   if (t != null && t >= 85) problems.push({ level: 'error', text: `Перегрев CPU: ${Math.round(t)} °C` })
   else if (t != null && t >= 75) problems.push({ level: 'warning', text: `CPU горячий: ${Math.round(t)} °C` })
+  const net = networkSummary()
+  if (net.unknown > 0) problems.push({ level: 'warning', text: `В сети ${net.unknown} неизвестн. устройств(а) — подпишите их в «Сеть и устройства»` })
   for (const [src, e] of Object.entries(snap?.errors ?? {})) {
     problems.push({ level: 'warning', text: `Нет данных от источника «${src}»: ${e!.message}` })
   }
@@ -52,7 +55,7 @@ export async function systemRoutes(app: FastifyInstance) {
       containers: await listAutostart()
         .then((a) => (a.containers ? { running: a.containers.filter((c) => c.state === 'running').length, total: a.containers.length } : null))
         .catch(() => null),
-      devices: null, // этап 6
+      devices: networkSummary(),
       torrents: await torrentSummary()
         .then((t) => ({ active: t.active.length, downloading: t.counts.downloading, seeding: t.counts.seeding }))
         .catch(() => null),

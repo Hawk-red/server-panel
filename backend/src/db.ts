@@ -45,6 +45,29 @@ const migrations: string[] = [
   CREATE TABLE metric_5m (ts INTEGER NOT NULL, name TEXT NOT NULL, avg REAL NOT NULL, max REAL NOT NULL, PRIMARY KEY (name, ts)) WITHOUT ROWID;
   CREATE TABLE metric_1h (ts INTEGER NOT NULL, name TEXT NOT NULL, avg REAL NOT NULL, max REAL NOT NULL, PRIMARY KEY (name, ts)) WITHOUT ROWID;
   `,
+  `
+  CREATE TABLE devices (
+    mac        TEXT PRIMARY KEY,
+    ip         TEXT,
+    vendor     TEXT,
+    random_mac INTEGER NOT NULL DEFAULT 0,
+    hostname   TEXT,
+    name       TEXT,
+    type       TEXT,
+    known      INTEGER NOT NULL DEFAULT 0,
+    online     INTEGER NOT NULL DEFAULT 0,
+    first_seen INTEGER NOT NULL,
+    last_seen  INTEGER NOT NULL,
+    ports_scanned_at INTEGER
+  );
+  CREATE TABLE device_ports (
+    mac     TEXT NOT NULL,
+    port    INTEGER NOT NULL,
+    proto   TEXT NOT NULL,
+    service TEXT,
+    PRIMARY KEY (mac, port, proto)
+  ) WITHOUT ROWID;
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number

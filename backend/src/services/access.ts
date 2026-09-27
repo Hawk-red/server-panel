@@ -56,7 +56,19 @@ export async function sshInfo() {
 // ---------- журнал sshd ----------
 type Auth = { ts: number; ok: boolean; user: string; ip: string; method: string; fp: string | null; text: string }
 
-async function sshJournal(since: string): Promise<Auth[]> {
+// Журнал sshd читается тяжело (JSON за 7–90 дней) — кэш, чтобы страница с автообновлением
+// не перечитывала его каждые 15 с (это давало пики памяти выше MemoryHigh)
+const journalCache = new Map<string, { at: number; data: Promise<Auth[]> }>()
+function sshJournal(since: string, ttlMs = 60_000): Promise<Auth[]> {
+  const c = journalCache.get(since)
+  if (c && Date.now() - c.at < ttlMs) return c.data
+  const data = readSshJournal(since)
+  journalCache.set(since, { at: Date.now(), data })
+  data.catch(() => journalCache.delete(since))
+  return data
+}
+
+async function readSshJournal(since: string): Promise<Auth[]> {
   const out = await run(
     '/usr/bin/journalctl',
     ['-u', 'ssh.service', '-S', since, '-o', 'json', '--output-fields=MESSAGE,__REALTIME_TIMESTAMP', '--no-pager', '--grep', 'Accepted|Failed|Invalid user|authenticating user'],
@@ -101,7 +113,7 @@ export function fingerprint(b64: string) {
 export async function listKeys() {
   const out = await helper(['keys-list'])
   const lastUse = new Map<string, { ts: number; ip: string }>()
-  for (const a of await sshJournal('-90d').catch(() => [] as Auth[])) if (a.ok && a.fp) lastUse.set(`${a.user}\u0000${a.fp}`, { ts: a.ts, ip: a.ip })
+  for (const a of await sshJournal('-90d', 10 * 60_000).catch(() => [] as Auth[])) if (a.ok && a.fp) lastUse.set(`${a.user}\u0000${a.fp}`, { ts: a.ts, ip: a.ip })
 
   const keys = []
   for (const row of out.split('\n')) {

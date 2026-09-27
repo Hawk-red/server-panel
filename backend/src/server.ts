@@ -10,6 +10,7 @@ import { db } from './db.js'
 import { isAllowed, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
 import { accessRoutes } from './routes/access.js'
+import { networkRoutes } from './routes/network.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 
@@ -49,6 +50,7 @@ await app.register(systemRoutes)
 await app.register(serviceRoutes)
 await app.register(siteRoutes)
 await app.register(accessRoutes)
+await app.register(networkRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',

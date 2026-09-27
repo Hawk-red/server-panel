@@ -163,7 +163,15 @@ async function crontabUsers(): Promise<string[]> {
 }
 
 // Последние запуски cron из журнала: «(user) CMD (command)»
+let lastRunsCache: { at: number; data: Map<string, number> } | null = null
 async function cronLastRuns(): Promise<Map<string, number>> {
+  if (lastRunsCache && Date.now() - lastRunsCache.at < 5 * 60_000) return lastRunsCache.data
+  const data = await readCronLastRuns()
+  lastRunsCache = { at: Date.now(), data }
+  return data
+}
+
+async function readCronLastRuns(): Promise<Map<string, number>> {
   const map = new Map<string, number>()
   try {
     const out = await run('/usr/bin/journalctl', ['-t', 'CRON', '-S', '-8d', '-o', 'json', '--output-fields=MESSAGE,__REALTIME_TIMESTAMP', '--no-pager'], {

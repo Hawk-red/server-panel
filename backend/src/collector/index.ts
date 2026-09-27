@@ -5,6 +5,7 @@ import { listDisks, refreshAllSmart, type DiskInfo } from '../system/disks.js'
 import * as src from './sources.js'
 import * as adguard from '../services/adguard.js'
 import * as qbt from '../services/qbittorrent.js'
+import * as scanner from '../network/scanner.js'
 import { rollupAndPrune, writeHourly, writeSample } from './store.js'
 
 export const SAMPLE_INTERVAL = 30_000
@@ -21,6 +22,7 @@ export type SourceName =
   | 'smart'
   | 'qbittorrent'
   | 'adguard'
+  | 'network'
 
 export type Snapshot = {
   ts: number
@@ -161,6 +163,10 @@ export function startCollector(logger: FastifyBaseLogger) {
   every(5 * 60_000, () => rollupAndPrune())
   every(10 * 60_000, () => safe('smart', refreshAllSmart))
   every(5 * 60_000, () => safe('adguard', sampleAdguard))
+  // Сеть: быстрое обнаружение раз в 5 мин, ночное сканирование портов в 03:30
+  scanner.startScanner(logger)
+  every(5 * 60_000, () => safe('network', scanner.discover))
+  every(60_000, () => scanner.nightlyIfDue())
 }
 
 export function stopCollector() {
