@@ -1,12 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { SectionStub } from '@/features/section'
+import { Access } from '@/features/access'
 
 export const Route = createFileRoute('/_authenticated/access/')({
-  component: () => (
-    <SectionStub
-      title='SSH и доступ'
-      description='Ключи, сессии, fail2ban, RDP/VNC, WireGuard'
-      stage={5}
-    />
-  ),
+  component: Access,
 })

@@ -235,3 +235,42 @@ export type TelegramData = {
     recent: { ts: number; text: string }[]
   }>
 }
+
+// ---------- Этап 5 ----------
+export type SshKey = {
+  user: string
+  line: number
+  type: string
+  fingerprint: string
+  comment: string | null
+  options: string | null
+  restricted: boolean
+  disabled: boolean
+  lastUsed: { ts: number; ip: string } | null
+}
+export type LoginEvent = { ts: number; ok: boolean; user: string; ip: string; method: string; fp: string | null; text: string }
+export type LoginSession = {
+  id: string
+  user: string
+  remote: boolean
+  from: string | null
+  service: string | null
+  tty: string | null
+  type: string
+  since: number | null
+  killable: boolean
+}
+export type AccessData = {
+  ssh: Part<{ socket: string; service: string; running: boolean; port: number; passwordAuth: string; kbdInteractive: string; pubkeyAuth: string; permitRootLogin: string }>
+  keys: Part<SshKey[]>
+  sessions: Part<LoginSession[]>
+  history: Part<LoginEvent[]>
+  f2b: Part<{ jails: { name: string; currentlyFailed: number; totalFailed: number; currentlyBanned: number; totalBanned: number; banned: string[] }[]; ignoreip: string[] }>
+  ufw: Part<{ num: number; to: string; from: string; comment: string | null; panel: boolean }[]>
+  remote: Part<{ rdp: { service: string; listening: boolean; port: number }; vnc: { listening: boolean; port: number } }>
+  wg: Part<{
+    status: string
+    iface: { publicKey: string; port: number } | null
+    peers: { publicKey: string; name: string | null; endpoint: string | null; allowedIps: string; handshake: number | null; rx: number; tx: number }[]
+  }>
+}
