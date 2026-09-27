@@ -7,7 +7,7 @@ export const CONTROLLABLE: Record<string, { title: string; warning?: string }> =
   'nginx.service': {
     title: 'nginx',
     warning:
-      'Остановка nginx = остановка сайта: вместе с ним перестанут отвечать зеркало jetsetter, api.pulsdev.net (pulsdev-api снаружи и через HTTPS) и File Browser (:8081).',
+      'Остановка nginx = остановка сайта: вместе с ним перестанут отвечать зеркало jetsetter и api.pulsdev.net (pulsdev-api снаружи и через HTTPS).',
   },
   'php8.3-fpm.service': { title: 'PHP-FPM 8.3', warning: 'Зеркало jetsetter перестанет отвечать (502).' },
   'mariadb.service': { title: 'MariaDB', warning: 'Зеркало jetsetter потеряет базу данных.' },

@@ -22,7 +22,11 @@ export function parseEnv(text: string): Record<string, string> {
 
 function loadEnv(): Record<string, string> {
   if (!existsSync(ENV_FILE)) return {}
-  return parseEnv(readFileSync(ENV_FILE, 'utf8'))
+  try {
+    return parseEnv(readFileSync(ENV_FILE, 'utf8'))
+  } catch {
+    return {} // нет прав (скрипты, запущенные не от panel) — работаем со значениями по умолчанию
+  }
 }
 
 const env = { ...loadEnv(), ...process.env } as Record<string, string | undefined>
@@ -46,7 +50,8 @@ export const config = {
   qbt: { url: env.QBT_URL ?? 'http://127.0.0.1:8090', user: env.QBT_USER ?? '', password: env.QBT_PASSWORD ?? '' },
   adguard: { url: env.ADGUARD_URL ?? 'http://127.0.0.1:3000', user: env.ADGUARD_USER ?? '', password: env.ADGUARD_PASSWORD ?? '' },
   jellyfin: { url: env.JELLYFIN_URL ?? 'http://127.0.0.1:8096', apiKey: env.JELLYFIN_API_KEY ?? '' },
-  marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 8080 },
+  // Веб-интерфейс ресивера — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP
+  marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 80 },
   torrentsDir: env.TORRENTS_DIR ?? '/home/torrents-tmp',
   sessionDays: 30,
   loginMaxFailures: 5,

@@ -5,6 +5,7 @@ import * as adguard from '../services/adguard.js'
 import * as docker from '../services/docker.js'
 import * as media from '../services/media.js'
 import * as qbt from '../services/qbittorrent.js'
+import { getSetting, setSetting } from '../settings.js'
 
 // Результат подисточника: данные или причина «нет данных» — страница не падает целиком
 type Part<T> = { data: T; error: null } | { data: null; error: string }
@@ -52,6 +53,18 @@ export async function serviceRoutes(app: FastifyInstance) {
       return reply.code(err.statusCode ?? 500).send({ message: err.message })
     }
   })
+
+  // Номер окружения Portainer для прямых ссылок #!/<id>/docker/containers/<containerId>
+  app.get('/api/settings/portainer', async () => ({ endpointId: getSetting<number | null>('portainer.endpointId', null) }))
+  app.put<{ Body: { endpointId: number } }>(
+    '/api/settings/portainer',
+    { schema: { body: { type: 'object', required: ['endpointId'], properties: { endpointId: { type: 'integer', minimum: 1, maximum: 9999 } } } } },
+    async (req) => {
+      setSetting('portainer.endpointId', req.body.endpointId)
+      audit({ ...who(req), action: 'settings.portainer', details: { endpointId: req.body.endpointId }, result: 'ok' })
+      return { ok: true }
+    }
+  )
 
   // ---------- Медиа ----------
   app.get('/api/media', async () => {

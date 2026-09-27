@@ -3,7 +3,7 @@ import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
 import * as scanner from '../network/scanner.js'
 
-const TYPES = ['router', 'server', 'laptop', 'phone', 'tablet', 'tv', 'receiver', 'ir', 'iot', 'printer', 'unknown']
+const TYPES = ['router', 'server', 'desktop', 'laptop', 'phone', 'tablet', 'tv', 'receiver', 'ir', 'iot', 'printer', 'unknown']
 const MAC_RE = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/
 
 export async function networkRoutes(app: FastifyInstance) {
@@ -31,7 +31,13 @@ export async function networkRoutes(app: FastifyInstance) {
       schema: {
         body: {
           type: 'object',
-          properties: { name: { type: ['string', 'null'], maxLength: 80 }, type: { type: 'string', enum: TYPES }, known: { type: 'boolean' } },
+          properties: {
+            name: { type: ['string', 'null'], maxLength: 80 },
+            type: { type: 'string', enum: TYPES },
+            known: { type: 'boolean' },
+            location: { type: ['string', 'null'], maxLength: 80 },
+            note: { type: ['string', 'null'], maxLength: 500 },
+          },
           additionalProperties: false,
         },
       },
@@ -47,6 +53,15 @@ export async function networkRoutes(app: FastifyInstance) {
         const err = e as Error & { statusCode?: number }
         return reply.code(err.statusCode ?? 500).send({ message: err.message })
       }
+    }
+  )
+
+  app.put<{ Body: { macs: string[] } }>(
+    '/api/network/order',
+    { schema: { body: { type: 'object', required: ['macs'], properties: { macs: { type: 'array', maxItems: 1000, items: { type: 'string', pattern: '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$' } } } } } },
+    async (req) => {
+      scanner.reorderDevices(req.body.macs)
+      return { ok: true }
     }
   )
 

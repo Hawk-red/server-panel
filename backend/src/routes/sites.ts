@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../auth.js'
 import * as sites from '../services/sites.js'
 import * as tg from '../services/telegram.js'
+import { botsOverview } from '../services/bots.js'
 
 type Part<T> = { data: T; error: null } | { data: null; error: string }
 async function part<T>(fn: () => Promise<T>): Promise<Part<T>> {
@@ -35,6 +36,9 @@ export async function siteRoutes(app: FastifyInstance) {
   // Тяжёлые части — отдельными запросами (WP-CLI, find)
   app.get('/api/sites/jetsetter/posts', async () => part(sites.recentPosts))
   app.get('/api/sites/jetsetter/files', async () => part(() => sites.recentFiles(3)))
+
+  // Раздел «Telegram-боты» v2: реестр backend/bots.json
+  app.get('/api/bots', async () => botsOverview())
 
   app.get('/api/telegram', async () => {
     const [units, alert, lead] = await Promise.all([

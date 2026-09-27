@@ -31,6 +31,16 @@ const HOST_NET_PORTS: Record<string, { host: number; proto: string }[]> = {
   ],
 }
 
+// Веб-интерфейс сервиса в контейнере: порт и путь (открывается по адресу, с которого открыта панель)
+export const CONTAINER_WEB: Record<string, { port: number; path?: string }> = {
+  adguardhome: { port: 3000 },
+  qbittorrent: { port: 8090 },
+  jellyfin: { port: 8096, path: '/web/' },
+  minimserver: { port: 9790 },
+  bubbleupnpserver: { port: 58050 },
+  portainer: { port: 9000 },
+}
+
 type RawContainer = {
   Id: string
   Names: string[]
@@ -61,6 +71,7 @@ export type Container = {
   memLimit: number | null
   protected: boolean
   warning?: string
+  web: { port: number; path?: string } | null
 }
 
 export async function dockerVersion() {
@@ -139,6 +150,7 @@ export async function listContainers(withStats = false): Promise<Container[]> {
         memLimit: st?.limit ?? null,
         protected: PROTECTED.has(name),
         warning: CONTAINER_WARNINGS[name],
+        web: CONTAINER_WEB[name] ?? null,
       }
     })
   )

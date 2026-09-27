@@ -5,6 +5,7 @@
 import { readFile } from 'node:fs/promises'
 import type { FastifyBaseLogger } from 'fastify'
 import { db } from '../db.js'
+import { emitEvent } from '../events.js'
 import { run, sudo } from '../exec.js'
 
 export const SUBNET = '192.168.31.0/24'
@@ -22,7 +23,7 @@ const PRESETS: Record<string, { name: string; type: DeviceType }> = {
   '192.168.31.181': { name: 'Samsung 7 Series (ТВ)', type: 'tv' },
 }
 
-export type DeviceType = 'router' | 'server' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'receiver' | 'ir' | 'iot' | 'printer' | 'unknown'
+export type DeviceType = 'router' | 'server' | 'desktop' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'receiver' | 'ir' | 'iot' | 'printer' | 'unknown'
 
 type Found = { ip: string; mac: string; vendor?: string | null }
 
@@ -188,6 +189,13 @@ export async function discover() {
         known: preset ? 1 : 0,
         now,
       })
+      if (!preset && status.lastDiscovery)
+        emitEvent({
+          kind: 'device.new',
+          level: 'warning',
+          text: `В сети новое устройство: ${f.ip} (${vendor ?? (random ? 'случайный MAC' : 'производитель неизвестен')}${hostname ? `, ${hostname}` : ''})`,
+          target: f.mac,
+        })
     } else {
       q.seen.run({ mac: f.mac, ip: f.ip, vendor, hostname, now })
     }
@@ -212,8 +220,12 @@ export async function scanPorts(mac: string) {
   if (status.scanning) throw Object.assign(new Error(`уже идёт сканирование ${status.scanning.ip}`), { statusCode: 409 })
   status.scanning = { mac, ip: dev.ip, started: Date.now() }
   try {
-    // -sT: TCP connect, работает без root; top-1000 портов
-    const xml = await run('/usr/bin/nmap', ['-sT', '-T4', '-n', '--top-ports', '1000', '--open', '-oX', '-', dev.ip], { timeoutMs: 5 * 60_000 })
+    // -sT: TCP connect, работает без root; top-1000 портов.
+    // -Pn: без предварительной проверки «жив ли хост» — телефоны и IoT не отвечают на TCP-пинг 80/443,
+    //      и nmap без -Pn считал их «down» и сразу завершался с пустым списком (кнопка «не срабатывала»).
+    const xml = await run('/usr/bin/nmap', ['-sT', '-Pn', '-T4', '-n', '--top-ports', '1000', '--open', '--host-timeout', '180s', '-oX', '-', dev.ip], {
+      timeoutMs: 4 * 60_000,
+    })
     const ports = [...xml.matchAll(/<port protocol="(\w+)" portid="(\d+)"><state state="open"[^>]*\/>(?:<service name="([^"]*)")?/g)].map((m) => ({
       proto: m[1],
       port: Number(m[2]),
@@ -253,7 +265,10 @@ export async function nightlyIfDue() {
 }
 
 export function listDevices() {
-  const devices = db.prepare('SELECT * FROM devices ORDER BY online DESC, CAST(substr(ip, 12) AS INTEGER)').all() as Record<string, unknown>[]
+  // Порядок, выставленный перетаскиванием (sort_order), иначе — по последнему октету IP
+  const devices = db
+    .prepare('SELECT * FROM devices ORDER BY sort_order IS NULL, sort_order, CAST(substr(ip, 12) AS INTEGER)')
+    .all() as Record<string, unknown>[]
   const ports = db.prepare('SELECT * FROM device_ports ORDER BY port').all() as { mac: string; port: number; proto: string; service: string | null }[]
   return devices.map((d) => ({
     mac: d.mac,
@@ -268,16 +283,27 @@ export function listDevices() {
     firstSeen: d.first_seen,
     lastSeen: d.last_seen,
     portsScannedAt: d.ports_scanned_at,
+    sortOrder: d.sort_order,
+    location: d.location,
+    note: d.note,
     ports: ports.filter((p) => p.mac === d.mac).map((p) => ({ port: p.port, proto: p.proto, service: p.service, web: WEB_PORTS.has(p.port) || /http/.test(p.service ?? '') })),
   }))
 }
 
-export function updateDevice(mac: string, patch: { name?: string | null; type?: DeviceType; known?: boolean }) {
+export function updateDevice(mac: string, patch: { name?: string | null; type?: DeviceType; known?: boolean; location?: string | null; note?: string | null }) {
   const cur = q.get.get(mac)
   if (!cur) throw Object.assign(new Error('устройство не найдено'), { statusCode: 404 })
   if (patch.name !== undefined) db.prepare('UPDATE devices SET name = ? WHERE mac = ?').run(patch.name?.trim() || null, mac)
   if (patch.type !== undefined) db.prepare('UPDATE devices SET type = ? WHERE mac = ?').run(patch.type, mac)
   if (patch.known !== undefined) db.prepare('UPDATE devices SET known = ? WHERE mac = ?').run(patch.known ? 1 : 0, mac)
+  if (patch.location !== undefined) db.prepare('UPDATE devices SET location = ? WHERE mac = ?').run(patch.location?.trim() || null, mac)
+  if (patch.note !== undefined) db.prepare('UPDATE devices SET note = ? WHERE mac = ?').run(patch.note?.trim() || null, mac)
+}
+
+// Порядок карточек (перетаскивание) — на сервере, одинаково на всех устройствах
+export function reorderDevices(macs: string[]) {
+  const q = db.prepare('UPDATE devices SET sort_order = ? WHERE mac = ?')
+  db.transaction(() => macs.forEach((mac, i) => q.run(i, mac)))()
 }
 
 export function deleteDevice(mac: string) {

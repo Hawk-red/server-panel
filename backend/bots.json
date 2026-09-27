@@ -1,0 +1,33 @@
+{
+  "_comment": "Реестр Telegram-ботов для раздела «Telegram-боты». Добавить бота = добавить запись. kind: alert-monitor | lead-api | generic. Секреты здесь не хранятся — только путь к файлу, где лежит токен (для getMe).",
+  "bots": [
+    {
+      "id": "alert-monitor",
+      "title": "Air Alert Monitor",
+      "description": "Читает канал Воздушных сил, фильтрует угрозы для Киева и области и рассылает предупреждения подписчикам.",
+      "kind": "alert-monitor",
+      "unit": "alert_monitor.service",
+      "dir": "/opt/alert_monitor",
+      "entry": "/opt/alert_monitor/main.py",
+      "config": "/opt/alert_monitor/config.json",
+      "log": { "type": "file", "path": "/opt/alert_monitor/alert_monitor.log" },
+      "runtime": { "type": "python", "bin": "/opt/alert_monitor/venv/bin/python3" },
+      "token": { "file": "/opt/alert_monitor/config.json", "json": "bot_token" },
+      "links": [{ "title": "Канал-источник @kpszsu", "url": "https://t.me/kpszsu" }]
+    },
+    {
+      "id": "pulsdev-leads",
+      "title": "Бот заявок pulsdev.net",
+      "description": "Внутри pulsdev-api: POST /lead с сайта → сообщение владельцу в Telegram; приветствует новых пользователей бота.",
+      "kind": "lead-api",
+      "unit": "pulsdev-api.service",
+      "dir": "/home/hawk/pulsdev-api",
+      "entry": "/home/hawk/pulsdev-api/index.js",
+      "config": "/home/hawk/pulsdev-api/.env",
+      "log": { "type": "journal", "unit": "pulsdev-api.service" },
+      "runtime": { "type": "node", "bin": "/usr/bin/node" },
+      "token": { "file": "/home/hawk/pulsdev-api/.env", "env": "TELEGRAM_BOT_TOKEN" },
+      "links": [{ "title": "Сайт pulsdev.net", "url": "https://pulsdev.net" }]
+    }
+  ]
+}
