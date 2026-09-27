@@ -274,3 +274,32 @@ export type AccessData = {
     peers: { publicKey: string; name: string | null; endpoint: string | null; allowedIps: string; handshake: number | null; rx: number; tx: number }[]
   }>
 }
+
+// ---------- Этап 6 ----------
+export type DeviceType = 'router' | 'server' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'receiver' | 'ir' | 'iot' | 'printer' | 'unknown'
+export type Device = {
+  mac: string
+  ip: string
+  vendor: string | null
+  randomMac: boolean
+  hostname: string | null
+  name: string | null
+  type: DeviceType
+  known: boolean
+  online: boolean
+  firstSeen: number
+  lastSeen: number
+  portsScannedAt: number | null
+  ports: { port: number; proto: string; service: string | null; web: boolean }[]
+}
+export type NetworkData = {
+  devices: Device[]
+  summary: { total: number; online: number; unknown: number }
+  status: {
+    lastDiscovery: number | null
+    lastDiscoveryError: string | null
+    arpScan: boolean | null
+    scanning: { mac: string; ip: string; started: number } | null
+    nightly: { lastRun: string | null; running: boolean }
+  }
+}
