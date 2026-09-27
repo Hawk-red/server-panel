@@ -246,7 +246,7 @@ export function Network() {
         </Button>
       }
     >
-      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+      <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'>
         <StatTile title='Устройств' value={data ? data.summary.total : null} sub='за всё время наблюдения' />
         <StatTile title='Сейчас онлайн' value={data ? data.summary.online : null} />
         <StatTile
@@ -255,6 +255,7 @@ export function Network() {
           sub={data?.summary.unknown ? 'подпишите их — кнопка «Подписать»' : 'все устройства известны'}
         />
         <StatTile
+          className='col-span-2 lg:col-span-1'
           title='Сканирование'
           value={st?.lastDiscovery ? formatRelative(st.lastDiscovery) : null}
           sub={

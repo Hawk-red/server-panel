@@ -28,6 +28,27 @@
     cursor: pointer;
   }
 
+  /* Сенсорные экраны (iPhone/iPad): крупные цели нажатия — не меньше 40 px */
+  @media (pointer: coarse) {
+    [data-slot='button'] {
+      min-height: 2.5rem;
+    }
+    [data-slot='button']:has(> svg:only-child) {
+      min-width: 2.5rem;
+    }
+    [data-slot='input'],
+    [data-slot='select-trigger'] {
+      min-height: 2.5rem;
+    }
+  }
+
+  /* Вырез и закруглённые углы iPhone (viewport-fit=cover) */
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
   /* Prevent focus zoom on mobile devices */
   @media screen and (max-width: 767px) {
     input,

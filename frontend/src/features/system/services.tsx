@@ -32,7 +32,7 @@ function ServicesTable({ rows, onAction }: { rows: ServiceRow[]; onAction: (s: S
         <TableHeader>
           <TableRow>
             <TableHead>Служба</TableHead>
-            <TableHead>Статус</TableHead>
+            <TableHead className='hidden sm:table-cell'>Статус</TableHead>
             <TableHead className='hidden md:table-cell'>Работает</TableHead>
             <TableHead className='hidden lg:table-cell' title='Память cgroup, включая файловый кэш'>
               Память
@@ -44,11 +44,12 @@ function ServicesTable({ rows, onAction }: { rows: ServiceRow[]; onAction: (s: S
         <TableBody>
           {rows.map((s) => (
             <TableRow key={s.unit}>
-              <TableCell className='max-w-[18rem]'>
+              <TableCell className='max-w-[10rem] sm:max-w-[18rem]'>
                 <div className='truncate font-medium'>{s.unit.replace(/\.service$/, '')}</div>
                 <div className='truncate text-xs text-muted-foreground'>{s.description}</div>
+                <StatusBadge className='mt-1 sm:hidden' status={s.active === 'inactive' ? 'unknown' : unitStatus(s.active)} label={statusLabel(s)} />
               </TableCell>
-              <TableCell>
+              <TableCell className='hidden sm:table-cell'>
                 <StatusBadge status={s.active === 'inactive' ? 'unknown' : unitStatus(s.active)} label={statusLabel(s)} />
               </TableCell>
               <TableCell className='hidden whitespace-nowrap md:table-cell'>

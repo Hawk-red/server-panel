@@ -60,7 +60,7 @@ export function Docker() {
       }
     >
       {isError && <NoData reason='бэкенд не ответил' />}
-      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+      <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'>
         <StatTile
           title='Docker'
           icon={ContainerIcon}
@@ -103,7 +103,7 @@ export function Docker() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Контейнер</TableHead>
-                    <TableHead>Статус</TableHead>
+                    <TableHead className='hidden sm:table-cell'>Статус</TableHead>
                     <TableHead className='hidden md:table-cell'>Аптайм</TableHead>
                     <TableHead className='hidden lg:table-cell'>Порты</TableHead>
                     <TableHead className='hidden sm:table-cell'>CPU / RAM</TableHead>
@@ -118,11 +118,12 @@ export function Docker() {
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map((c) => (
                       <TableRow key={c.id}>
-                        <TableCell className='max-w-[16rem]'>
+                        <TableCell className='max-w-[10rem] sm:max-w-[16rem]'>
                           <div className='truncate font-medium'>{c.name}</div>
                           <div className='truncate text-xs text-muted-foreground'>{c.image}</div>
+                          <StatusBadge className='mt-1 sm:hidden' status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className='hidden sm:table-cell'>
                           <StatusBadge status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
                         </TableCell>
                         <TableCell className='hidden whitespace-nowrap md:table-cell'>

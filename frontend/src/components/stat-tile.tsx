@@ -28,9 +28,13 @@ export function StatTile({ title, icon: Icon, value, sub, percent, noDataReason,
       </CardHeader>
       <CardContent className='space-y-2'>
         {value == null ? (
-          <NoData reason={noDataReason} className='text-lg' />
+          noDataReason === null ? (
+            <span className='text-lg text-muted-foreground'>сбор данных…</span>
+          ) : (
+            <NoData reason={noDataReason} className='text-lg' />
+          )
         ) : (
-          <div className='text-2xl font-bold tabular-nums'>{value}</div>
+          <div className='text-xl font-bold break-words tabular-nums sm:text-2xl'>{value}</div>
         )}
         {sub && <div className='text-xs text-muted-foreground'>{sub}</div>}
         {percent != null && (
