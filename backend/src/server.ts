@@ -10,6 +10,7 @@ import { db } from './db.js'
 import { isAllowed, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
 import { accessRoutes } from './routes/access.js'
+import { auditRoutes } from './routes/audit.js'
 import { networkRoutes } from './routes/network.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
@@ -51,6 +52,7 @@ await app.register(serviceRoutes)
 await app.register(siteRoutes)
 await app.register(accessRoutes)
 await app.register(networkRoutes)
+await app.register(auditRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',
@@ -65,7 +67,8 @@ const hasStatic = existsSync(path.join(config.staticDir, 'index.html'))
 if (hasStatic) {
   await app.register(fastifyStatic, {
     root: config.staticDir,
-    wildcard: false,
+    // wildcard: файлы ищутся на диске при каждом запросе — пересборка фронта подхватывается без перезапуска
+    wildcard: true,
     setHeaders: (res, filePath) => {
       res.header(
         'Cache-Control',
@@ -78,7 +81,10 @@ if (hasStatic) {
 }
 
 app.setNotFoundHandler((req, reply) => {
-  if (req.url.startsWith('/api/') || req.method !== 'GET' || !hasStatic) {
+  // Отсутствующий файл (/assets/*.js, картинка и т.п.) — честный 404, а не index.html:
+  // иначе браузер получает HTML вместо JS/CSS и показывает пустую страницу
+  const pathOnly = req.url.split('?')[0]
+  if (req.url.startsWith('/api/') || req.method !== 'GET' || !hasStatic || pathOnly.startsWith('/assets/') || /\.[a-z0-9]{2,5}$/i.test(pathOnly)) {
     return reply.code(404).send({ message: 'Не найдено' })
   }
   return reply.header('Cache-Control', 'no-cache').sendFile('index.html')

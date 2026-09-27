@@ -26,6 +26,7 @@ const q = {
   clearFailures: db.prepare(`DELETE FROM login_failures WHERE ip = ?`),
   cleanup: db.prepare(`DELETE FROM sessions WHERE expires_at <= ?`),
   cleanupFailures: db.prepare(`DELETE FROM login_failures WHERE ts <= ?`),
+  cleanupAudit: db.prepare(`DELETE FROM audit_log WHERE ts <= ?`),
 }
 
 declare module 'fastify' {
@@ -54,6 +55,7 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
 export function cleanupAuth() {
   q.cleanup.run(Date.now())
   q.cleanupFailures.run(Date.now() - config.loginWindowMin * 60 * 1000)
+  q.cleanupAudit.run(Date.now() - 365 * DAY) // журнал действий хранится год
 }
 
 export async function authRoutes(app: FastifyInstance) {
