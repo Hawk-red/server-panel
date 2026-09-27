@@ -19,7 +19,8 @@ async function collectProblems() {
   else for (const u of failed) problems.push({ level: 'error', text: `Служба ${u} упала` })
   for (const d of snap?.disks ?? []) {
     if (d.state === 'missing') problems.push({ level: 'error', text: `Диск ${d.mount} из fstab не подключён` })
-    else if (d.percent !== null && d.percent > 85) problems.push({ level: 'warning', text: `Диск ${d.mount} заполнен на ${d.percent}%` })
+    // Шкала этапа 8: > 85% — красная зона (ошибка); 70–85% — только жёлтый цвет, не проблема
+    else if (d.percent !== null && d.percent > 85) problems.push({ level: 'error', text: `Диск ${d.mount} заполнен на ${Math.round(d.percent)}%` })
     if (d.smart?.status === 'failing') problems.push({ level: 'error', text: `SMART: диск ${d.disk} (${d.model ?? '?'}) неисправен` })
     if (d.smart?.temperature != null && d.smart.temperature >= 55)
       problems.push({ level: 'warning', text: `Диск ${d.disk} нагрелся до ${d.smart.temperature} °C` })
