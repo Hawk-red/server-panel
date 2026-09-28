@@ -29,8 +29,17 @@ import urllib.request
 
 API_BASE = os.environ.get("ADMTOOLS_API_BASE", "https://adm.tools/action")
 TOKEN_FILE = os.environ.get("ADMTOOLS_TOKEN_FILE", "/etc/letsencrypt/admtools-api-token")
-PROPAGATION_TIMEOUT = int(os.environ.get("ADMTOOLS_PROPAGATION_TIMEOUT", 90))  # секунд ждать через авторитативные NS (не фатально)
+# adm.tools отдаёт TTL = 900 с (15 мин) на ВСЕ записи зоны одинаково (видно по dig — A, NS, SOA, TXT, MX
+# все с ttl=900) и не настраивается по API: официальная обёртка API (github ukraine-com-ua/API,
+# addDNS()) параметра ttl вообще не принимает. Поэтому если какой-то внешний резолвер уже закэшировал
+# ПРЕДЫДУЩЕЕ значение этой же TXT-записи (например, от предыдущей попытки минуту назад), он может отдавать
+# его ещё до 900 с — независимо от того, что видно на самих авторитативных NS (туда мы ходим напрямую,
+# это не проходит через чей-то кэш). В обычном режиме (продление раз в ~60 дней) это не проблема: за 60 дней
+# любой прежний кэш давно истёк. Проблема — только при повторных быстрых попытках подряд (как при отладке).
+PROPAGATION_TIMEOUT = int(os.environ.get("ADMTOOLS_PROPAGATION_TIMEOUT", 240))  # секунд ждать через авторитативные NS (не фатально)
 POLL_INTERVAL = int(os.environ.get("ADMTOOLS_POLL_INTERVAL", 5))
+STABLE_CONFIRMATIONS = int(os.environ.get("ADMTOOLS_STABLE_CONFIRMATIONS", 3))  # подряд успешных проверок, не одна
+EXTRA_SETTLE = int(os.environ.get("ADMTOOLS_EXTRA_SETTLE", 60))  # доп. запас после того, как NS согласились — на внешние резолверы, которых мы не видим
 DIG = os.environ.get("ADMTOOLS_DIG", "/usr/bin/dig")
 MIN_INTERVAL_BETWEEN_CALLS = 1.0  # у adm.tools лимит — не больше 2 запросов в секунду
 
@@ -129,25 +138,35 @@ def authoritative_ns(domain: str) -> list[str]:
 def wait_for_propagation(fqdn: str, root: str, expected: str):
     ns_list = authoritative_ns(root)
     if not ns_list:
-        print(f"  (не удалось узнать NS для {root} — жду {POLL_INTERVAL} с наугад)", file=sys.stderr)
-        time.sleep(POLL_INTERVAL)
+        print(f"  (не удалось узнать NS для {root} — жду {EXTRA_SETTLE} с наугад)", file=sys.stderr)
+        time.sleep(EXTRA_SETTLE)
         return
     deadline = time.monotonic() + PROPAGATION_TIMEOUT
+    streak = 0
     while time.monotonic() < deadline:
         ok = 0
         for ns in ns_list:
             try:
-                out = subprocess.run([DIG, "+short", "+time=3", "+tries=1", "TXT", fqdn, f"@{ns}"], capture_output=True, text=True, timeout=6)
+                # +tries=2: один повторный запрос при потере пакета — не сбрасывать серию из-за случайного UDP-глюка
+                out = subprocess.run([DIG, "+short", "+time=3", "+tries=2", "TXT", fqdn, f"@{ns}"], capture_output=True, text=True, timeout=8)
                 if expected in out.stdout:
                     ok += 1
             except Exception:
                 pass
         if ok == len(ns_list):
-            print(f"  запись видна на всех {ok} серверах имён домена {root}")
-            return
-        print(f"  запись видна на {ok} из {len(ns_list)} серверов имён — жду ещё {POLL_INTERVAL} с…", file=sys.stderr)
+            streak += 1
+            print(f"  запись видна на всех {ok} серверах имён домена {root} ({streak}/{STABLE_CONFIRMATIONS} подряд)")
+            if streak >= STABLE_CONFIRMATIONS:
+                print(f"  подтверждено стабильно, дополнительно жду {EXTRA_SETTLE} с — запас для внешних резолверов, которых мы отсюда не видим")
+                time.sleep(EXTRA_SETTLE)
+                return
+        else:
+            if streak:
+                print(f"  !! ответ перестал быть согласованным ({ok} из {len(ns_list)}) — серия сброшена", file=sys.stderr)
+            streak = 0
+            print(f"  запись видна на {ok} из {len(ns_list)} серверов имён — жду ещё {POLL_INTERVAL} с…", file=sys.stderr)
         time.sleep(POLL_INTERVAL)
-    print(f"  !! за {PROPAGATION_TIMEOUT} с запись не разошлась по всем NS — продолжаю всё равно, "
+    print(f"  !! за {PROPAGATION_TIMEOUT} с запись не разошлась стабильно по всем NS — продолжаю всё равно, "
           f"Let's Encrypt может не пройти проверку с первого раза", file=sys.stderr)
 
 
