@@ -15,7 +15,7 @@ import { OUTAGE_NOTIFY_SEC } from './services/internet.js'
 import { certificate } from './services/sites.js'
 import { getSetting, setSetting } from './settings.js'
 
-export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline'
+export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload'
 
 export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   unit: { title: 'Служба упала (и снова поднялась)', urgent: 'падение — всегда, даже в тихие часы' },
@@ -27,6 +27,7 @@ export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   internet: { title: 'Интернет пропал дольше 5 минут', urgent: 'сообщение придёт после восстановления связи — пока интернета нет, Telegram недоступен' },
   backup: { title: 'Резервная копия устарела', urgent: '' },
   deadline: { title: 'Срок домена или своей даты близко (за 30, 14, 7, 3 и 1 день)', urgent: '' },
+  upload: { title: 'Гость загрузил файл в обменник (имя, размер, IP)', urgent: '' },
 }
 
 export type NotifySettings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
@@ -35,7 +36,7 @@ const DEFAULTS: NotifySettings = {
   chatId: null,
   enabled: true,
   quiet: { from: '23:00', to: '08:00' },
-  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true },
+  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true },
 }
 
 export const getNotifySettings = (): NotifySettings => {
@@ -160,6 +161,7 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'sync.error' && rule('sync')) void send(`⚠️ ${esc(e.text)}`, false)
   // Обрыв интернета: событие приходит уже после восстановления связи
   else if (e.kind === 'internet.outage' && rule('internet') && ((e.details as { sec?: number } | undefined)?.sec ?? 0) >= OUTAGE_NOTIFY_SEC) void send(`🌐 ${esc(e.text)}`, false)
+  else if (e.kind === 'exchange.upload' && rule('upload')) void send(`📥 ${esc(e.text)}`, false)
   else if (e.kind === 'internet.ip' && rule('internet')) void send(`🌐 ${esc(e.text)}`, false)
 }
 

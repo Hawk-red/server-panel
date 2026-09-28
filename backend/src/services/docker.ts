@@ -183,10 +183,10 @@ export async function containerAction(name: string, action: ContainerAction) {
 }
 
 // Логи контейнера: без TTY поток мультиплексирован (8-байтовые заголовки кадров)
-export async function containerLogs(name: string, tail: number): Promise<{ ts: number | null; stream: 'stdout' | 'stderr'; text: string }[]> {
+export async function containerLogs(name: string, tail: number, sinceSec?: number): Promise<{ ts: number | null; stream: 'stdout' | 'stderr'; text: string }[]> {
   const c = await getContainer(name)
   if (!c) throw Object.assign(new Error('контейнер не найден'), { statusCode: 404 })
-  const res = await http(api(`/containers/${c.id}/logs?stdout=1&stderr=1&timestamps=1&tail=${tail}`), { timeoutMs: 15_000 })
+  const res = await http(api(`/containers/${c.id}/logs?stdout=1&stderr=1&timestamps=1&tail=${sinceSec != null ? 'all' : tail}${sinceSec != null ? `&since=${Math.floor(sinceSec)}` : ''}`), { timeoutMs: 15_000 })
   const buf = Buffer.from(await res.arrayBuffer())
   const chunks: { stream: 'stdout' | 'stderr'; data: string }[] = []
   let multiplexed = buf.length >= 8 && (buf[0] === 1 || buf[0] === 2) && buf[1] === 0 && buf[2] === 0 && buf[3] === 0

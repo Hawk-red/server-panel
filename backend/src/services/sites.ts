@@ -181,11 +181,3 @@ export function certificate(): Promise<{ validTo: number; daysLeft: number; issu
     socket.on('error', reject)
   })
 }
-
-// ---------- File Browser ----------
-export async function filebrowserState() {
-  const enabled = await stat('/etc/nginx/sites-enabled/filebrowser').then(() => true).catch(() => false)
-  const listen = (await run('/usr/bin/ss', ['-tlnH', 'sport = :8081 or sport = :8080'])).trim()
-  const backend = await http('http://127.0.0.1:8080/', { timeoutMs: 2000 }).then(() => true).catch(() => false)
-  return { vhostEnabled: enabled, listening: listen.length > 0, backendUp: backend }
-}

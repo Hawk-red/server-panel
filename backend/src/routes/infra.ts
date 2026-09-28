@@ -7,6 +7,7 @@ import * as adguard from '../services/adguard.js'
 import { backupsOverview } from '../services/backups.js'
 import { getDeadlineConfig, listDeadlines, refreshDomains, saveDeadlineConfig, type DeadlineConfig } from '../services/deadlines.js'
 import * as docker from '../services/docker.js'
+import { exchangeState } from '../services/exchange.js'
 import { internetStatus, refreshExternalIp } from '../services/internet.js'
 import * as qbt from '../services/qbittorrent.js'
 
@@ -29,6 +30,8 @@ export async function infraRoutes(app: FastifyInstance) {
     audit({ ...who(req), action: 'internet.refresh-ip', result: 'ok' })
     return internetStatus().ip
   })
+
+  app.get('/api/exchange', async () => exchangeState())
 
   app.get('/api/backups', async () => ({ items: await backupsOverview() }))
 

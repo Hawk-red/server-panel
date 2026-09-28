@@ -54,3 +54,13 @@ export type QuickState = {
   torrents: Part<{ total: number; stopped: number; running: number; allStopped: boolean }>
   protection: Part<{ enabled: boolean; disabledLeftSec: number | null }>
 }
+
+export type ExchangeState = {
+  installed: boolean
+  container: { state: string; status: string | null } | null
+  health: { ok: boolean; ms: number } | null
+  urls: { external: string; home: string; admin: string }
+  disk: { fs: { total: number; used: number; free: number; percent: number } | null; exchangeBytes: number | null; uploadsBytes: number | null } | null
+  recent: { ts: number; user: string; ip: string; name: string; size: number }[]
+  guest: string
+}

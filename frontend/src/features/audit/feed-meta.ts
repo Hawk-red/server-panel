@@ -43,6 +43,12 @@ export const KIND_LABELS: Record<string, string> = {
   'container.started': 'Контейнер запустился',
   'sync.ok': 'Синк jetsetter: успешно',
   'sync.error': 'Синк jetsetter: с ошибками',
+  'internet.outage': 'Обрыв интернета',
+  'internet.down': 'Интернета нет',
+  'internet.ip': 'Смена внешнего IP',
+  'exchange.upload': 'Загрузка в обменник',
+  'settings.deadlines': 'Настройка сроков',
+  'internet.refresh-ip': 'Обновление внешнего IP',
 }
 export const kindLabel = (k: string) => KIND_LABELS[k] ?? k
 
@@ -59,6 +65,8 @@ export function feedLink(r: FeedRow): { to: string; search?: Record<string, stri
   if (k.startsWith('torrents.')) return { to: '/torrents', label: 'Торренты' }
   if (k.startsWith('adguard.')) return { to: '/adguard', label: 'AdGuard Home' }
   if (k.startsWith('settings.portainer')) return { to: '/docker', label: 'Docker' }
+  if (k.startsWith('internet.')) return { to: '/internet', label: 'Интернет' }
+  if (k.startsWith('exchange.')) return { to: '/sites', label: 'Сайты и API → Обменник' }
   if (k.startsWith('sync.')) return { to: '/sites', label: 'Сайты и API' }
   return null
 }

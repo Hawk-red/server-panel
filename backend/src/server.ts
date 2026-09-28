@@ -19,6 +19,7 @@ import { networkRoutes } from './routes/network.js'
 import { notifyRoutes } from './routes/notify.js'
 import { startNotifier } from './notifier.js'
 import { startDeadlines } from './services/deadlines.js'
+import { startExchange } from './services/exchange.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 
@@ -135,6 +136,7 @@ startCollector(app.log)
 startDetectors(app.log)
 startNotifier(app.log)
 startDeadlines()
+startExchange(app.log)
 {
   const n = scrubAuditSecrets()
   if (n) app.log.warn({ records: n }, 'из журнала действий убраны токены, попавшие туда до маскирования')

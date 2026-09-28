@@ -222,7 +222,6 @@ export type SitesData = {
     healthTls: Part<{ status: number; ms: number }>
     cert: Part<{ validTo: number; daysLeft: number; issuer: string | null; subject: string | null }>
   }
-  filebrowser: Part<{ vhostEnabled: boolean; listening: boolean; backendUp: boolean }>
 }
 
 export type TelegramData = {

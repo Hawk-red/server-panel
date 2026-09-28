@@ -18,7 +18,7 @@ export async function siteRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth)
 
   app.get('/api/sites', async () => {
-    const [units, versions, sync, backup, exposure, pulsVersion, health, healthTls, cert, filebrowser] = await Promise.all([
+    const [units, versions, sync, backup, exposure, pulsVersion, health, healthTls, cert] = await Promise.all([
       part(() => sites.unitsInfo(['nginx.service', 'php8.3-fpm.service', 'mariadb.service', 'mongod.service', 'pulsdev-api.service'])),
       part(sites.stackVersions),
       part(sites.lastSync),
@@ -28,9 +28,8 @@ export async function siteRoutes(app: FastifyInstance) {
       part(sites.pulsdevHealth),
       part(sites.pulsdevHealthTls),
       part(sites.certificate),
-      part(sites.filebrowserState),
     ])
-    return { units, versions, sync, backup, exposure, pulsdev: { version: pulsVersion, health, healthTls, cert }, filebrowser }
+    return { units, versions, sync, backup, exposure, pulsdev: { version: pulsVersion, health, healthTls, cert } }
   })
 
   // Тяжёлые части — отдельными запросами (WP-CLI, find)

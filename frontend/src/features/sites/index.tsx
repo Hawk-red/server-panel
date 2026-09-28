@@ -12,6 +12,7 @@ import { ServiceIcon } from '@/components/service-icon'
 import { StatusBadge, unitStatus } from '@/components/status-badge'
 import { UnitControls } from '@/components/unit-controls'
 import { Button } from '@/components/ui/button'
+import { ExchangeCard } from './exchange-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const CERT_WARN_DAYS = 30
@@ -300,6 +301,10 @@ export function Sites() {
           </CardContent>
         </Card>
 
+      </div>
+
+      <div className='mt-4'>
+        <ExchangeCard />
       </div>
     </Page>
   )

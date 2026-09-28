@@ -1,0 +1,10 @@
+# /etc/fail2ban/jail.d/exchange.local — 6 неудачных входов за 10 минут с одного IP — бан на час
+[exchange]
+enabled  = true
+port     = 443
+filter   = exchange
+logpath  = /var/log/nginx/exchange.access.log
+maxretry = 6
+findtime = 10m
+bantime  = 1h
+ignoreip = 127.0.0.1/8 ::1 192.168.31.0/24 10.10.10.0/24
