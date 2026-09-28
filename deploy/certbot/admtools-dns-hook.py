@@ -5,10 +5,14 @@
 
 Установка: sudo /opt/server-panel/deploy/certbot/dns01-setup.sh (токен, файл токена, установка сюда же).
 Запуск (делает certbot через --manual-auth-hook / --manual-cleanup-hook, см. dns01-switch.sh):
-    admtools-dns-hook.py auth       — добавить TXT-запись _acme-challenge.<домен>, дождаться, пока она
-                                       ответит хотя бы с одного авторитативного NS (или пока не истечёт время)
-    admtools-dns-hook.py cleanup    — удалить эту TXT-запись
-    admtools-dns-hook.py selftest   — только проверить токен (список доменов), ничего не меняет
+    admtools-dns-hook.py auth       — сначала удалить ВСЕ старые TXT-записи _acme-challenge.<домен> (хвосты
+                                       от прошлых/прерванных попыток), затем добавить новую и подождать,
+                                       пока она не ответит со всех авторитативных NS домена
+    admtools-dns-hook.py cleanup    — удалить ВСЕ TXT-записи _acme-challenge.<домен>, не только свою
+Ручные команды (домен указывать как есть, например api.pulsdev.net — «_acme-challenge.» добавится сам):
+    admtools-dns-hook.py list  <домен>   — показать все TXT-записи _acme-challenge.<домен>
+    admtools-dns-hook.py wipe  <домен>   — удалить их все
+    admtools-dns-hook.py selftest        — только проверить токен (список доменов), ничего не меняет
 
 Переменные окружения от certbot: CERTBOT_DOMAIN (проверяемый домен), CERTBOT_VALIDATION (значение записи).
 ADMTOOLS_TOKEN_FILE — путь к файлу токена (по умолчанию /etc/letsencrypt/admtools-api-token).
@@ -147,6 +151,14 @@ def wait_for_propagation(fqdn: str, root: str, expected: str):
           f"Let's Encrypt может не пройти проверку с первого раза", file=sys.stderr)
 
 
+def wipe_records(domain_id: str, rel: str) -> int:
+    """Удаляет ВСЕ TXT-записи с этим относительным именем (не важно, что в data) — хвосты прошлых попыток."""
+    records = find_records(domain_id, "TXT", rel)
+    for r in records:
+        api("/dns/record_delete/", {"subdomain_id": r["id"]})
+    return len(records)
+
+
 def cmd_auth():
     domain = os.environ.get("CERTBOT_DOMAIN")
     validation = os.environ.get("CERTBOT_VALIDATION")
@@ -156,17 +168,18 @@ def cmd_auth():
     root, domain_id = find_domain(domain)
     rel = relative_name(fqdn, root)
     print(f"[auth] {fqdn} → домен в adm.tools: {root}, запись: {rel or '@'}")
-    if find_records(domain_id, "TXT", rel, validation):
-        print("  такая запись уже есть (повтор попытки) — не добавляю повторно")
-    else:
-        api("/dns/record_add", {"domain_id": domain_id, "type": "TXT", "record": rel, "data": validation})
-        print("  запись добавлена")
+    # Сначала сносим все старые записи с этим именем (хвосты от прошлых/прерванных попыток) —
+    # DNS-01 проверяется по ВСЕМ TXT сразу, лишняя старая запись валит проверку, даже если новая верна.
+    removed = wipe_records(domain_id, rel)
+    if removed:
+        print(f"  снесены старые записи с тем же именем: {removed}")
+    api("/dns/record_add", {"domain_id": domain_id, "type": "TXT", "record": rel, "data": validation})
+    print("  запись добавлена")
     wait_for_propagation(fqdn, root, validation)
 
 
 def cmd_cleanup():
     domain = os.environ.get("CERTBOT_DOMAIN")
-    validation = os.environ.get("CERTBOT_VALIDATION")
     if not domain:
         sys.exit("Нет CERTBOT_DOMAIN — запускать этот скрипт должен certbot (--manual-cleanup-hook).")
     fqdn = f"_acme-challenge.{domain}"
@@ -176,13 +189,33 @@ def cmd_cleanup():
         print(f"[cleanup] {e} — убирать нечего", file=sys.stderr)
         return
     rel = relative_name(fqdn, root)
-    records = find_records(domain_id, "TXT", rel, validation)
+    # Удаляем ВСЕ TXT-записи с этим именем, не только ту, что добавили в этом прогоне — чтобы не копились хвосты.
+    removed = wipe_records(domain_id, rel)
+    print(f"[cleanup] {fqdn}: удалено записей: {removed}" if removed else f"[cleanup] {fqdn}: записей уже нет")
+
+
+def cmd_list(domain: str):
+    fqdn = f"_acme-challenge.{domain}"
+    root, domain_id = find_domain(domain)
+    rel = relative_name(fqdn, root)
+    records = find_records(domain_id, "TXT", rel)
     if not records:
-        print(f"[cleanup] {fqdn}: запись уже отсутствует")
+        print(f"{fqdn} (домен {root}): TXT-записей нет")
         return
+    print(f"{fqdn} (домен {root}, запись «{rel or '@'}») — TXT-записей: {len(records)}")
     for r in records:
-        api("/dns/record_delete/", {"subdomain_id": r["id"]})
-    print(f"[cleanup] {fqdn}: удалено записей: {len(records)}")
+        print(f"  id={r.get('id')}  data={r.get('data')}")
+
+
+def cmd_wipe(domain: str):
+    fqdn = f"_acme-challenge.{domain}"
+    root, domain_id = find_domain(domain)
+    rel = relative_name(fqdn, root)
+    records = find_records(domain_id, "TXT", rel)
+    for r in records:
+        print(f"  удаляю id={r.get('id')}  data={r.get('data')}")
+    removed = wipe_records(domain_id, rel)
+    print(f"{fqdn}: удалено записей: {removed}" if removed else f"{fqdn}: записей и не было")
 
 
 def cmd_selftest():
@@ -193,9 +226,16 @@ def cmd_selftest():
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in ("auth", "cleanup", "selftest"):
-        sys.exit(f"Использование: {sys.argv[0]} auth|cleanup|selftest")
+    USAGE = f"Использование: {sys.argv[0]} auth|cleanup|selftest | list <домен> | wipe <домен>"
+    if len(sys.argv) < 2:
+        sys.exit(USAGE)
+    cmd = sys.argv[1]
     try:
-        {"auth": cmd_auth, "cleanup": cmd_cleanup, "selftest": cmd_selftest}[sys.argv[1]]()
+        if cmd in ("auth", "cleanup", "selftest") and len(sys.argv) == 2:
+            {"auth": cmd_auth, "cleanup": cmd_cleanup, "selftest": cmd_selftest}[cmd]()
+        elif cmd in ("list", "wipe") and len(sys.argv) == 3:
+            {"list": cmd_list, "wipe": cmd_wipe}[cmd](sys.argv[2])
+        else:
+            sys.exit(USAGE)
     except ApiError as e:
         sys.exit(f"Ошибка adm.tools: {e}")
