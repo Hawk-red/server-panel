@@ -143,6 +143,32 @@ case "$cmd" in
     arp-scan --localnet --interface=enp3s0f0 --plain --retry=2 --format='${ip}\t${mac}\t${vendor}'
     ;;
 
+  backups-ipad)
+    # Этап 10.3: состояние бэкапов iPad (каталог root-only): снимки, метка последней полной выгрузки, свободное место
+    base=/srv/ipad-backups
+    [[ -d "$base/snapshots" ]] || die "нет каталога $base/snapshots"
+    for d in "$base"/snapshots/*/; do
+      [[ -d "$d" ]] || continue
+      n=$(basename "$d")
+      [[ "$n" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || continue
+      printf 'snap\t%s\t%s\n' "$n" "$(stat -c %Y "$d")"
+    done
+    [[ -f "$base/current/.backup-complete" ]] && printf 'marker\t%s\n' "$(stat -c %Y "$base/current/.backup-complete")"
+    printf 'free\t%s\n' "$(df -B1 --output=avail "$base" | tail -1 | tr -dc 0-9)"
+    ;;
+
+  backups-sizes)
+    # Размеры бэкапов, недоступных panel: iPad (current + снимки; жёсткие ссылки считаются один раз) и разовые копии.
+    # Фиксированный список путей, без аргументов. du по снимкам может идти минуту — панель вызывает редко и с кэшем.
+    if [[ -d /srv/ipad-backups/current && -d /srv/ipad-backups/snapshots ]]; then
+      timeout 150 du -sb -- /srv/ipad-backups/current /srv/ipad-backups/snapshots 2>/dev/null | awk -F'\t' '{print $2 "\t" $1}' || true
+    fi
+    for p in /mnt/backup-ssd/pre-upgrade-2024.04 /mnt/backup-ssd/pre-update-backup /mnt/backup-ssd/wp-pre-update-20260913; do
+      [[ -d "$p" ]] || continue
+      timeout 60 du -sb -- "$p" 2>/dev/null | awk -F'\t' '{print $2 "\t" $1}' || true
+    done
+    ;;
+
   *)
     die "неизвестная команда"
     ;;

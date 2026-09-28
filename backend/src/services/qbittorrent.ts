@@ -105,6 +105,13 @@ export async function summary() {
   }
 }
 
+// Для «Быстрых действий»: все ли торренты на паузе
+export async function pauseState() {
+  const all = await json<Torrent[]>('/torrents/info')
+  const stopped = all.filter((t) => /^(stopped|paused)/.test(t.state)).length
+  return { total: all.length, stopped, running: all.length - stopped, allStopped: all.length > 0 && stopped === all.length }
+}
+
 export async function stopAll() {
   await call('/torrents/stop', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'hashes=all' })
 }

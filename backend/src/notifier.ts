@@ -9,10 +9,13 @@ import { config } from './config.js'
 import { onEvent, type ServerEvent } from './events.js'
 import { errText } from './mask.js'
 import { registryTokens } from './services/bots.js'
+import { backupsOverview } from './services/backups.js'
+import { listDeadlines } from './services/deadlines.js'
+import { OUTAGE_NOTIFY_SEC } from './services/internet.js'
 import { certificate } from './services/sites.js'
 import { getSetting, setSetting } from './settings.js'
 
-export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync'
+export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline'
 
 export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   unit: { title: 'Служба упала (и снова поднялась)', urgent: 'падение — всегда, даже в тихие часы' },
@@ -21,6 +24,9 @@ export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   device: { title: 'Новое неизвестное устройство в сети', urgent: '' },
   cert: { title: 'Сертификат api.pulsdev.net истекает < 14 дней', urgent: '' },
   sync: { title: 'Ночной синк jetsetter с ошибкой', urgent: '' },
+  internet: { title: 'Интернет пропал дольше 5 минут', urgent: 'сообщение придёт после восстановления связи — пока интернета нет, Telegram недоступен' },
+  backup: { title: 'Резервная копия устарела', urgent: '' },
+  deadline: { title: 'Срок домена или своей даты близко (за 30, 14, 7, 3 и 1 день)', urgent: '' },
 }
 
 export type NotifySettings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
@@ -29,7 +35,7 @@ const DEFAULTS: NotifySettings = {
   chatId: null,
   enabled: true,
   quiet: { from: '23:00', to: '08:00' },
-  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true },
+  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true },
 }
 
 export const getNotifySettings = (): NotifySettings => {
@@ -152,6 +158,9 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'unit.recovered' && rule('unit')) void send(`🟢 Служба снова работает: ${esc(e.target ?? '')}`, false)
   else if (e.kind === 'device.new' && rule('device')) void send(`📡 ${esc(e.text)}`, false)
   else if (e.kind === 'sync.error' && rule('sync')) void send(`⚠️ ${esc(e.text)}`, false)
+  // Обрыв интернета: событие приходит уже после восстановления связи
+  else if (e.kind === 'internet.outage' && rule('internet') && ((e.details as { sec?: number } | undefined)?.sec ?? 0) >= OUTAGE_NOTIFY_SEC) void send(`🌐 ${esc(e.text)}`, false)
+  else if (e.kind === 'internet.ip' && rule('internet')) void send(`🌐 ${esc(e.text)}`, false)
 }
 
 // Проверки по снимку коллектора (раз в минуту)
@@ -189,6 +198,44 @@ async function checkCert() {
     }
   }
   if (c.daysLeft > 20) for (const d of [1, 3, 7, 14]) setFlag(`cert:${d}`, false)
+}
+
+const ageText = (sec: number) => (sec < 48 * 3600 ? `${Math.round(sec / 3600)} ч` : `${Math.round(sec / 86400)} дн.`)
+
+// Бэкапы: раз в час; сообщаем один раз, когда копия стала устаревшей, повтор — после того как она снова свежая
+async function checkBackups() {
+  if (!rule('backup')) return
+  const items = await backupsOverview().catch(() => null)
+  if (!items) return
+  for (const b of items.filter((x) => x.type === 'scheduled')) {
+    if (b.status === 'stale' || b.status === 'missing') {
+      if (!setFlag(`backup:${b.id}`, true)) continue
+      void send(
+        b.status === 'missing'
+          ? `🗄 <b>Копий нет:</b> ${esc(b.title)}`
+          : `🗄 <b>Копия устарела:</b> ${esc(b.title)} — последней ${ageText(b.ageSec ?? 0)} назад (порог ${b.maxAgeH} ч)`,
+        false
+      )
+    } else if (b.status === 'ok') setFlag(`backup:${b.id}`, false)
+  }
+}
+
+// Сроки (домены и свои даты; сертификат — отдельное правило выше): за 30, 14, 7, 3 и 1 день
+const DEADLINE_STEPS = [1, 3, 7, 14, 30]
+async function checkDeadlines() {
+  if (!rule('deadline')) return
+  for (const d of await listDeadlines().catch(() => [])) {
+    if (d.kind === 'cert' || d.daysLeft === null) continue
+    const step = DEADLINE_STEPS.find((x) => d.daysLeft! <= x)
+    if (step !== undefined && setFlag(`deadline:${d.id}:${step}`, true))
+      void send(
+        d.daysLeft < 0
+          ? `📅 <b>${esc(d.title)}</b> — срок истёк ${-d.daysLeft} дн. назад`
+          : `📅 <b>${esc(d.title)}</b> — осталось ${d.daysLeft} дн. (до ${new Date(d.expires!).toLocaleDateString('ru-RU')})`,
+        false
+      )
+    if (d.daysLeft > 35) for (const x of DEADLINE_STEPS) setFlag(`deadline:${d.id}:${x}`, false)
+  }
 }
 
 export async function sendTest() {
@@ -252,6 +299,11 @@ export function startNotifier(logger: FastifyBaseLogger) {
     }
     void flushQueue().catch(() => {})
   }, 60_000)
-  setInterval(() => void checkCert(), 3_600_000)
-  setTimeout(() => void checkCert(), 60_000)
+  const hourly = () => {
+    void checkCert()
+    void checkBackups().catch(() => {})
+    void checkDeadlines().catch(() => {})
+  }
+  setInterval(hourly, 3_600_000)
+  setTimeout(hourly, 90_000)
 }

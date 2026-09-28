@@ -14,9 +14,11 @@ import { isAllowed, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
 import { accessRoutes } from './routes/access.js'
 import { auditRoutes } from './routes/audit.js'
+import { infraRoutes } from './routes/infra.js'
 import { networkRoutes } from './routes/network.js'
 import { notifyRoutes } from './routes/notify.js'
 import { startNotifier } from './notifier.js'
+import { startDeadlines } from './services/deadlines.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 
@@ -73,6 +75,7 @@ await app.register(accessRoutes)
 await app.register(networkRoutes)
 await app.register(auditRoutes)
 await app.register(notifyRoutes)
+await app.register(infraRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',
@@ -131,6 +134,7 @@ await app.listen({ host: config.host, port: config.port })
 startCollector(app.log)
 startDetectors(app.log)
 startNotifier(app.log)
+startDeadlines()
 {
   const n = scrubAuditSecrets()
   if (n) app.log.warn({ records: n }, 'из журнала действий убраны токены, попавшие туда до маскирования')

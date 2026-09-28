@@ -9,11 +9,14 @@ import { listCron } from '../system/cron.js'
 import { listDisks, refreshAllSmart } from '../system/disks.js'
 import { listSources, readLog, type LogLevel } from '../system/logs.js'
 import { run } from '../exec.js'
+import { staleBackups, backupsOverview } from '../services/backups.js'
+import { listDeadlines } from '../services/deadlines.js'
+import { fmtDur, internetStatus, lastPing } from '../services/internet.js'
 import { ACTIONS, CONTROLLABLE, controlUnit, failedUnits, listAutostart, listServices, type UnitAction } from '../system/units.js'
 
 // Сводка проблем для главной: только то, что реально требует внимания.
 // kind + ref позволяют открыть по проблеме диагностику (лог, статус, переход в раздел).
-type Problem = { level: 'error' | 'warning'; text: string; kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source'; ref: string; link: string }
+type Problem = { level: 'error' | 'warning'; text: string; kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source' | 'internet' | 'backup' | 'deadline'; ref: string; link: string }
 
 async function collectProblems(): Promise<Problem[]> {
   const snap = getSnapshot()
@@ -36,6 +39,27 @@ async function collectProblems(): Promise<Problem[]> {
   const net = networkSummary()
   if (net.unknown > 0)
     problems.push({ level: 'warning', text: `В сети ${net.unknown} неизвестн. устройств(а) — подпишите их в «Сеть и устройства»`, kind: 'devices', ref: 'unknown', link: '/network' })
+  const inet = internetStatus()
+  if (inet.downSince && Date.now() - inet.downSince > 120_000)
+    problems.push({ level: 'error', text: `Нет интернета уже ${fmtDur(Math.round((Date.now() - inet.downSince) / 1000))}`, kind: 'internet', ref: 'internet', link: '/internet' })
+  for (const b of await staleBackups().catch(() => []))
+    problems.push({
+      level: 'warning',
+      text: b.status === 'missing' ? `Нет копий: ${b.title}` : `Копия устарела: ${b.title} (последней ${Math.round((b.ageSec ?? 0) / 3600)} ч назад, порог ${b.maxAgeH} ч)`,
+      kind: 'backup',
+      ref: b.id,
+      link: '/backups',
+    })
+  for (const d of await listDeadlines().catch(() => [])) {
+    if (d.daysLeft === null || d.daysLeft > 14) continue
+    problems.push({
+      level: d.daysLeft <= 3 ? 'error' : 'warning',
+      text: d.daysLeft < 0 ? `${d.title}: срок истёк ${-d.daysLeft} дн. назад` : `${d.title}: осталось ${d.daysLeft} дн.`,
+      kind: 'deadline',
+      ref: d.id,
+      link: '/',
+    })
+  }
   for (const [src, e] of Object.entries(snap?.errors ?? {})) {
     problems.push({ level: 'warning', text: `Нет данных от источника «${src}»: ${e!.message}`, kind: 'source', ref: src, link: SOURCE_LINK[src] ?? '/system' })
   }
@@ -86,6 +110,30 @@ async function diagnose(kind: string, ref: string) {
   } else if (kind === 'devices') {
     const devs = listDevices().filter((d) => !d.known)
     status = devs.map((d) => `${d.ip}  ${d.mac}  ${d.vendor ?? (d.randomMac ? 'случайный MAC' : '?')}  ${d.hostname ?? ''}`).join('\n')
+  } else if (kind === 'internet') {
+    const i = internetStatus()
+    const p = lastPing()
+    const t = (x: number) => new Date(x).toLocaleString('ru-RU')
+    status = [
+      p ? `Последний замер ${t(p.ts)}: ${i.targets.main} — ${p.main === null ? 'нет ответа' : `${p.main} мс`}; ${i.targets.second} — ${p.second === null ? 'нет ответа' : `${p.second} мс`}` : 'замеров ещё не было',
+      i.downSince ? `Интернета нет с ${t(i.downSince)}` : 'Сейчас связь есть',
+      `Внешний IP: ${i.ip?.ip ?? 'неизвестен'}`,
+      '',
+      'Последние обрывы:',
+      ...(i.outages.slice(0, 5).map((o) => `  ${t(o.from)} — ${t(o.to)} (${fmtDur(o.sec)})`) || []),
+    ].join('\n')
+  } else if (kind === 'backup') {
+    const b = (await backupsOverview()).find((x) => x.id === ref)
+    status = b
+      ? [`${b.title} (${b.path})`, `Состояние: ${b.status}${b.note ? ` — ${b.note}` : ''}`, `Последняя: ${b.latest ? `${b.latest.name}, ${new Date(b.latest.mtime).toLocaleString('ru-RU')}` : 'нет'}`, `Порог возраста: ${b.maxAgeH ?? '—'} ч`, `Копий: ${b.count ?? '?'}`].join('\n')
+      : `Копия ${ref}: нет данных`
+    if (ref === 'sync-jetsetter') {
+      logSource = 'file:/var/log/sync-jetsetter.log'
+      lines = await tail(logSource, 100)
+    }
+  } else if (kind === 'deadline') {
+    const d = (await listDeadlines()).find((x) => x.id === ref)
+    status = d ? [d.title, `Срок: ${d.expires ? new Date(d.expires).toLocaleDateString('ru-RU') : 'неизвестен'}`, `Осталось дней: ${d.daysLeft ?? '?'}`, d.note ?? '', d.error ?? ''].filter(Boolean).join('\n') : `Срок ${ref}: нет данных`
   } else {
     const e = getSnapshot()?.errors[ref as keyof NonNullable<ReturnType<typeof getSnapshot>>['errors']]
     status = e ? `Источник «${ref}» недоступен с ${new Date(e.since).toLocaleString('ru-RU')}: ${e.message}` : `Источник «${ref}»: ошибок сейчас нет`
@@ -110,7 +158,7 @@ export async function systemRoutes(app: FastifyInstance) {
 
   app.get<{ Querystring: { kind?: string; ref?: string } }>('/api/diagnostics', async (req, reply) => {
     const { kind, ref } = req.query
-    if (!kind || !ref || !['unit', 'disk', 'smart', 'temp', 'devices', 'source'].includes(kind)) return reply.code(400).send({ message: 'нужны kind и ref' })
+    if (!kind || !ref || !['unit', 'disk', 'smart', 'temp', 'devices', 'source', 'internet', 'backup', 'deadline'].includes(kind)) return reply.code(400).send({ message: 'нужны kind и ref' })
     try {
       return await diagnose(kind, ref)
     } catch (e) {

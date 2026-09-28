@@ -41,7 +41,7 @@ export type Snapshot = {
 export type Problem = {
   level: 'error' | 'warning'
   text: string
-  kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source'
+  kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source' | 'internet' | 'backup' | 'deadline'
   ref: string
   link: string
 }

@@ -21,8 +21,10 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedAccessIndexRouteImport } from './routes/_authenticated/access/index'
 import { Route as AuthenticatedAdguardIndexRouteImport } from './routes/_authenticated/adguard/index'
 import { Route as AuthenticatedAuditIndexRouteImport } from './routes/_authenticated/audit/index'
+import { Route as AuthenticatedBackupsIndexRouteImport } from './routes/_authenticated/backups/index'
 import { Route as AuthenticatedDockerIndexRouteImport } from './routes/_authenticated/docker/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedInternetIndexRouteImport } from './routes/_authenticated/internet/index'
 import { Route as AuthenticatedMediaIndexRouteImport } from './routes/_authenticated/media/index'
 import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authenticated/network/index'
 import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_authenticated/notifications/index'
@@ -92,6 +94,12 @@ const AuthenticatedAuditIndexRoute = AuthenticatedAuditIndexRouteImport.update({
   path: '/audit/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedBackupsIndexRoute =
+  AuthenticatedBackupsIndexRouteImport.update({
+    id: '/backups/',
+    path: '/backups/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDockerIndexRoute =
   AuthenticatedDockerIndexRouteImport.update({
     id: '/docker/',
@@ -102,6 +110,12 @@ const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
     id: '/errors/$error',
     path: '/errors/$error',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedInternetIndexRoute =
+  AuthenticatedInternetIndexRouteImport.update({
+    id: '/internet/',
+    path: '/internet/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedMediaIndexRoute = AuthenticatedMediaIndexRouteImport.update({
@@ -158,7 +172,9 @@ export interface FileRoutesByFullPath {
   '/access/': typeof AuthenticatedAccessIndexRoute
   '/adguard/': typeof AuthenticatedAdguardIndexRoute
   '/audit/': typeof AuthenticatedAuditIndexRoute
+  '/backups/': typeof AuthenticatedBackupsIndexRoute
   '/docker/': typeof AuthenticatedDockerIndexRoute
+  '/internet/': typeof AuthenticatedInternetIndexRoute
   '/media/': typeof AuthenticatedMediaIndexRoute
   '/network/': typeof AuthenticatedNetworkIndexRoute
   '/notifications/': typeof AuthenticatedNotificationsIndexRoute
@@ -180,7 +196,9 @@ export interface FileRoutesByTo {
   '/access': typeof AuthenticatedAccessIndexRoute
   '/adguard': typeof AuthenticatedAdguardIndexRoute
   '/audit': typeof AuthenticatedAuditIndexRoute
+  '/backups': typeof AuthenticatedBackupsIndexRoute
   '/docker': typeof AuthenticatedDockerIndexRoute
+  '/internet': typeof AuthenticatedInternetIndexRoute
   '/media': typeof AuthenticatedMediaIndexRoute
   '/network': typeof AuthenticatedNetworkIndexRoute
   '/notifications': typeof AuthenticatedNotificationsIndexRoute
@@ -204,7 +222,9 @@ export interface FileRoutesById {
   '/_authenticated/access/': typeof AuthenticatedAccessIndexRoute
   '/_authenticated/adguard/': typeof AuthenticatedAdguardIndexRoute
   '/_authenticated/audit/': typeof AuthenticatedAuditIndexRoute
+  '/_authenticated/backups/': typeof AuthenticatedBackupsIndexRoute
   '/_authenticated/docker/': typeof AuthenticatedDockerIndexRoute
+  '/_authenticated/internet/': typeof AuthenticatedInternetIndexRoute
   '/_authenticated/media/': typeof AuthenticatedMediaIndexRoute
   '/_authenticated/network/': typeof AuthenticatedNetworkIndexRoute
   '/_authenticated/notifications/': typeof AuthenticatedNotificationsIndexRoute
@@ -228,7 +248,9 @@ export interface FileRouteTypes {
     | '/access/'
     | '/adguard/'
     | '/audit/'
+    | '/backups/'
     | '/docker/'
+    | '/internet/'
     | '/media/'
     | '/network/'
     | '/notifications/'
@@ -250,7 +272,9 @@ export interface FileRouteTypes {
     | '/access'
     | '/adguard'
     | '/audit'
+    | '/backups'
     | '/docker'
+    | '/internet'
     | '/media'
     | '/network'
     | '/notifications'
@@ -273,7 +297,9 @@ export interface FileRouteTypes {
     | '/_authenticated/access/'
     | '/_authenticated/adguard/'
     | '/_authenticated/audit/'
+    | '/_authenticated/backups/'
     | '/_authenticated/docker/'
+    | '/_authenticated/internet/'
     | '/_authenticated/media/'
     | '/_authenticated/network/'
     | '/_authenticated/notifications/'
@@ -380,6 +406,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuditIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/backups/': {
+      id: '/_authenticated/backups/'
+      path: '/backups'
+      fullPath: '/backups/'
+      preLoaderRoute: typeof AuthenticatedBackupsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/docker/': {
       id: '/_authenticated/docker/'
       path: '/docker'
@@ -392,6 +425,13 @@ declare module '@tanstack/react-router' {
       path: '/errors/$error'
       fullPath: '/errors/$error'
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/internet/': {
+      id: '/_authenticated/internet/'
+      path: '/internet'
+      fullPath: '/internet/'
+      preLoaderRoute: typeof AuthenticatedInternetIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/media/': {
@@ -452,7 +492,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccessIndexRoute: typeof AuthenticatedAccessIndexRoute
   AuthenticatedAdguardIndexRoute: typeof AuthenticatedAdguardIndexRoute
   AuthenticatedAuditIndexRoute: typeof AuthenticatedAuditIndexRoute
+  AuthenticatedBackupsIndexRoute: typeof AuthenticatedBackupsIndexRoute
   AuthenticatedDockerIndexRoute: typeof AuthenticatedDockerIndexRoute
+  AuthenticatedInternetIndexRoute: typeof AuthenticatedInternetIndexRoute
   AuthenticatedMediaIndexRoute: typeof AuthenticatedMediaIndexRoute
   AuthenticatedNetworkIndexRoute: typeof AuthenticatedNetworkIndexRoute
   AuthenticatedNotificationsIndexRoute: typeof AuthenticatedNotificationsIndexRoute
@@ -468,7 +510,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccessIndexRoute: AuthenticatedAccessIndexRoute,
   AuthenticatedAdguardIndexRoute: AuthenticatedAdguardIndexRoute,
   AuthenticatedAuditIndexRoute: AuthenticatedAuditIndexRoute,
+  AuthenticatedBackupsIndexRoute: AuthenticatedBackupsIndexRoute,
   AuthenticatedDockerIndexRoute: AuthenticatedDockerIndexRoute,
+  AuthenticatedInternetIndexRoute: AuthenticatedInternetIndexRoute,
   AuthenticatedMediaIndexRoute: AuthenticatedMediaIndexRoute,
   AuthenticatedNetworkIndexRoute: AuthenticatedNetworkIndexRoute,
   AuthenticatedNotificationsIndexRoute: AuthenticatedNotificationsIndexRoute,

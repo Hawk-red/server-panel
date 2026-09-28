@@ -6,6 +6,7 @@ import * as src from './sources.js'
 import * as adguard from '../services/adguard.js'
 import * as qbt from '../services/qbittorrent.js'
 import * as scanner from '../network/scanner.js'
+import { checkInternet, refreshExternalIp } from '../services/internet.js'
 import { rollupAndPrune, writeHourly, writeSample } from './store.js'
 
 export const SAMPLE_INTERVAL = 30_000
@@ -147,6 +148,12 @@ async function sampleAdguard() {
   writeHourly('adguard.blocked', s.series.blocked.map((v, i) => [at(i), v] as [number, number]))
 }
 
+// Интернет: пинг раз в 30 с; ошибка замера не должна мешать остальному
+async function sampleInternet() {
+  const values = await checkInternet()
+  writeSample(Date.now(), values)
+}
+
 function every(ms: number, fn: () => unknown) {
   const run = () => {
     Promise.resolve()
@@ -163,6 +170,8 @@ export function startCollector(logger: FastifyBaseLogger) {
   every(5 * 60_000, () => rollupAndPrune())
   every(10 * 60_000, () => safe('smart', refreshAllSmart))
   every(5 * 60_000, () => safe('adguard', sampleAdguard))
+  every(SAMPLE_INTERVAL, sampleInternet)
+  every(10 * 60_000, () => refreshExternalIp())
   // Сеть: быстрое обнаружение раз в 5 мин, ночное сканирование портов в 03:30
   scanner.startScanner(logger)
   every(5 * 60_000, () => safe('network', scanner.discover))

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Activity, CircleAlert, Clock, Cpu, HardDrive, MemoryStick, Network, Thermometer, TriangleAlert, Tv } from 'lucide-react'
+import { Activity, CircleAlert, CircleCheck, Clock, Cpu, HardDrive, MemoryStick, Network, Thermometer, TriangleAlert, Tv } from 'lucide-react'
 import { api } from '@/lib/api'
+import type { BackupItem, InternetStatus } from '@/features/infra-types'
 import { meQuery } from '@/lib/auth'
 import type { Overview as OverviewData, Problem } from '@/lib/types'
 import { Page } from '@/components/layout/page'
@@ -13,7 +14,9 @@ import { Value } from '@/components/value'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { DeadlinesCard } from './deadlines-card'
 import { ProblemSheet } from './problem-sheet'
+import { QuickActions } from './quick-actions'
 
 type Health = { status: 'ok'; version: string; uptimeSec: number; node: string; memoryMb: number }
 
@@ -49,6 +52,9 @@ export function Overview() {
     refetchInterval: 15_000,
   })
   const { data: me } = useQuery(meQuery)
+  const internet = useQuery({ queryKey: ['internet'], queryFn: async () => (await api.get<InternetStatus>('/internet')).data, refetchInterval: 15_000 })
+  const backups = useQuery({ queryKey: ['backups'], queryFn: async () => (await api.get<{ items: BackupItem[] }>('/backups')).data.items, refetchInterval: 60_000 })
+  const staleBackups = backups.data?.filter((b) => b.type === 'scheduled' && (b.status === 'stale' || b.status === 'missing')) ?? []
 
   const o = overview.data
   const s = o?.snapshot
@@ -217,6 +223,38 @@ export function Overview() {
             <SummaryRow label='Активные торренты' to='/torrents'>
               {o?.torrents ? <Value kind='count' value={o.torrents.active} /> : <NoData />}
             </SummaryRow>
+            <SummaryRow label='Интернет' to='/internet'>
+              {internet.data ? (
+                internet.data.downSince ? (
+                  <span className='inline-flex items-center gap-1 text-danger-foreground'>
+                    <CircleAlert className='size-3.5' /> нет связи
+                  </span>
+                ) : internet.data.now?.main != null ? (
+                  <>
+                    есть · <Value kind='number' value={`${internet.data.now.main < 10 ? internet.data.now.main.toFixed(1) : Math.round(internet.data.now.main)} мс`} />
+                  </>
+                ) : (
+                  'есть'
+                )
+              ) : (
+                <NoData />
+              )}
+            </SummaryRow>
+            <SummaryRow label='Бэкапы' to='/backups'>
+              {backups.data ? (
+                staleBackups.length > 0 ? (
+                  <span className='inline-flex items-center gap-1 text-danger-foreground'>
+                    <CircleAlert className='size-3.5' /> устарели: {staleBackups.length}
+                  </span>
+                ) : (
+                  <span className='inline-flex items-center gap-1 text-ok-foreground'>
+                    <CircleCheck className='size-3.5' /> свежие
+                  </span>
+                )
+              ) : (
+                <NoData />
+              )}
+            </SummaryRow>
             <SummaryRow label='Бэкенд панели'>
               {health.isError ? (
                 <StatusBadge status='error' />
@@ -237,6 +275,11 @@ export function Overview() {
             </SummaryRow>
           </CardContent>
         </Card>
+      </div>
+
+      <div className='mt-4 grid gap-4 lg:grid-cols-2'>
+        <QuickActions />
+        <DeadlinesCard />
       </div>
 
       <Card className='mt-4 gap-2'>
@@ -264,7 +307,7 @@ export function Overview() {
                     ) : (
                       <TriangleAlert className='mt-0.5 size-4 shrink-0 text-warn-foreground' aria-label='предупреждение' />
                     )}
-                    <span className='flex-1'>{p.text}</span>
+                    <span className='min-w-0 flex-1 break-words'>{p.text}</span>
                     <span className='shrink-0 text-xs text-muted-foreground'>подробнее →</span>
                   </button>
                 </li>
