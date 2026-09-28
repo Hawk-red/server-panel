@@ -114,7 +114,7 @@ export function ExchangeCard() {
                     <li key={i} className='flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-1.5'>
                       <span className='min-w-0'>
                         <span className='font-medium break-all'>{u.name}</span>
-                        <span className='ms-2 text-xs text-muted-foreground'>{u.user === data.guest ? 'гость' : `пользователь ${u.user}`}</span>
+                        <span className='ms-2 text-xs text-muted-foreground'>{u.user === data.owner ? 'владелец' : u.user === 'uploads' ? 'гость' : `гость ${u.user}`}</span>
                       </span>
                       <span className='shrink-0 text-xs text-muted-foreground'>
                         <Value kind='bytes' value={u.size} /> · <span className='font-mono text-address'>{u.ip || '?'}</span> · {formatDateTime(u.ts)}
@@ -125,7 +125,7 @@ export function ExchangeCard() {
               )}
             </div>
             <p className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-              <Settings2 className='size-3.5 shrink-0' /> О загрузках гостя приходит уведомление в Telegram (имя, размер, IP). Правило «обменник» включается на странице «Уведомления».
+              <Settings2 className='size-3.5 shrink-0' /> О загрузках гостей приходит уведомление в Telegram (имя, размер, IP). Правило «обменник» включается на странице «Уведомления».
             </p>
           </>
         )}

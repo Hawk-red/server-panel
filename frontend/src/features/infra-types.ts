@@ -62,5 +62,5 @@ export type ExchangeState = {
   urls: { external: string; home: string; admin: string }
   disk: { fs: { total: number; used: number; free: number; percent: number } | null; exchangeBytes: number | null; uploadsBytes: number | null } | null
   recent: { ts: number; user: string; ip: string; name: string; size: number }[]
-  guest: string
+  owner: string
 }

@@ -121,6 +121,24 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
 - **Сайты и API → Обменник** — состояние SFTPGo, ссылки, место, последние загрузки; установка — `deploy/exchange/install.sh`.
 - **Обзор** — карточки «Быстрые действия» (перезапуск qBittorrent, пауза торрентов, AdGuard off на 10 мин, всё с подтверждением) и «Сроки» (сертификат, домены через RDAP, свои даты).
 
+## Обменник файлов (SFTPGo)
+
+Файлы для людей вне сети. Гости открывают `https://api.pulsdev.net:9443/files/`, из дома — `https://api.pulsdev.net/files/`. Пользователи, папки и права — в **админке** `https://api.pulsdev.net:8443/files/web/admin/`: она открывается только из домашней сети и VPN. Установка — `sudo deploy/exchange/install.sh`, обновление образа — `sudo deploy/exchange/update.sh` (пересобирает и русский перевод веб-клиента). Порты и включённые протоколы задаются в `/opt/sftpgo/compose.yaml`, в веб-интерфейсе их нет.
+
+**Готовые пользователи** (создаёт `~/Scripts/exchange-users.py`): `admin` — весь обменник, квота 25 ГБ (в неё входят и гостевые папки); `uploads` — гость: только список, загрузка и создание папок, квота 20 ГБ. Файл — не больше 10 ГБ. Раз в час SFTPGo пересчитывает занятое место, поэтому квота `admin` учитывает загрузки гостей с задержкой до часа.
+
+**Как добавить нового гостя со своей папкой** (админка, английский интерфейс с русскими подписями «Имя пользователя», «Пароль»):
+
+1. **Users** → у строки `uploads` меню **Действия** → **Use as a template**: форма откроется уже с нужными правами и лимитами. (Можно и **Добавить** с нуля — тогда пройдите пункты 3–6.)
+2. Введите **Имя пользователя** (например `ivan`) и **Пароль** — не короче 12 символов.
+3. **File system → Root directory**: `/data/exchange/ivan`. Папка создастся сама; `admin` увидит её рядом с `uploads`.
+4. **ACLs → Permissions**: оставьте только `list`, `upload`, `create_dirs` (звёздочку `*` и остальное снимите). Скачивание не включайте: под одним логином бывает несколько людей.
+5. **ACLs → Denied protocols**: отметьте `SSH`, `FTP`, `DAV` (`HTTP` не отмечайте, иначе вход в веб-клиент закроется). **Web client/REST API**: отметьте `shares-disabled`, `password-change-disabled`, `api-key-auth-change-disabled`, `publickey-change-disabled`, `tls-cert-change-disabled`, `mfa-disabled`, `info-change-disabled`, `password-reset-disabled`.
+6. **Disk quota and bandwidth limits**: **Quota size** — например `10GB`, **Max upload size** — `5GB` (суффиксы MB/GB/TB работают).
+7. **Сохранить**, затем проверьте вход на `https://api.pulsdev.net:9443/files/`. Пароль передайте человеку лично.
+
+Панель присылает в Telegram сообщение о загрузке любого гостя (все пользователи, кроме `admin`): имя файла, размер и IP. Отключить гостя — Users → **Изменить** → **Профиль** → Status: Inactive. Забаненные за подбор пароля адреса видны в админке (IP Manager → IP Lists) и в `fail2ban-client status exchange`.
+
 ## Если что-то не так
 
 | Симптом | Что проверить |

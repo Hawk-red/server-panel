@@ -18,6 +18,9 @@ services:
     volumes:
       - /opt/sftpgo/data:/var/lib/sftpgo   # база пользователей и настроек (SQLite), ключи
       - /srv/exchange:/data/exchange       # файлы обменника
+      # Русский перевод веб-клиента: английский файл образа + наши строки (собирает build-locale.py). Один файл поверх образа —
+      # обновление контейнера это не ломает, новые строки остаются английскими
+      - /opt/sftpgo/locales/en/translation.json:/usr/share/sftpgo/static/locales/en/translation.json:ro
     environment:
       TZ: Europe/Kyiv
       SFTPGO_LOG_LEVEL: info                 # на этом уровне в логе есть события «Upload» с именем, размером и IP

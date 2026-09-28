@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Файловые пользователи обменника (SFTPGo): admin (всё) и uploads (гость: только загрузка и создание папок).
+"""Файловые пользователи обменника (SFTPGo): admin (всё, квота 25 ГБ на весь обменник) и uploads (гость: только
+загрузка и создание папок, квота 20 ГБ, файл до 10 ГБ). Заодно создаёт правило «раз в час пересчитывать квоты»:
+гостевые файлы лежат внутри домашней папки admin, и без пересчёта его счётчик о них не знает.
 
 Запуск от hawk:  ~/Scripts/exchange-users.py
 Пароли вводятся скрытно и не попадают ни в аргументы команд, ни в файлы. Скрипт можно запускать повторно:
@@ -17,6 +19,9 @@ import urllib.request
 API = os.environ.get("EXCHANGE_API", "http://127.0.0.1:8082")
 GIB = 1024**3
 MIN_LEN = 12
+OWNER_QUOTA = 25 * GIB  # весь обменник на SSD, включая гостевые папки
+GUEST_QUOTA = 20 * GIB
+MAX_FILE = 10 * GIB
 
 
 def call(method, path, token=None, body=None, basic=None):
@@ -64,16 +69,39 @@ USERS = {
         "description": "Владелец обменника: полный доступ ко всему хранилищу",
         "home_dir": "/data/exchange",
         "permissions": {"/": ["*"]},
-        "filters": {"denied_protocols": ["SSH", "FTP", "DAV"], "web_client": ["publickey-change-disabled", "tls-cert-change-disabled", "api-key-auth-change-disabled"]},
+        "quota_size": OWNER_QUOTA,
+        "filters": {"denied_protocols": ["SSH", "FTP", "DAV"], "max_upload_file_size": MAX_FILE, "web_client": ["publickey-change-disabled", "tls-cert-change-disabled", "api-key-auth-change-disabled"]},
     },
     "uploads": {
         "description": "Гость: видит только папку uploads, может загружать и создавать папки; скачивать, удалять, переименовывать и делиться нельзя",
         "home_dir": "/data/exchange/uploads",
         "permissions": {"/": ["list", "upload", "create_dirs"]},
-        "quota_size": 20 * GIB,
-        "filters": {"denied_protocols": ["SSH", "FTP", "DAV"], "max_upload_file_size": 10 * GIB, "web_client": WEB_LOCK + ["shares-disabled"]},
+        "quota_size": GUEST_QUOTA,
+        "filters": {"denied_protocols": ["SSH", "FTP", "DAV"], "max_upload_file_size": MAX_FILE, "web_client": WEB_LOCK + ["shares-disabled"]},
     },
 }
+
+
+def ensure_quota_rescan(token):
+    """Раз в час пересчитывает занятое место у всех пользователей (событие по расписанию, действие «сброс квоты»)."""
+    st, _ = call("GET", "/api/v2/eventactions/rescan-quota", token=token)
+    if st == 404:
+        st, res = call("POST", "/api/v2/eventactions", token=token, body={"name": "rescan-quota", "type": 5, "options": {}})
+        if st not in (200, 201):
+            sys.exit(f"Действие пересчёта квоты не создано: {st} {res}")
+    st, _ = call("GET", "/api/v2/eventrules/quota-rescan-hourly", token=token)
+    if st == 404:
+        rule = {
+            "name": "quota-rescan-hourly",
+            "status": 1,
+            "trigger": 3,
+            "conditions": {"schedules": [{"hour": "*", "day_of_week": "*", "day_of_month": "*", "month": "*"}]},
+            "actions": [{"name": "rescan-quota", "order": 1}],
+        }
+        st, res = call("POST", "/api/v2/eventrules", token=token, body=rule)
+        if st not in (200, 201):
+            sys.exit(f"Правило пересчёта квоты не создано: {st} {res}")
+        print("  Правило «пересчёт квот раз в час» создано.")
 
 
 def main():
@@ -100,6 +128,8 @@ def main():
         if st not in (200, 201):
             sys.exit(f"«{name}»: ошибка {st}: {(res or {}).get('error') or (res or {}).get('message')}")
         print(f"  «{name}» {action}.")
+    ensure_quota_rescan(token)
+    print(f"Лимиты: admin — {OWNER_QUOTA // GIB} ГБ на весь обменник, гость uploads — {GUEST_QUOTA // GIB} ГБ; файл — до {MAX_FILE // GIB} ГБ.")
     print("Готово. Дальше всё меняется в веб-админке.")
 
 

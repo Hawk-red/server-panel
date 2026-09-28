@@ -4,7 +4,7 @@
 #   1. каталоги /srv/exchange (файлы) и /opt/sftpgo (compose и база), права для панели (чтение);
 #   2. nginx: conf.d/exchange.conf, snippets/exchange-public.conf, vhost админки (:8443, только LAN/VPN),
 #      include в vhost api.pulsdev.net; nginx -t, при ошибке — откат;
-#   3. ufw: порт 8443 только из LAN и VPN; 4. fail2ban: jail exchange; 5. запуск контейнера.
+#   3. ufw: порт 8443 только из LAN и VPN; 4. fail2ban: jail exchange; 5. запуск контейнера (с русским переводом).
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "Нужен root: sudo $0" >&2; exit 1; }
 SRC=/opt/server-panel/deploy/exchange
@@ -56,6 +56,8 @@ fail2ban-client -t >/dev/null && fail2ban-client reload && fail2ban-client statu
 
 echo "== 5. контейнер"
 docker compose -f /opt/sftpgo/compose.yaml pull
+install -d -o root -g root -m 755 /opt/sftpgo/locales /opt/sftpgo/locales/en
+python3 "$SRC/build-locale.py"      # русский перевод веб-клиента поверх английского файла из образа
 docker compose -f /opt/sftpgo/compose.yaml up -d
 for i in $(seq 1 30); do curl -s -o /dev/null -m2 http://127.0.0.1:8080/healthz && break; sleep 1; done
 curl -s -m3 -o /dev/null -w "публичный вход (127.0.0.1:8080/healthz): %{http_code}\n" http://127.0.0.1:8080/healthz || true

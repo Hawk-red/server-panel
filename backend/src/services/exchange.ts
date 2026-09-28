@@ -13,7 +13,7 @@ import * as docker from './docker.js'
 
 const CONTAINER = 'sftpgo'
 const DIR = '/srv/exchange'
-const GUEST = 'uploads' // файловый пользователь-гость: уведомляем только о его загрузках
+const OWNER = 'admin' // владелец обменника; гость — любой другой файловый пользователь (uploads и заведённые позже)
 export const EXCHANGE_URLS = {
   external: 'https://api.pulsdev.net:9443/files/',
   home: 'https://api.pulsdev.net/files/',
@@ -71,18 +71,20 @@ export async function pollUploads() {
     if (!found.length) return
     setSetting(RECENT_KEY, [...found.reverse(), ...getSetting<UploadRecord[]>(RECENT_KEY, [])].slice(0, 40))
 
-    // Уведомления — только о гостевых загрузках, группой на каждый IP за опрос
+    // Уведомления — о загрузках гостей (все, кроме владельца), группой на каждую пару «пользователь + IP» за опрос
     const byIp = new Map<string, UploadRecord[]>()
-    for (const u of found.filter((f) => f.user === GUEST)) byIp.set(u.ip, [...(byIp.get(u.ip) ?? []), u])
-    for (const [ip, list] of byIp) {
+    for (const u of found.filter((f) => f.user !== OWNER)) byIp.set(`${u.user}\u0000${u.ip}`, [...(byIp.get(`${u.user}\u0000${u.ip}`) ?? []), u])
+    for (const list of byIp.values()) {
+      const ip = list[0].ip
+      const who = list[0].user === 'uploads' ? 'Гость' : `Гость «${list[0].user}»`
       const total = list.reduce((s, x) => s + x.size, 0)
       const where = ip ? `IP ${ip}${isAllowed(ip, config.allowedNets) ? ' (домашняя сеть или VPN)' : ''}` : 'IP неизвестен'
       const names = [...list].reverse().map((x) => `«${x.name}»`)
       const text =
         list.length === 1
-          ? `Гость загрузил файл ${names[0]} (${fmtSize(total)}) — ${where}`
-          : `Гость загрузил файлов: ${list.length} (${fmtSize(total)}) — ${where}: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` и ещё ${names.length - 5}` : ''}`
-      emitEvent({ kind: 'exchange.upload', level: 'info', text, target: 'exchange', details: { ip, user: GUEST, files: list.map((x) => ({ name: x.name, size: x.size })), total } })
+          ? `${who} загрузил файл ${names[0]} (${fmtSize(total)}) — ${where}`
+          : `${who} загрузил файлов: ${list.length} (${fmtSize(total)}) — ${where}: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` и ещё ${names.length - 5}` : ''}`
+      emitEvent({ kind: 'exchange.upload', level: 'info', text, target: 'exchange', details: { ip, user: list[0].user, files: list.map((x) => ({ name: x.name, size: x.size })), total } })
     }
   } finally {
     busy = false
@@ -122,7 +124,7 @@ export async function exchangeState() {
     urls: EXCHANGE_URLS,
     disk: dirOk ? { fs, exchangeBytes: dirSize(DIR), uploadsBytes: dirSize(`${DIR}/uploads`) } : null,
     recent: getSetting<UploadRecord[]>(RECENT_KEY, []).slice(0, 15),
-    guest: GUEST,
+    owner: OWNER,
   }
 }
 
