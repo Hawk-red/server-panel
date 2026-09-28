@@ -8,6 +8,8 @@ import { startCollector, stopCollector } from './collector/index.js'
 import { startDetectors } from './detectors.js'
 import { config } from './config.js'
 import { db } from './db.js'
+import { hasSecret, maskSecrets } from './mask.js'
+import { scrubAuditSecrets } from './audit.js'
 import { isAllowed, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
 import { accessRoutes } from './routes/access.js'
@@ -19,7 +21,15 @@ import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 
 const app = Fastify({
-  logger: { level: process.env.LOG_LEVEL ?? 'info' },
+  logger: {
+    level: process.env.LOG_LEVEL ?? 'info',
+    // Страховка: токены не попадают в журнал systemd ни из какого места кода
+    hooks: {
+      logMethod(args, method) {
+        method.apply(this, args.map((a) => (typeof a === 'string' ? maskSecrets(a) : a && typeof a === 'object' && hasSecret(JSON.stringify(a)) ? JSON.parse(maskSecrets(JSON.stringify(a))) : a)) as Parameters<typeof method>)
+      },
+    },
+  },
   // Без строки лога на каждый запрос — журнал systemd остаётся чистым
   logController: new LogController({ disableRequestLogging: true }),
   // Прокси перед панелью нет: IP берём только из сокета
@@ -36,6 +46,12 @@ app.addHook('onRequest', async (req, reply) => {
     req.log.warn({ ip: req.clientIp, url: req.url }, 'запрос из запрещённой сети отклонён')
     return reply.code(403).type('text/plain; charset=utf-8').send('Доступ только из локальной сети и VPN')
   }
+})
+
+// Страховка: ни один JSON-ответ API не уходит с токеном внутри (текст ошибки, журнал и т.п.)
+app.addHook('onSend', async (req, _reply, payload) => {
+  if (req.url.startsWith('/api/') && typeof payload === 'string' && hasSecret(payload)) return maskSecrets(payload)
+  return payload
 })
 
 app.addHook('onSend', async (_req, reply) => {
@@ -115,3 +131,7 @@ await app.listen({ host: config.host, port: config.port })
 startCollector(app.log)
 startDetectors(app.log)
 startNotifier(app.log)
+{
+  const n = scrubAuditSecrets()
+  if (n) app.log.warn({ records: n }, 'из журнала действий убраны токены, попавшие туда до маскирования')
+}

@@ -7,7 +7,8 @@ import type { FastifyBaseLogger } from 'fastify'
 import { getSnapshot } from './collector/index.js'
 import { config } from './config.js'
 import { onEvent, type ServerEvent } from './events.js'
-import { httpJson } from './http.js'
+import { errText } from './mask.js'
+import { registryTokens } from './services/bots.js'
 import { certificate } from './services/sites.js'
 import { getSetting, setSetting } from './settings.js'
 
@@ -52,21 +53,53 @@ export function inQuietHours(now = new Date(), q = getNotifySettings().quiet) {
   return from <= to ? cur >= from && cur < to : cur >= from || cur < to
 }
 
+// Понятные русские тексты вместо ответов Telegram API (токен в них не попадает никогда)
+function tgError(code: number | undefined, description = ''): string {
+  const d = description.toLowerCase()
+  if (code === 409 || d.includes('conflict'))
+    return 'Этот токен уже использует другой бот или процесс (он сам получает обновления через getUpdates). Для уведомлений панели нужен отдельный бот — создайте его в @BotFather и задайте его токен в NOTIFY_BOT_TOKEN.'
+  if (code === 401 || d.includes('unauthorized')) return 'Telegram не принял токен: он отозван или введён с ошибкой. Задайте новый NOTIFY_BOT_TOKEN.'
+  if (d.includes('chat not found')) return 'Чат не найден: напишите боту /start и выберите чат заново.'
+  if (code === 403 || d.includes('blocked')) return 'Бот не может писать в этот чат: он заблокирован или удалён из чата.'
+  if (code === 429) return 'Telegram просит подождать: слишком много запросов. Повторите через минуту.'
+  if (code === 404) return 'Telegram не узнал запрос: проверьте токен NOTIFY_BOT_TOKEN.'
+  return `Telegram вернул ошибку${code ? ` ${code}` : ''}${description ? `: ${errText(description)}` : ''}`
+}
+
+// Токен уведомлений не должен совпадать с токеном рабочего бота из реестра (bots.json):
+// getUpdates панели отбирал бы у него сообщения (409 Conflict). Проверка раз в 5 минут.
+let conflictCache: { at: number; title: string | null } | null = null
+export async function tokenConflict(): Promise<string | null> {
+  if (!config.notifyToken) return null
+  if (conflictCache && Date.now() - conflictCache.at < 300_000) return conflictCache.title
+  const hit = (await registryTokens().catch(() => [])).find((b) => b.token === config.notifyToken!.trim())
+  conflictCache = { at: Date.now(), title: hit?.title ?? null }
+  return conflictCache.title
+}
+
 export async function tg<T>(method: string, body: Record<string, unknown>): Promise<T> {
   if (!config.notifyToken) throw new Error('не задан NOTIFY_BOT_TOKEN')
-  const r = await httpJson<{ ok: boolean; result: T; description?: string }>(`https://api.telegram.org/bot${config.notifyToken}/${method}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-    timeoutMs: 10_000,
-  })
-  if (!r.ok) throw new Error(r.description ?? 'Telegram вернул ошибку')
+  const clash = await tokenConflict()
+  if (clash) throw new Error(`NOTIFY_BOT_TOKEN совпадает с токеном бота «${clash}». Панели нужен свой отдельный бот — задайте другой токен.`)
+  let res: Response
+  try {
+    res = await fetch(`https://api.telegram.org/bot${config.notifyToken}/${method}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch (e) {
+    throw new Error(`Telegram недоступен: ${(e as Error).name === 'TimeoutError' ? 'нет ответа за 10 с' : errText(e)}`)
+  }
+  const r = (await res.json().catch(() => null)) as { ok: boolean; result: T; error_code?: number; description?: string } | null
+  if (!r?.ok) throw new Error(tgError(r?.error_code ?? res.status, r?.description))
   return r.result
 }
 
 function remember(entry: Sent) {
   const list = getSetting<Sent[]>('notify.sent', [])
-  list.unshift(entry)
+  list.unshift(entry.error ? { ...entry, error: errText(entry.error) } : entry)
   setSetting('notify.sent', list.slice(0, 50))
 }
 
@@ -83,8 +116,8 @@ async function send(text: string, urgent: boolean) {
     await tg('sendMessage', { chat_id: s.chatId, text, parse_mode: 'HTML', disable_web_page_preview: true })
     remember({ ts: Date.now(), text, ok: true, urgent })
   } catch (e) {
-    remember({ ts: Date.now(), text, ok: false, urgent, error: (e as Error).message })
-    log?.warn({ err: (e as Error).message }, 'уведомление в Telegram не отправлено')
+    remember({ ts: Date.now(), text, ok: false, urgent, error: errText(e) })
+    log?.warn({ err: errText(e) }, 'уведомление в Telegram не отправлено')
   }
 }
 
@@ -188,9 +221,17 @@ export async function botInfo() {
   return tg<{ username: string; first_name: string }>('getMe', {}).catch(() => null)
 }
 
-export function notifyStatus() {
+// Разовая чистка: ошибки с токеном, записанные в историю до появления маскирования
+export function scrubSentSecrets() {
+  const list = getSetting<Sent[]>('notify.sent', [])
+  const clean = list.map((x) => (x.error ? { ...x, error: errText(x.error) } : x))
+  if (JSON.stringify(clean) !== JSON.stringify(list)) setSetting('notify.sent', clean)
+}
+
+export async function notifyStatus() {
   return {
     tokenSet: Boolean(config.notifyToken),
+    tokenConflict: await tokenConflict(),
     settings: getNotifySettings(),
     rules: RULES,
     quietNow: inQuietHours(),
@@ -201,12 +242,13 @@ export function notifyStatus() {
 
 export function startNotifier(logger: FastifyBaseLogger) {
   log = logger
+  scrubSentSecrets()
   onEvent(onServerEvent)
   setInterval(() => {
     try {
       checkSnapshot()
     } catch (e) {
-      log?.debug({ err: (e as Error).message }, 'notifier: проверка снимка')
+      log?.debug({ err: errText(e) }, 'notifier: проверка снимка')
     }
     void flushQueue().catch(() => {})
   }, 60_000)

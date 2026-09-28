@@ -1,4 +1,5 @@
 import { db } from './db.js'
+import { maskSecrets } from './mask.js'
 
 export type AuditResult = 'ok' | 'error' | 'denied'
 
@@ -22,7 +23,22 @@ export function audit(entry: {
     entry.user ?? null,
     entry.action,
     entry.target ?? null,
-    entry.details === undefined ? null : JSON.stringify(entry.details),
+    entry.details === undefined ? null : maskSecrets(JSON.stringify(entry.details)),
     entry.result
   )
+}
+
+// Разовая чистка: токены, попавшие в журнал действий до появления маскирования
+export function scrubAuditSecrets() {
+  const rows = db.prepare(`SELECT id, details FROM audit_log WHERE details LIKE '%:%'`).all() as { id: number; details: string }[]
+  const upd = db.prepare('UPDATE audit_log SET details = ? WHERE id = ?')
+  let n = 0
+  for (const r of rows) {
+    const m = maskSecrets(r.details)
+    if (m !== r.details) {
+      upd.run(m, r.id)
+      n++
+    }
+  }
+  return n
 }

@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
+import { errText } from '../mask.js'
 import * as n from '../notifier.js'
 
 export async function notifyRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth)
 
-  app.get('/api/notify', async () => ({ ...n.notifyStatus(), bot: await n.botInfo() }))
+  app.get('/api/notify', async () => ({ ...(await n.notifyStatus()), bot: await n.botInfo() }))
 
   app.put<{ Body: n.NotifySettings }>(
     '/api/notify',
@@ -35,7 +36,7 @@ export async function notifyRoutes(app: FastifyInstance) {
     try {
       return await n.detectChats()
     } catch (e) {
-      return reply.code(400).send({ message: (e as Error).message })
+      return reply.code(400).send({ message: errText(e) })
     }
   })
 
@@ -45,8 +46,8 @@ export async function notifyRoutes(app: FastifyInstance) {
       audit({ ip: req.clientIp, user: 'admin', action: 'notify.test', result: 'ok' })
       return { ok: true }
     } catch (e) {
-      audit({ ip: req.clientIp, user: 'admin', action: 'notify.test', result: 'error', details: { message: (e as Error).message } })
-      return reply.code(400).send({ message: (e as Error).message })
+      audit({ ip: req.clientIp, user: 'admin', action: 'notify.test', result: 'error', details: { message: errText(e) } })
+      return reply.code(400).send({ message: errText(e) })
     }
   })
 }

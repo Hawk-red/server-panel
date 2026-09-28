@@ -4,6 +4,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { Writable } from 'node:stream'
 import readline from 'node:readline/promises'
 import { ENV_FILE } from '../config.js'
+import { registryTokens } from '../services/bots.js'
 
 const ALLOWED = ['QBT_USER', 'QBT_PASSWORD', 'ADGUARD_USER', 'ADGUARD_PASSWORD', 'JELLYFIN_API_KEY', 'NOTIFY_BOT_TOKEN']
 const key = process.argv[2]
@@ -29,6 +30,20 @@ process.stdout.write('\n')
 if (!value || /[\r\n]/.test(value)) {
   console.error('Пустое или некорректное значение.')
   process.exit(1)
+}
+
+if (key === 'NOTIFY_BOT_TOKEN') {
+  if (!/^\d{5,12}:[A-Za-z0-9_-]{30,}$/.test(value)) {
+    console.error('Это не похоже на токен бота (ожидается вид 123456789:AA…). Ничего не записано.')
+    process.exit(1)
+  }
+  const bots = await registryTokens()
+  const clash = bots.find((b) => b.token === value)
+  if (clash) {
+    console.error(`Отказ: это токен бота «${clash.title}» из реестра bots.json. Панели нужен свой отдельный бот (создайте его в @BotFather). Ничего не записано.`)
+    process.exit(1)
+  }
+  console.log(`Проверено: токен не совпадает с токенами ботов из реестра (сравнено: ${bots.length}).`)
 }
 
 const lines = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8').split('\n').filter((l, i, a) => l !== '' || i < a.length - 1) : []

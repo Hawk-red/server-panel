@@ -17,6 +17,7 @@ type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync'
 type Settings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
 type Status = {
   tokenSet: boolean
+  tokenConflict: string | null
   bot: { username: string; first_name: string } | null
   settings: Settings
   rules: Record<RuleId, { title: string; urgent: string }>
@@ -87,12 +88,19 @@ export function Notifications() {
                   <span className='font-medium'>1.</span>
                   <div>
                     Токен бота:{' '}
-                    {data.tokenSet ? (
+                    {data.tokenConflict ? (
+                      <StatusBadge status='error' label={`совпадает с ботом «${data.tokenConflict}»`} />
+                    ) : data.tokenSet ? (
                       <StatusBadge status='ok' label={data.bot ? `задан — @${data.bot.username}` : 'задан, но Telegram не ответил'} />
                     ) : (
                       <StatusBadge status='warning' label='не задан' />
                     )}
-                    {!data.tokenSet && (
+                    {data.tokenConflict && (
+                      <p className='mt-1 text-xs text-danger'>
+                        Это токен рабочего бота — панель не будет им пользоваться, чтобы не мешать ему. Создайте отдельного бота в @BotFather и задайте его токен командой ниже.
+                      </p>
+                    )}
+                    {(!data.tokenSet || data.tokenConflict) && (
                       <p className='mt-1 text-xs text-muted-foreground'>
                         В SSH-терминале: <code className='font-mono text-address'>sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js NOTIFY_BOT_TOKEN</code>,
                         затем <code className='font-mono text-address'>sudo systemctl restart server-panel</code>.

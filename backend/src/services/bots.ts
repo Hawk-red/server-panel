@@ -27,6 +27,24 @@ export async function loadRegistry(): Promise<BotDef[]> {
   return (JSON.parse(await readFile(path.join(BACKEND_DIR, 'bots.json'), 'utf8')) as { bots: BotDef[] }).bots
 }
 
+// Токены ботов из реестра (только для сравнения на сервере — наружу не отдаются).
+// Файл, который не удалось прочитать, пропускается.
+export async function registryTokens(registry?: BotDef[]) {
+  const out: { id: string; title: string; token: string }[] = []
+  for (const b of registry ?? (await loadRegistry())) {
+    const t = b.token
+    if (!t) continue
+    try {
+      const raw = await readFile(t.file, 'utf8')
+      const token = t.json ? JSON.parse(raw)[t.json] : t.env ? parseEnv(raw)[t.env] : undefined
+      if (typeof token === 'string' && token) out.push({ id: b.id, title: b.title, token: token.trim() })
+    } catch {
+      /* нет доступа — пропуск */
+    }
+  }
+  return out
+}
+
 const cache = new Map<string, { at: number; value: unknown }>()
 // failed(value) → true: результат-ошибку держим в кэше только минуту (сетевой сбой не должен «залипать» на час)
 async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>, failed?: (v: T) => boolean): Promise<T> {
