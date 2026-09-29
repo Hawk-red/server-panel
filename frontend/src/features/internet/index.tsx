@@ -131,6 +131,10 @@ export function Internet() {
             />
           </div>
 
+          <PingCard />
+
+          <SpeedtestCard />
+
           <div className='mt-4 flex flex-wrap items-center gap-2'>
             {(Object.keys(RANGE_LABELS) as Range[]).map((r) => (
               <Button key={r} size='sm' variant={r === range ? 'default' : 'outline'} onClick={() => setRange(r)}>
@@ -145,10 +149,6 @@ export function Internet() {
           </div>
 
           <TargetsCard data={data} range={range} />
-
-          <PingCard />
-
-          <SpeedtestCard />
 
           <Card className='mt-4 gap-2'>
             <CardHeader>

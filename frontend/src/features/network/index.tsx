@@ -4,7 +4,7 @@ import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordi
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { ExternalLink, GripVertical, Loader2, Pencil, Radar, Radio, RefreshCw } from 'lucide-react'
+import { ExternalLink, GripVertical, Loader2, Pencil, Radar, Radio, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
@@ -20,7 +20,13 @@ import { Input } from '@/components/ui/input'
 import { DeviceSheet } from './device-sheet'
 import { displayName, TYPE_GROUPS, TYPES, webHref } from './device-meta'
 
-type StatusFilter = 'all' | 'online' | 'offline' | 'new'
+// Две независимые группы фильтров: статус (онлайн/офлайн + «неизвестные») и тип (несколько групп типов); между группами — «И»
+type Conn = 'online' | 'offline'
+const toggle = <T,>(set: Set<T>, v: T) => {
+  const next = new Set(set)
+  if (!next.delete(v)) next.add(v)
+  return next
+}
 
 function DeviceCard({ d, scanning, busy, onOpen, onScan, dragDisabled }: { d: Device; scanning: boolean; busy: boolean; onOpen: () => void; onScan: () => void; dragDisabled: boolean }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: d.mac, disabled: dragDisabled })
@@ -142,8 +148,9 @@ function DeviceCard({ d, scanning, busy, onOpen, onScan, dragDisabled }: { d: De
 
 export function Network({ initialDevice }: { initialDevice?: string } = {}) {
   const qc = useQueryClient()
-  const [status, setStatus] = useState<StatusFilter>('all')
-  const [group, setGroup] = useState<string | null>(null)
+  const [conn, setConn] = useState<Set<Conn>>(new Set()) // пусто или оба = без ограничения по связи
+  const [unknownOnly, setUnknownOnly] = useState(false) // «Неизвестные» сужает выбор: неизвестные И (онлайн/офлайн)
+  const [groups, setGroups] = useState<Set<string>>(new Set())
   const [q, setQ] = useState('')
   const [openMac, setOpenMac] = useState<string | null>(initialDevice?.toLowerCase() ?? null)
   const { data } = useQuery({
@@ -178,14 +185,16 @@ export function Network({ initialDevice }: { initialDevice?: string } = {}) {
   const all = data?.devices ?? []
   const devices = useMemo(() => {
     const s = q.toLowerCase()
-    const types = group ? TYPE_GROUPS.find((g) => g.id === group)?.types : null
+    const types = groups.size ? TYPE_GROUPS.filter((g) => groups.has(g.id)).flatMap((g) => g.types) : null
+    const byConn = conn.size === 1
     return all.filter(
       (d) =>
-        (status === 'all' || (status === 'online' ? d.online : status === 'offline' ? !d.online : !d.known)) &&
+        (!byConn || (conn.has('online') ? d.online : !d.online)) &&
+        (!unknownOnly || !d.known) &&
         (!types || types.includes(d.type)) &&
         (!s || [d.name, d.hostname, d.vendor, d.ip, d.mac, d.location, d.note].some((x) => x?.toLowerCase().includes(s)))
     )
-  }, [all, status, group, q])
+  }, [all, conn, unknownOnly, groups, q])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -257,24 +266,37 @@ export function Network({ initialDevice }: { initialDevice?: string } = {}) {
       )}
 
       <div className='mt-4 space-y-2'>
-        {/* На телефоне фильтры — горизонтальные прокручиваемые строки, чтобы карточки были видны сразу */}
-        <div className='-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0'>
-          {(['all', 'online', 'offline', 'new'] as StatusFilter[]).map((f) => (
-            <Button key={f} size='sm' className='shrink-0' variant={status === f ? 'default' : 'outline'} onClick={() => setStatus(f)}>
-              {f === 'all' ? 'Все' : f === 'online' ? 'Онлайн' : f === 'offline' ? 'Офлайн' : `Неизвестные${data?.summary.unknown ? ` (${data.summary.unknown})` : ''}`}
+        {/* Две независимые группы фильтров. На телефоне — горизонтальные прокручиваемые строки, чтобы карточки были видны сразу */}
+        <div className='-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0' role='group' aria-label='Фильтр по статусу'>
+          <span className='w-14 shrink-0 text-xs text-muted-foreground'>Статус</span>
+          <Button size='sm' className='shrink-0' variant={conn.has('online') ? 'default' : 'outline'} aria-pressed={conn.has('online')} onClick={() => setConn(toggle(conn, 'online'))}>
+            Онлайн <span className='text-xs opacity-70'>{data?.summary.online ?? ''}</span>
+          </Button>
+          <Button size='sm' className='shrink-0' variant={conn.has('offline') ? 'default' : 'outline'} aria-pressed={conn.has('offline')} onClick={() => setConn(toggle(conn, 'offline'))}>
+            Офлайн <span className='text-xs opacity-70'>{data ? data.summary.total - data.summary.online : ''}</span>
+          </Button>
+          <Button size='sm' className='shrink-0' variant={unknownOnly ? 'default' : 'outline'} aria-pressed={unknownOnly} onClick={() => setUnknownOnly(!unknownOnly)}>
+            Неизвестные <span className='text-xs opacity-70'>{data?.summary.unknown ?? ''}</span>
+          </Button>
+          {(conn.size > 0 || unknownOnly) && (
+            <Button size='sm' variant='ghost' className='shrink-0 text-muted-foreground' onClick={() => (setConn(new Set()), setUnknownOnly(false))}>
+              <X /> Сбросить
             </Button>
-          ))}
+          )}
           <Input className='ms-auto hidden max-w-xs sm:block' placeholder='Поиск: имя, IP, MAC, производитель, место' value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <div className='-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0'>
-          <Button size='sm' className='shrink-0' variant={group === null ? 'secondary' : 'ghost'} onClick={() => setGroup(null)}>
-            Все типы
-          </Button>
+        <div className='-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0' role='group' aria-label='Фильтр по типу'>
+          <span className='w-14 shrink-0 text-xs text-muted-foreground'>Тип</span>
           {TYPE_GROUPS.map((g) => (
-            <Button key={g.id} size='sm' className='shrink-0' variant={group === g.id ? 'secondary' : 'ghost'} onClick={() => setGroup(group === g.id ? null : g.id)}>
-              {g.label} <span className='text-xs text-muted-foreground'>{counts(g)}</span>
+            <Button key={g.id} size='sm' className='shrink-0' variant={groups.has(g.id) ? 'default' : 'outline'} aria-pressed={groups.has(g.id)} onClick={() => setGroups(toggle(groups, g.id))}>
+              {g.label} <span className='text-xs opacity-70'>{counts(g)}</span>
             </Button>
           ))}
+          {groups.size > 0 && (
+            <Button size='sm' variant='ghost' className='shrink-0 text-muted-foreground' onClick={() => setGroups(new Set())}>
+              <X /> Сбросить
+            </Button>
+          )}
         </div>
         <Input className='sm:hidden' placeholder='Поиск: имя, IP, MAC, место' value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
