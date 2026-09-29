@@ -11,6 +11,7 @@ import { exchangeState } from '../services/exchange.js'
 import { internetStatus, refreshExternalIp } from '../services/internet.js'
 import { checkSpeedtestAllowed, getSpeedSchedule, runSpeedtest, saveSpeedSchedule, speedtestState } from '../services/speedtest.js'
 import { unitsInfo } from '../services/sites.js'
+import { forgetPing, manualPing, pingHistory, PingInputError } from '../services/pinger.js'
 import * as qbt from '../services/qbittorrent.js'
 
 type Part<T> = { data: T; error: null } | { data: null; error: string }
@@ -31,6 +32,32 @@ export async function infraRoutes(app: FastifyInstance) {
     await refreshExternalIp(true)
     audit({ ...who(req), action: 'internet.refresh-ip', result: 'ok' })
     return internetStatus().ip
+  })
+
+  // Ручной пингер: проверка адреса, история проверок
+  app.get('/api/internet/ping/history', async () => pingHistory())
+  app.post<{ Body: { host: string; count?: number } }>(
+    '/api/internet/ping',
+    { schema: { body: { type: 'object', required: ['host'], properties: { host: { type: 'string', maxLength: 300 }, count: { type: 'integer' } } } } },
+    async (req, reply) => {
+      try {
+        const r = await manualPing(req.body.host, req.body.count)
+        audit({ ...who(req), action: 'internet.ping', target: r.host, details: { count: r.count, received: r.received, avg: r.avg }, result: 'ok' })
+        return r
+      } catch (e) {
+        const code = e instanceof PingInputError ? 400 : ((e as { statusCode?: number }).statusCode ?? 500)
+        if (code !== 429) audit({ ...who(req), action: 'internet.ping', target: String(req.body.host).slice(0, 100), details: { message: errText(e) }, result: code === 400 ? 'denied' : 'error' })
+        return reply.code(code).send({ message: errText(e) })
+      }
+    }
+  )
+  app.delete<{ Querystring: { host: string } }>('/api/internet/ping/history', async (req, reply) => {
+    try {
+      forgetPing(req.query.host)
+      return pingHistory()
+    } catch (e) {
+      return reply.code(400).send({ message: errText(e) })
+    }
   })
 
   // Спидтест: запуск в фоне (страница опрашивает состояние), расписание — раз в сутки

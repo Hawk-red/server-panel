@@ -13,6 +13,7 @@ import { StatTile } from '@/components/stat-tile'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PingCard } from './ping-card'
 import { SpeedtestCard } from './speedtest-card'
 import { TargetsCard } from './targets-card'
 
@@ -144,6 +145,8 @@ export function Internet() {
           </div>
 
           <TargetsCard data={data} range={range} />
+
+          <PingCard />
 
           <SpeedtestCard />
 
