@@ -90,6 +90,7 @@ export function Adguard() {
           url={webUrl(3000)}
           container={data?.container}
           invalidate={['adguard']}
+          monitorId='adguardhome'
         >
           <div className='space-y-2'>
             <div className='flex items-center justify-between gap-2'>

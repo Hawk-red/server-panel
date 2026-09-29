@@ -71,8 +71,8 @@ export function Resources() {
           <MetricChart
             title={`Сеть LAN (${lan})`}
             series={[
-              { name: `net.${lan}.rx`, label: 'Приём', color: 'var(--info)' },
-              { name: `net.${lan}.tx`, label: 'Отдача', color: 'var(--ok)' },
+              { name: `net.${lan}.rx`, label: 'Приём', color: 'var(--rx)' },
+              { name: `net.${lan}.tx`, label: 'Отдача', color: 'var(--tx)' },
             ]}
             range={range}
             format={formatBps}
@@ -84,8 +84,8 @@ export function Resources() {
           <MetricChart
             title='VPN (wg0)'
             series={[
-              { name: 'net.wg0.rx', label: 'Приём', color: 'var(--info)' },
-              { name: 'net.wg0.tx', label: 'Отдача', color: 'var(--ok)' },
+              { name: 'net.wg0.rx', label: 'Приём', color: 'var(--rx)' },
+              { name: 'net.wg0.tx', label: 'Отдача', color: 'var(--tx)' },
             ]}
             range={range}
             format={formatBps}

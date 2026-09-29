@@ -18,7 +18,6 @@ export const TYPES: Record<DeviceType, { label: string; icon: React.ElementType 
 
 // Группы для фильтра (ТЗ 9.8)
 export const TYPE_GROUPS: { id: string; label: string; types: DeviceType[] }[] = [
-  { id: 'desktop', label: 'Компьютеры', types: ['desktop'] },
   { id: 'laptop', label: 'Ноутбуки', types: ['laptop'] },
   { id: 'mobile', label: 'Телефоны и планшеты', types: ['phone', 'tablet'] },
   { id: 'tv', label: 'ТВ и приставки', types: ['tv'] },
@@ -26,7 +25,8 @@ export const TYPE_GROUPS: { id: string; label: string; types: DeviceType[] }[] =
   { id: 'audio', label: 'Аудио', types: ['receiver'] },
   { id: 'iot', label: 'Умный дом / IoT', types: ['iot', 'ir'] },
   { id: 'net', label: 'Сеть', types: ['router'] },
-  { id: 'other', label: 'Другое', types: ['printer', 'unknown'] },
+  // тип «Компьютер» в сети не встречается — отдельной кнопки фильтра нет; на всякий случай такие устройства попадают в «Другое»
+  { id: 'other', label: 'Другое', types: ['printer', 'unknown', 'desktop'] },
 ]
 
 export const displayName = (d: Device) => d.name ?? d.hostname ?? d.vendor ?? 'Без названия'

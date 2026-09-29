@@ -139,10 +139,10 @@ export function TvMode() {
           {t ? (
             <div className='space-y-2 text-lg'>
               <div className='text-4xl font-bold'>
-                <Value kind='speed' value={t.speed.dl} prefix='↓ ' />
+                <Value kind='speed' value={t.speed.dl} flow='rx' prefix='↓ ' />
               </div>
               <div className='text-2xl'>
-                <Value kind='speed' value={t.speed.ul} prefix='↑ ' />
+                <Value kind='speed' value={t.speed.ul} flow='tx' prefix='↑ ' />
               </div>
               <div className='text-base text-muted-foreground'>
                 качается {t.counts.downloading} · раздаётся {t.counts.seeding} · всего {t.counts.total}

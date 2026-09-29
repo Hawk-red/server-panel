@@ -3,7 +3,7 @@ import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
-import { ChevronDown, Play, RotateCw, ScrollText, Square } from 'lucide-react'
+import { ChevronDown, OctagonX, Play, RotateCw, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { ServiceRow } from '@/lib/types'
@@ -66,8 +66,8 @@ function ServicesTable({ rows, onAction }: { rows: ServiceRow[]; onAction: (s: S
                           <Play />
                         </Button>
                       ) : (
-                        <Button size='icon' variant='ghost' title='Остановить' onClick={() => onAction(s, 'stop')}>
-                          <Square />
+                        <Button size='icon' variant='destructive' title='Остановить' aria-label='Остановить' onClick={() => onAction(s, 'stop')}>
+                          <OctagonX />
                         </Button>
                       )}
                       <Button size='icon' variant='ghost' title='Перезапустить' onClick={() => onAction(s, 'restart')}>

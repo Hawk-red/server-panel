@@ -321,7 +321,9 @@ export type BotInfo = {
   id: string
   title: string
   description: string | null
-  kind: 'alert-monitor' | 'lead-api' | 'generic'
+  kind: 'alert-monitor' | 'lead-api' | 'generic' | 'panel-notifier'
+  /** встроенный модуль панели, а не отдельная служба */
+  embedded?: boolean
   unit: string
   logSource: string | null
   links: { title: string; url: string }[]
@@ -331,6 +333,20 @@ export type BotInfo = {
   telegram: Part<{ username: string | null; name?: string; error: string | null }>
   problems: Part<{ ts: number | null; text: string }[]>
   analytics: Part<unknown>
+}
+export type PanelNotifierAnalytics = {
+  tokenSet: boolean
+  tokenConflict: string | null
+  chatSet: boolean
+  enabled: boolean
+  quiet: { from: string; to: string }
+  quietNow: boolean
+  queued: number
+  sent24h: number
+  failed24h: number
+  lastSent: { ts: number; ok: boolean; urgent: boolean; text: string; error: string | null }[]
+  rulesOn: number
+  rulesTotal: number
 }
 export type AlertAnalytics = {
   channel: string | null

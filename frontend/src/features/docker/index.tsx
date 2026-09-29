@@ -3,7 +3,7 @@ import { Value } from '@/components/value'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
-import { AppWindow, Container as ContainerIcon, ExternalLink, HardDrive, Layers, Play, RotateCw, ScrollText, Square } from 'lucide-react'
+import { Container as ContainerIcon, ExternalLink, Globe, HardDrive, Layers, OctagonX, Play, RotateCw, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { Container, DockerData } from '@/lib/types'
@@ -91,9 +91,9 @@ export function Docker() {
       description='Контейнеры, образы и compose-стеки (через docker-socket-proxy)'
       actions={
         portainer && (
-          <Button asChild variant='outline'>
+          <Button asChild variant='web'>
             <a href={webUrl(9000)} target='_blank' rel='noreferrer'>
-              <ExternalLink /> Portainer
+              <Globe /> Открыть Portainer
             </a>
           </Button>
         )
@@ -216,17 +216,17 @@ export function Docker() {
                         <TableCell>
                           <div className='flex justify-end gap-1'>
                             {c.web && c.state === 'running' && (
-                              <Button size='icon' variant='ghost' title='Веб-интерфейс сервиса' asChild>
+                              <Button size='icon' variant='ghost' className='text-info hover:text-info' title='Открыть веб-интерфейс сервиса' aria-label='Открыть веб-интерфейс' asChild>
                                 <a href={webUrl(c.web.port, c.web.path)} target='_blank' rel='noreferrer'>
-                                  <AppWindow />
+                                  <Globe />
                                 </a>
                               </Button>
                             )}
                             {!c.protected && (
                               <>
                                 {c.state === 'running' ? (
-                                  <Button size='icon' variant='ghost' title='Остановить' onClick={() => setPending({ c, a: 'stop' })}>
-                                    <Square />
+                                  <Button size='icon' variant='destructive' title='Остановить контейнер' aria-label='Остановить' onClick={() => setPending({ c, a: 'stop' })}>
+                                    <OctagonX />
                                   </Button>
                                 ) : (
                                   <Button size='icon' variant='ghost' title='Запустить' onClick={() => setPending({ c, a: 'start' })}>
@@ -253,7 +253,7 @@ export function Docker() {
           )}
           <div className='mt-3 space-y-2 text-xs text-muted-foreground'>
             <p>
-              Имя контейнера открывает его в Portainer; значок <AppWindow className='inline size-3' /> — веб-интерфейс самого сервиса. docker-socket-proxy
+              Имя контейнера открывает его в Portainer; синий глобус <Globe className='inline size-3 text-info' /> — веб-интерфейс самого сервиса, красная кнопка <OctagonX className='inline size-3 text-danger-foreground' /> — остановка контейнера. docker-socket-proxy
               панелью не управляется: без него панель потеряет доступ к Docker.
             </p>
             {portainer && portainerEp.loaded && (

@@ -8,7 +8,7 @@ import {
   LogOut,
   Play,
   ShieldOff,
-  Square,
+  OctagonX,
   TriangleAlert,
   Unlock,
 } from 'lucide-react'
@@ -160,7 +160,7 @@ function SshCard({
         {s &&
           (s.running ? (
             <Button size='sm' variant='destructive' onClick={() => setStep(1)}>
-              <Square /> Отключить SSH
+              <OctagonX /> Отключить SSH
             </Button>
           ) : (
             <Button
@@ -798,8 +798,8 @@ function RemoteCard({ data, part }: { data?: AccessData; part: 'rdp' | 'wg' }) {
                     ) : (
                       'никогда'
                     )}{' '}
-                    · <Value kind='bytes' value={p.rx} prefix='↓ ' />{' '}
-                    <Value kind='bytes' value={p.tx} prefix='↑ ' />
+                    · <Value kind='bytes' value={p.rx} flow='rx' prefix='↓ ' />{' '}
+                    <Value kind='bytes' value={p.tx} flow='tx' prefix='↑ ' />
                     {p.endpoint && (
                       <>
                         {' '}

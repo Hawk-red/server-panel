@@ -13,6 +13,8 @@ type ValueProps = {
   direction?: Direction
   digits?: number
   prefix?: string
+  /** направление трафика: приём/отдача красятся единой парой цветов (--rx/--tx) */
+  flow?: 'rx' | 'tx'
   suffix?: string
   className?: string
   /** значок уровня рядом со значением (warn/danger); по умолчанию включён */
@@ -63,10 +65,10 @@ function format(kind: ValueKind, v: number | string, digits?: number) {
   }
 }
 
-export function Value({ kind, value, direction, digits, prefix, suffix, className, showLevelIcon = true, noDataReason }: ValueProps) {
+export function Value({ kind, value, direction, digits, prefix, suffix, flow, className, showLevelIcon = true, noDataReason }: ValueProps) {
   if (value == null || (typeof value === 'number' && !Number.isFinite(value))) return <NoData reason={noDataReason} className={className} />
   const level = typeof value === 'number' ? valueLevel(kind, value, direction) : null
-  const color = level ? TEXT_CLASS[level] : kind === 'percent' ? 'text-info' : (KIND_CLASS[kind] ?? '')
+  const color = flow ? (flow === 'rx' ? 'text-rx' : 'text-tx') : level ? TEXT_CLASS[level] : kind === 'percent' ? 'text-info' : (KIND_CLASS[kind] ?? '')
   const Icon = level === 'danger' ? CircleAlert : level === 'warn' ? TriangleAlert : null
   return (
     <span className={cn('inline-flex items-baseline gap-1 tabular-nums', kind !== 'address' && 'whitespace-nowrap', color, className)}>

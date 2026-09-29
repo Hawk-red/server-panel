@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
-import { Play, RotateCw, ScrollText, Square } from 'lucide-react'
+import { OctagonX, Play, RotateCw, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { ConfirmDialog } from './confirm-dialog'
@@ -38,8 +38,8 @@ export function UnitControls({ unit, title, active, warning, invalidate = [], la
   return (
     <div className='flex flex-wrap gap-2'>
       {active ? (
-        <Button size='sm' variant='outline' onClick={() => setPending('stop')}>
-          <Square /> {label('stop')}
+        <Button size='sm' variant='destructive' onClick={() => setPending('stop')}>
+          <OctagonX /> {label('stop')}
         </Button>
       ) : (
         <Button size='sm' variant='outline' onClick={() => setPending('start')}>

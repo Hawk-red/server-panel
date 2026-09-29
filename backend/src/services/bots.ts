@@ -55,7 +55,7 @@ async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>, faile
   return value
 }
 
-async function fileInfo(p?: string) {
+export async function fileInfo(p?: string) {
   if (!p) return null
   const st = await stat(p).catch((e: NodeJS.ErrnoException) => (e.code === 'EACCES' ? 'noaccess' : null))
   if (st === 'noaccess') return { path: p, mtime: null, size: null, access: false }
@@ -63,7 +63,7 @@ async function fileInfo(p?: string) {
   return { path: p, mtime: st.mtimeMs, size: st.isFile() ? st.size : null, access: true }
 }
 
-async function unitInfo(unit: string) {
+export async function unitInfo(unit: string) {
   const out = await run('/usr/bin/systemctl', ['show', unit, '-p', 'ActiveState', '-p', 'SubState', '-p', 'ActiveEnterTimestamp', '-p', 'NRestarts', '-p', 'MainPID', '-p', 'MemoryCurrent'])
   const o = Object.fromEntries(out.trim().split('\n').map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
   const since = Date.parse(String(o.ActiveEnterTimestamp).replace(/ [A-Z]{3,5}$/, ''))

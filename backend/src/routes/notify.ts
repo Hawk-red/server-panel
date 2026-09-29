@@ -3,6 +3,7 @@ import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
 import { errText } from '../mask.js'
 import * as n from '../notifier.js'
+import { panelBotMe } from '../services/panel-bot.js'
 
 export async function notifyRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth)
@@ -38,6 +39,12 @@ export async function notifyRoutes(app: FastifyInstance) {
     } catch (e) {
       return reply.code(400).send({ message: errText(e) })
     }
+  })
+
+  // Проверка связи с Telegram (getMe) без отправки сообщений; сбрасывает кэш карточки бота
+  app.post('/api/notify/check', async () => {
+    const me = await panelBotMe(true)
+    return { ok: Boolean(me.value), username: me.value?.username ?? null, error: me.error }
   })
 
   app.post('/api/notify/test', async (req, reply) => {

@@ -1,10 +1,12 @@
 import { lazy, Suspense } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AxiosError } from 'axios'
 import { Link } from '@tanstack/react-router'
-import { ExternalLink, ScrollText, Send } from 'lucide-react'
+import { BellRing, ExternalLink, Power, RefreshCw, ScrollText, Send, Settings2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
-import type { AlertAnalytics, BotInfo, FileInfo, LeadAnalytics } from '@/lib/types'
+import type { AlertAnalytics, BotInfo, FileInfo, LeadAnalytics, PanelNotifierAnalytics } from '@/lib/types'
 import { Page } from '@/components/layout/page'
 import { NoData } from '@/components/no-data'
 import { ServiceIcon } from '@/components/service-icon'
@@ -151,9 +153,126 @@ function LeadBlock({ a }: { a: LeadAnalytics }) {
   )
 }
 
+const errMsg = (e: unknown) => (e instanceof AxiosError && e.response?.data?.message) || 'ошибка'
+
+function PanelBlock({ a }: { a: PanelNotifierAnalytics }) {
+  return (
+    <div className='space-y-4'>
+      <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
+        <dt className='text-muted-foreground'>Токен</dt>
+        <dd>
+          {a.tokenConflict ? (
+            <StatusBadge status='error' label={`совпадает с токеном «${a.tokenConflict}»`} />
+          ) : (
+            <StatusBadge status={a.tokenSet ? 'ok' : 'error'} label={a.tokenSet ? 'задан (NOTIFY_BOT_TOKEN)' : 'не задан'} />
+          )}
+        </dd>
+        <dt className='text-muted-foreground'>Чат получателя</dt>
+        <dd>
+          <StatusBadge status={a.chatSet ? 'ok' : 'warning'} label={a.chatSet ? 'выбран' : 'не выбран — откройте «Уведомления»'} />
+        </dd>
+        <dt className='text-muted-foreground'>Отправка</dt>
+        <dd>
+          <StatusBadge status={a.enabled ? 'ok' : 'warning'} label={a.enabled ? 'включена' : 'выключена'} />
+        </dd>
+        <dt className='text-muted-foreground'>Тихие часы</dt>
+        <dd>
+          {a.quiet.from}–{a.quiet.to}
+          {a.quietNow && <span className='ms-2 text-warn-foreground'>сейчас идут{a.queued > 0 ? `, накоплено сообщений: ${a.queued}` : ''}</span>}
+        </dd>
+        <dt className='text-muted-foreground'>Правил включено</dt>
+        <dd>
+          <Value kind='count' value={a.rulesOn} /> из <Value kind='count' value={a.rulesTotal} />
+        </dd>
+        <dt className='text-muted-foreground'>За сутки</dt>
+        <dd>
+          отправлено <Value kind='count' value={a.sent24h} />
+          {a.failed24h > 0 ? <span className='text-danger-foreground'> · ошибок {a.failed24h}</span> : <span> · ошибок нет</span>}
+        </dd>
+      </dl>
+      {a.lastSent.length > 0 && (
+        <div>
+          <div className='mb-1 text-sm font-medium'>Последние сообщения</div>
+          <ul className='space-y-1 text-sm'>
+            {a.lastSent.map((x, i) => (
+              <li key={i} className='flex flex-wrap items-baseline gap-2'>
+                <span className='text-xs text-time tabular-nums'>{formatDateTime(x.ts)}</span>
+                <StatusBadge status={x.ok ? 'ok' : 'error'} label={x.ok ? (x.urgent ? 'срочное' : 'доставлено') : 'ошибка'} />
+                <span className='min-w-0 break-words text-muted-foreground'>{x.error ?? x.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Управление встроенным модулем: у него нет своей службы, поэтому вместо «Запуск/Стоп/Рестарт» — проверка связи, тест и переключатель отправки.
+// Полный перезапуск возможен только вместе с панелью: sudo systemctl restart server-panel (из самой панели не предлагается).
+function PanelControls({ a }: { a: PanelNotifierAnalytics | null }) {
+  const qc = useQueryClient()
+  const refresh = () => qc.invalidateQueries({ queryKey: ['bots'] })
+  const check = useMutation({
+    mutationFn: async () => (await api.post<{ ok: boolean; username: string | null; error: string | null }>('/notify/check', {})).data,
+    onSuccess: (r) => (r.ok ? toast.success(`Связь с Telegram есть: @${r.username}`) : toast.error(r.error ?? 'нет связи с Telegram')),
+    onError: (e) => toast.error(errMsg(e)),
+    onSettled: refresh,
+  })
+  const test = useMutation({
+    mutationFn: () => api.post('/notify/test', {}),
+    onSuccess: () => toast.success('Тестовое сообщение отправлено'),
+    onError: (e) => toast.error(errMsg(e)),
+    onSettled: refresh,
+  })
+  const toggle = useMutation({
+    mutationFn: async () => {
+      const cur = (await api.get<{ settings: { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<string, boolean> } }>('/notify')).data.settings
+      await api.put('/notify', { ...cur, enabled: !cur.enabled })
+      return !cur.enabled
+    },
+    onSuccess: (on) => toast.success(on ? 'Отправка уведомлений включена' : 'Отправка уведомлений выключена'),
+    onError: (e) => toast.error(errMsg(e)),
+    onSettled: () => {
+      refresh()
+      qc.invalidateQueries({ queryKey: ['notify'] })
+    },
+  })
+  return (
+    <div className='space-y-2'>
+      <div className='flex flex-wrap gap-2'>
+        <Button size='sm' variant='outline' disabled={check.isPending} onClick={() => check.mutate()}>
+          <RefreshCw /> Проверить связь
+        </Button>
+        <Button size='sm' variant='outline' disabled={test.isPending} onClick={() => test.mutate()}>
+          <BellRing /> Отправить тест
+        </Button>
+        {a && (
+          <Button size='sm' variant={a.enabled ? 'destructive' : 'default'} disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+            <Power /> {a.enabled ? 'Выключить отправку' : 'Включить отправку'}
+          </Button>
+        )}
+        <Button size='sm' variant='ghost' asChild>
+          <Link to='/notifications'>
+            <Settings2 /> Настройки уведомлений
+          </Link>
+        </Button>
+      </div>
+      <p className='text-xs text-muted-foreground'>
+        Отдельного процесса нет: модуль живёт внутри панели, поэтому «Запуск/Стоп/Рестарт» здесь не нужны. Перезапуск — только вместе с панелью
+        (<code>sudo systemctl restart server-panel</code>).
+      </p>
+    </div>
+  )
+}
+
 function BotCard({ b }: { b: BotInfo }) {
   const svc = b.service.data
   const tg = b.telegram.data
+  const pa = b.kind === 'panel-notifier' ? ((b.analytics.data as PanelNotifierAnalytics | null) ?? null) : null
+  const embedded = Boolean(b.embedded)
+  const panelStatus = !pa ? 'unknown' : !pa.tokenSet || pa.tokenConflict || !tg?.username ? 'error' : !pa.chatSet || !pa.enabled ? 'warning' : 'ok'
+  const panelLabel = !pa ? '' : !pa.tokenSet ? 'нет токена' : pa.tokenConflict ? 'токен занят' : !tg?.username ? 'нет связи' : !pa.chatSet ? 'нет чата' : !pa.enabled ? 'отправка выключена' : 'работает'
   return (
     <Card className='gap-3'>
       <CardHeader className='flex flex-row items-start gap-3'>
@@ -162,7 +281,16 @@ function BotCard({ b }: { b: BotInfo }) {
           <CardTitle className='text-base'>{b.title}</CardTitle>
           <p className='text-xs text-muted-foreground'>{b.description}</p>
         </div>
-        {svc ? <StatusBadge status={unitStatus(svc.active)} label={svc.active === 'active' ? 'работает' : svc.active} /> : <NoData />}
+        {embedded ? (
+          <div className='flex flex-col items-end gap-1'>
+            <StatusBadge status={panelStatus} label={panelLabel} />
+            <Badge variant='outline'>встроенный модуль панели</Badge>
+          </div>
+        ) : svc ? (
+          <StatusBadge status={unitStatus(svc.active)} label={svc.active === 'active' ? 'работает' : svc.active} />
+        ) : (
+          <NoData />
+        )}
       </CardHeader>
       <CardContent className='space-y-4 text-sm'>
         <div className='flex flex-wrap gap-2'>
@@ -187,7 +315,7 @@ function BotCard({ b }: { b: BotInfo }) {
         </div>
 
         <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
-          <dt className='text-muted-foreground'>Служба</dt>
+          <dt className='text-muted-foreground'>{embedded ? 'Работает внутри' : 'Служба'}</dt>
           <dd>
             <Value kind='address' value={b.unit} />
             {svc?.since && (
@@ -223,6 +351,8 @@ function BotCard({ b }: { b: BotInfo }) {
           <AlertBlock a={b.analytics.data as AlertAnalytics} />
         ) : b.kind === 'lead-api' && b.analytics.data ? (
           <LeadBlock a={b.analytics.data as LeadAnalytics} />
+        ) : pa ? (
+          <PanelBlock a={pa} />
         ) : null}
 
         {b.problems.data && b.problems.data.length > 0 && (
@@ -235,7 +365,7 @@ function BotCard({ b }: { b: BotInfo }) {
         )}
 
         <div className='flex flex-wrap gap-2'>
-          <UnitControls unit={b.unit} title={b.title} active={svc?.active === 'active'} invalidate={['bots']} />
+          {embedded ? <PanelControls a={pa} /> : <UnitControls unit={b.unit} title={b.title} active={svc?.active === 'active'} invalidate={['bots']} />}
           {b.logSource && (
             <Button size='sm' variant='ghost' asChild>
               <Link to='/system' search={{ tab: 'logs', source: b.logSource }}>

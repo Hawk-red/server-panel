@@ -24,8 +24,20 @@ const RDAP_KEY = 'deadlines.rdap'
 const DAY = 86_400_000
 const DOMAIN_RE = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/
 
-export const DEFAULT_CONFIG: DeadlineConfig = { domains: ['pulsdev.net', 'jetsetter.ua'], manual: [] }
+export const DEFAULT_CONFIG: DeadlineConfig = { domains: ['pulsdev.net', 'jetsetter.ua', 'customcable.com.ua', 'ecotrim.kiev.ua'], manual: [] }
+
+// Разовое дополнение уже сохранённого списка новыми доменами по умолчанию (2026-09-29: customcable.com.ua, ecotrim.kiev.ua).
+// Флаг нужен, чтобы удалённый пользователем домен не возвращался.
+const SEED_KEY = 'deadlines.seed.2026-09-29'
+const SEED_DOMAINS = ['customcable.com.ua', 'ecotrim.kiev.ua']
+function seedDomains() {
+  if (getSetting<boolean>(SEED_KEY, false)) return
+  const c = getSetting<Partial<DeadlineConfig>>(CFG_KEY, {})
+  if (c.domains) setSetting(CFG_KEY, { domains: [...new Set([...c.domains, ...SEED_DOMAINS])], manual: c.manual ?? [] } satisfies DeadlineConfig)
+  setSetting(SEED_KEY, true)
+}
 export const getDeadlineConfig = (): DeadlineConfig => {
+  seedDomains()
   const c = getSetting<Partial<DeadlineConfig>>(CFG_KEY, {})
   return { domains: c.domains ?? DEFAULT_CONFIG.domains, manual: c.manual ?? [] }
 }

@@ -19,8 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const SERIES = [
-  { name: 'torrent.dl', label: 'Загрузка', color: 'var(--info)' },
-  { name: 'torrent.ul', label: 'Отдача', color: 'var(--ok)' },
+  { name: 'torrent.dl', label: 'Загрузка (приём)', color: 'var(--rx)' },
+  { name: 'torrent.ul', label: 'Отдача', color: 'var(--tx)' },
 ]
 
 function SpeedStats({ range }: { range: Range }) {
@@ -77,6 +77,7 @@ export function Torrents() {
           url={webUrl(8090)}
           container={data?.container}
           invalidate={['torrents']}
+          monitorId='qbittorrent'
         >
           <div className='flex flex-wrap gap-2'>
             <Button size='sm' variant='outline' disabled={!s} onClick={() => setConfirm('stop-all')}>
@@ -92,8 +93,8 @@ export function Torrents() {
         <div className='grid gap-4 sm:grid-cols-2 lg:col-span-2'>
           <StatTile
             title='Скорость сейчас'
-            value={s ? <Value kind='speed' value={s.speed.dl} prefix='↓ ' /> : null}
-            sub={s ? <Value kind='speed' value={s.speed.ul} prefix='↑ ' /> : undefined}
+            value={s ? <Value kind='speed' value={s.speed.dl} flow='rx' prefix='↓ ' /> : null}
+            sub={s ? <Value kind='speed' value={s.speed.ul} flow='tx' prefix='↑ ' /> : undefined}
             noDataReason={data?.summary.error}
           />
           <StatTile
@@ -109,16 +110,16 @@ export function Torrents() {
           />
           <StatTile
             title='За сессию'
-            value={s ? <Value kind='bytes' value={s.session.dl} prefix='↓ ' /> : null}
-            sub={s ? <Value kind='bytes' value={s.session.ul} prefix='↑ ' /> : undefined}
+            value={s ? <Value kind='bytes' value={s.session.dl} flow='rx' prefix='↓ ' /> : null}
+            sub={s ? <Value kind='bytes' value={s.session.ul} flow='tx' prefix='↑ ' /> : undefined}
           />
           <StatTile
             title='За всё время'
-            value={s ? <Value kind='bytes' value={s.alltime.dl} prefix='↓ ' /> : null}
+            value={s ? <Value kind='bytes' value={s.alltime.dl} flow='rx' prefix='↓ ' /> : null}
             sub={
               s ? (
                 <>
-                  <Value kind='bytes' value={s.alltime.ul} prefix='↑ ' /> · рейтинг <Value kind='number' value={s.alltime.ratio} digits={2} />
+                  <Value kind='bytes' value={s.alltime.ul} flow='tx' prefix='↑ ' /> · рейтинг <Value kind='number' value={s.alltime.ratio} digits={2} />
                 </>
               ) : undefined
             }
@@ -171,9 +172,9 @@ export function Torrents() {
                         <Meter value={t.progress * 100} direction='neutral' className='h-1.5' label='Прогресс' />
                       </TableCell>
                       <TableCell className='whitespace-nowrap text-xs tabular-nums'>
-                        <Value kind='speed' value={t.dlspeed} prefix='↓ ' />
+                        <Value kind='speed' value={t.dlspeed} flow='rx' prefix='↓ ' />
                         <br />
-                        <Value kind='speed' value={t.upspeed} prefix='↑ ' />
+                        <Value kind='speed' value={t.upspeed} flow='tx' prefix='↑ ' />
                       </TableCell>
                       <TableCell className='hidden tabular-nums md:table-cell'>
                         {t.seeds} ({t.seedsTotal}) / {t.peers} ({t.peersTotal})

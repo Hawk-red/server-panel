@@ -3,14 +3,16 @@ import { Value } from './value'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
-import { ExternalLink, Play, RotateCw, ScrollText, Square } from 'lucide-react'
+import { Globe, OctagonX, Play, RotateCw, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { Container, Part } from '@/lib/types'
+import { useMonitor } from '@/lib/uptime'
 import { ConfirmDialog } from './confirm-dialog'
 import { NoData } from './no-data'
 import { ServiceIcon } from './service-icon'
 import { StatusBadge, type Status } from './status-badge'
+import { UptimeStrip } from './uptime-bars'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
@@ -40,6 +42,8 @@ type ServiceCardProps = {
   uptimeSec?: number | null
   container?: Part<Container>
   invalidate?: string[]
+  /** id из /api/uptime — показывает полоску доступности за 24 ч под данными карточки */
+  monitorId?: string
   children?: React.ReactNode
 }
 
@@ -56,9 +60,11 @@ export function ServiceCard({
   uptimeSec,
   container,
   invalidate = [],
+  monitorId,
   children,
 }: ServiceCardProps) {
   const qc = useQueryClient()
+  const monitor = useMonitor(monitorId ?? '')
   const [pending, setPending] = useState<Action | null>(null)
   const c = container?.data ?? null
   const control = useMutation({
@@ -92,20 +98,21 @@ export function ServiceCard({
           <dt className='text-muted-foreground'>Аптайм</dt>
           <dd>{uptime != null ? <Value kind='duration' value={uptime} /> : '—'}</dd>
         </dl>
+        {monitorId && <UptimeStrip monitor={monitor} />}
         {children}
         <div className='flex flex-wrap gap-2'>
           {url && (
-            <Button size='sm' asChild>
+            <Button size='sm' variant='web' asChild>
               <a href={url} target='_blank' rel='noreferrer'>
-                <ExternalLink /> Открыть
+                <Globe /> Открыть веб-интерфейс
               </a>
             </Button>
           )}
           {c && !c.protected && (
             <>
               {running ? (
-                <Button size='sm' variant='outline' onClick={() => setPending('stop')}>
-                  <Square /> Стоп
+                <Button size='sm' variant='destructive' onClick={() => setPending('stop')}>
+                  <OctagonX /> Остановить
                 </Button>
               ) : (
                 <Button size='sm' variant='outline' onClick={() => setPending('start')}>

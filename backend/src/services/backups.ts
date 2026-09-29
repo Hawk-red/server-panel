@@ -133,7 +133,7 @@ async function prodCode(): Promise<BackupItem> {
   const item: BackupItem = {
     id: 'prod-code',
     title: 'prod-code-backup',
-    description: 'Копия кода боевого сайта (wp-content), приходит при синке; хранятся последние 7 дней.',
+    description: 'Архив папки wp-content боевого jetsetter.ua (темы, плагины, загрузки) — запасная копия на случай сбоя или удаления на проде. Забирается с боевого сервера ночным синком в 05:00 (шаг 5 из 7) в /mnt/backup-ssd/prod-code-backup/ГГГГ-ММ-ДД/, на зеркало не разворачивается; хранятся последние 7 дней.',
     path: PROD_CODE_DIR,
     type: 'scheduled',
     maxAgeH,

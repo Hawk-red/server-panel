@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ExternalLink, Pause, Play, Speaker } from 'lucide-react'
+import { Globe, Pause, Play, Speaker } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelative } from '@/lib/format'
 import type { MediaData } from '@/lib/types'
@@ -32,6 +32,7 @@ export function Media() {
           url={webUrl(8096, '/web/')}
           container={jf?.container}
           invalidate={['media']}
+          monitorId='jellyfin'
         >
           <div className='space-y-1'>
             <div className='text-muted-foreground'>Активные сессии</div>
@@ -75,6 +76,7 @@ export function Media() {
           url={webUrl(9790)}
           container={data?.minimserver.container}
           invalidate={['media']}
+          monitorId='minimserver'
         />
 
         <ServiceCard
@@ -86,6 +88,7 @@ export function Media() {
           url={webUrl(58050)}
           container={data?.bubbleupnpserver.container}
           invalidate={['media']}
+          monitorId='bubbleupnpserver'
         />
 
         <Card className='gap-3'>
@@ -112,10 +115,10 @@ export function Media() {
                 <span className='font-mono text-address'>192.168.31.94:80</span>
               </dd>
             </dl>
-            <Button size='sm' asChild>
+            <Button size='sm' variant='web' asChild>
               {/* Настоящий веб-интерфейс — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP */}
               <a href='http://192.168.31.94/' target='_blank' rel='noreferrer'>
-                <ExternalLink /> Открыть
+                <Globe /> Открыть веб-интерфейс
               </a>
             </Button>
             <p className='text-xs text-muted-foreground'>Веб-интерфейс ресивера открывается только из домашней сети.</p>

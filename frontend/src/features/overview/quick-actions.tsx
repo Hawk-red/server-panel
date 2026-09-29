@@ -44,6 +44,7 @@ export function QuickActions() {
   const torrents = data?.torrents.data
   const protection = data?.protection.data
   const container = data?.container.data
+  const alertBot = data?.alertBot?.data
   const restartAction: Action = {
     id: 'restart-qbt',
     title: 'Перезапустить qBittorrent?',
@@ -55,6 +56,14 @@ export function QuickActions() {
   const pauseAction: Action = torrents?.allStopped
     ? { id: 'resume', title: 'Продолжить все торренты?', desc: 'Все торренты на паузе будут запущены.', confirmText: 'Продолжить', run: () => api.post('/torrents/start-all', {}), done: 'Торренты запущены' }
     : { id: 'pause', title: 'Поставить все торренты на паузу?', desc: 'Все закачки и раздачи будут остановлены до тех пор, пока вы их не продолжите.', confirmText: 'Поставить на паузу', run: () => api.post('/torrents/stop-all', {}), done: 'Торренты поставлены на паузу' }
+  const alertBotAction: Action = {
+    id: 'restart-alert-bot',
+    title: 'Перезапустить бота Air Alert?',
+    desc: 'Служба alert_monitor перезапустится за пару секунд. На это время бот не будет проверять тревоги, потом продолжит сам.',
+    confirmText: 'Перезапустить',
+    run: () => api.post('/system/services/alert_monitor.service/restart', {}),
+    done: 'Бот Air Alert перезапускается',
+  }
   const adguardOff = protection ? !protection.enabled : false
   const adguardAction: Action = adguardOff
     ? { id: 'ag-on', title: 'Включить защиту AdGuard сейчас?', desc: 'Блокировка рекламы и трекеров для всей сети снова заработает.', confirmText: 'Включить', run: () => api.post('/adguard/protection', { enabled: true }), done: 'Защита AdGuard включена' }
@@ -77,6 +86,16 @@ export function QuickActions() {
       ButtonIcon: RotateCw,
       action: restartAction,
       disabled: !container,
+    },
+    {
+      key: 'alert-bot',
+      icon: RotateCw,
+      label: 'Бот Air Alert',
+      state: alertBot ? (alertBot.active === 'active' ? 'служба работает' : <span className='text-danger-foreground'>служба: {alertBot.active}</span>) : <NoData reason={data?.alertBot?.error} />,
+      button: 'Перезапустить бота',
+      ButtonIcon: RotateCw,
+      action: alertBotAction,
+      disabled: !alertBot,
     },
     {
       key: 'torrents',
