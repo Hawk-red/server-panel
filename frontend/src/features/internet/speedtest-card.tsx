@@ -34,7 +34,15 @@ function Big({ label, flow, value }: { label: string; flow: 'rx' | 'tx'; value: 
 }
 
 // Спидтест: загрузка/отдача/задержка до ближайшего узла Cloudflare. Приём и отдача — единой парой цветов --rx/--tx.
-export function SpeedtestCard({ range }: { range: Range }) {
+const SPEED_RANGES: { id: Range; label: string }[] = [
+  { id: 'day', label: 'День' },
+  { id: 'week', label: 'Неделя' },
+  { id: 'month', label: 'Месяц' },
+]
+
+export function SpeedtestCard() {
+  // Свой диапазон у графика скорости: замеры редкие (раз в час/3 часа/сутки), поэтому общий переключатель пинга ему не подходит
+  const [range, setRange] = useState<Range>('day')
   const qc = useQueryClient()
   const { data, isError } = useQuery({
     queryKey: ['speedtest'],
@@ -155,6 +163,15 @@ export function SpeedtestCard({ range }: { range: Range }) {
           </p>
         )}
 
+        <div className='flex justify-end'>
+          <div className='flex gap-1' role='group' aria-label='Период графика скорости'>
+            {SPEED_RANGES.map((r) => (
+              <Button key={r.id} size='sm' variant={r.id === range ? 'default' : 'outline'} onClick={() => setRange(r.id)}>
+                {r.label}
+              </Button>
+            ))}
+          </div>
+        </div>
         <MetricChart
           title='Скорость по замерам, Мбит/с'
           series={[
