@@ -1,10 +1,11 @@
-// Спидтест интернета (загрузка/отдача/задержка) — по кнопке или раз в сутки по расписанию.
+// Спидтест интернета (загрузка/отдача/задержка) — по кнопке или по расписанию (раз в сутки в ЧЧ:ММ либо раз в час).
 // Сервис: публичные тестовые адреса Cloudflare (speed.cloudflare.com/__down и /__up) — без ключей и регистрации.
 // Что это значит: замер идёт до ближайшего узла Cloudflare (по anycast; в ответе приходит код узла, например KBP = Киев/Борисполь), а не до «случайного
 // сервера в интернете». Результат показывает скорость канала провайдера до крупного узла, для сайтов с другой маршрутизацией она может отличаться.
 // Тест занимает до ~20 секунд и расходует не более ~450 МБ трафика (лимит на загрузку 300 МБ и на отдачу 150 МБ, что наступит раньше); на это время канал занят, пинг и потери на графиках растут — это нормально.
 import dns from 'node:dns/promises'
 import net from 'node:net'
+import { writeSample } from '../collector/store.js'
 import { emitEvent } from '../events.js'
 import { errText } from '../mask.js'
 import { getSetting, setSetting } from '../settings.js'
@@ -21,7 +22,13 @@ const UP_STREAMS = 4
 const UP_CHUNK = 2_000_000
 const UP_SEC = 6
 const MIN_INTERVAL_MS = 10 * 60_000 // Cloudflare ограничивает частоту (429 на ~час при серии тестов) — чаще раза в 10 минут не даём
+// Раз в час: слот = календарный час, замер в HOURLY_MINUTE-ю минуту. Привязка к часам, а не к «прошлому замеру»,
+// поэтому ручной замер расписание не сдвигает; лишь если ручной (или любой) замер закончился менее RECENT_SKIP_MS назад — слот пропускается.
+const HOURLY_MINUTE = 7
+const RECENT_SKIP_MS = 15 * 60_000
+const BACKOFF_DEFAULT_MS = 60 * 60_000 // после 429 плановые замеры молчат столько (или сколько скажет Retry-After)
 const KEY = 'internet.speedtests'
+const BACKOFF_KEY = 'internet.speedtest.backoffUntil'
 const SCHED_KEY = 'internet.speedtest.schedule'
 
 export type SpeedResult = {
@@ -36,20 +43,22 @@ export type SpeedResult = {
   durationSec: number
   error: string | null
 }
-export type SpeedSchedule = { enabled: boolean; time: string; lastDay: string | null }
+export type SpeedSchedule = { enabled: boolean; mode: 'daily' | 'hourly'; time: string; lastDay: string | null; lastSlot: string | null; hourlyMinute: number }
 
 let running: { startedAt: number; phase: string } | null = null
 
-export const getSpeedSchedule = (): SpeedSchedule => ({ enabled: false, time: '04:00', lastDay: null, ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}) })
-export function saveSpeedSchedule(s: { enabled: boolean; time: string }) {
+export const getSpeedSchedule = (): SpeedSchedule => ({ enabled: false, mode: 'daily', time: '04:00', lastDay: null, lastSlot: null, ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}), hourlyMinute: HOURLY_MINUTE })
+export function saveSpeedSchedule(s: { enabled: boolean; time: string; mode?: 'daily' | 'hourly' }) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(s.time)) throw Object.assign(new Error('Время должно быть в формате ЧЧ:ММ'), { statusCode: 400 })
-  setSetting(SCHED_KEY, { ...getSpeedSchedule(), enabled: s.enabled, time: s.time })
+  if (s.mode && s.mode !== 'daily' && s.mode !== 'hourly') throw Object.assign(new Error('Режим: daily или hourly'), { statusCode: 400 })
+  setSetting(SCHED_KEY, { ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}), enabled: s.enabled, time: s.time, mode: s.mode ?? getSpeedSchedule().mode })
 }
 
 export const speedtestState = () => ({
   running,
   results: getSetting<SpeedResult[]>(KEY, []).slice(0, 10),
   schedule: getSpeedSchedule(),
+  backoffUntil: getSetting<number>(BACKOFF_KEY, 0) > Date.now() ? getSetting<number>(BACKOFF_KEY, 0) : null,
   provider: { name: 'Cloudflare (speed.cloudflare.com)', anycast: true },
 })
 
@@ -57,6 +66,8 @@ export const speedtestState = () => ({
 function badResponse(res: Response, what: string): Error {
   if (res.status === 429) {
     const sec = Number(res.headers.get('retry-after'))
+    const wait = Number.isFinite(sec) && sec > 0 ? sec * 1000 : BACKOFF_DEFAULT_MS
+    setSetting(BACKOFF_KEY, Date.now() + Math.max(wait, BACKOFF_DEFAULT_MS))
     return new Error(`Cloudflare временно ограничил частоту тестов${Number.isFinite(sec) && sec > 0 ? ` (повторите примерно через ${Math.ceil(sec / 60)} мин)` : ''} — это защита их сервиса от частых замеров`)
   }
   return new Error(`${what}: сервер ответил ${res.status}`)
@@ -166,13 +177,21 @@ export async function runSpeedtest(trigger: SpeedResult['trigger']): Promise<Spe
   } finally {
     r.durationSec = Math.round((Date.now() - started) / 1000)
     running = null
-    setSetting(KEY, [r, ...getSetting<SpeedResult[]>(KEY, [])].slice(0, 30))
+    setSetting(KEY, [r, ...getSetting<SpeedResult[]>(KEY, [])].slice(0, 48))
+  }
+  // История для графика: успешные замеры (ручные и плановые) идут в метрики — там они хранятся месяцами
+  if (!r.error && r.downMbps != null && r.upMbps != null) {
+    const v: Record<string, number> = { 'inet.speed_down': r.downMbps, 'inet.speed_up': r.upMbps }
+    if (r.latencyMs != null) v['inet.speed_latency'] = r.latencyMs
+    writeSample(Date.now(), v)
   }
   if (!r.error) emitEvent({ kind: 'internet.speedtest', level: 'info', text: `Спидтест: ↓ ${r.downMbps} Мбит/с, ↑ ${r.upMbps} Мбит/с, пинг ${r.latencyMs} мс`, target: 'internet', details: r })
   return r
 }
 
-// Расписание: раз в сутки после заданного времени, один раз за день (если панель была выключена — выполнится при следующей проверке того же дня)
+// Расписание. daily — раз в сутки после заданного времени, один раз за день (если панель была выключена — выполнится при следующей проверке того же дня).
+// hourly — раз в час, в HOURLY_MINUTE-ю минуту, один раз за календарный час. Слот помечается использованным сразу при решении (запустить/пропустить),
+// чтобы не долбить Cloudflare повторами; после 429 плановые замеры молчат (BACKOFF_KEY), ручная кнопка при этом не блокируется.
 export function startSpeedtest() {
   setInterval(() => {
     const s = getSpeedSchedule()
@@ -180,8 +199,17 @@ export function startSpeedtest() {
     const now = new Date()
     const day = now.toLocaleDateString('sv-SE')
     const hhmm = now.toTimeString().slice(0, 5)
-    if (s.lastDay === day || hhmm < s.time) return
-    setSetting(SCHED_KEY, { ...s, lastDay: day })
+    if (s.mode === 'hourly') {
+      const slot = `${day}T${hhmm.slice(0, 2)}`
+      if (s.lastSlot === slot || now.getMinutes() < HOURLY_MINUTE) return
+      setSetting(SCHED_KEY, { ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}), lastSlot: slot })
+      if (getSetting<number>(BACKOFF_KEY, 0) > Date.now()) return // Cloudflare просил подождать
+      const prev = getSetting<SpeedResult[]>(KEY, [])[0]
+      if (prev && prev.ts + prev.durationSec * 1000 > Date.now() - RECENT_SKIP_MS) return // только что был замер (например, ручной) — не частим
+    } else {
+      if (s.lastDay === day || hhmm < s.time) return
+      setSetting(SCHED_KEY, { ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}), lastDay: day })
+    }
     void runSpeedtest('schedule').catch(() => {})
-  }, 60_000)
+  }, 30_000)
 }

@@ -45,9 +45,9 @@ export async function infraRoutes(app: FastifyInstance) {
     void runSpeedtest('manual').catch(() => {})
     return reply.code(202).send({ ok: true })
   })
-  app.put<{ Body: { enabled: boolean; time: string } }>(
+  app.put<{ Body: { enabled: boolean; time: string; mode?: 'daily' | 'hourly' } }>(
     '/api/internet/speedtest/schedule',
-    { schema: { body: { type: 'object', required: ['enabled', 'time'], properties: { enabled: { type: 'boolean' }, time: { type: 'string', pattern: '^\\d{2}:\\d{2}$' } } } } },
+    { schema: { body: { type: 'object', required: ['enabled', 'time'], properties: { enabled: { type: 'boolean' }, time: { type: 'string', pattern: '^\\d{2}:\\d{2}$' }, mode: { type: 'string', enum: ['daily', 'hourly'] } } } } },
     async (req, reply) => {
       try {
         saveSpeedSchedule(req.body)

@@ -5,7 +5,9 @@ import { CircleAlert, Gauge, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatBytes, formatDateTime } from '@/lib/format'
+import type { Range } from '@/lib/types'
 import type { SpeedResult, SpeedtestState } from '@/features/infra-types'
+import { MetricChart } from '@/components/metric-chart'
 import { NoData } from '@/components/no-data'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
@@ -26,7 +28,7 @@ function Big({ label, flow, value }: { label: string; flow: 'rx' | 'tx'; value: 
 }
 
 // Спидтест: загрузка/отдача/задержка до ближайшего узла Cloudflare. Приём и отдача — единой парой цветов --rx/--tx.
-export function SpeedtestCard() {
+export function SpeedtestCard({ range }: { range: Range }) {
   const qc = useQueryClient()
   const { data, isError } = useQuery({
     queryKey: ['speedtest'],
@@ -46,11 +48,12 @@ export function SpeedtestCard() {
     if (data) setTime(data.schedule.time)
   }, [data?.schedule.time]) // eslint-disable-line react-hooks/exhaustive-deps
   const saveSchedule = useMutation({
-    mutationFn: (s: { enabled: boolean; time: string }) => api.put('/internet/speedtest/schedule', s),
+    mutationFn: (s: { enabled: boolean; time: string; mode: 'daily' | 'hourly' }) => api.put('/internet/speedtest/schedule', s),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['speedtest'] }),
     onError: (e) => toast.error(errMsg(e)),
   })
 
+  const mode = data?.schedule.mode ?? 'daily'
   const running = data?.running
   const last: SpeedResult | undefined = data?.results[0]
   return (
@@ -116,25 +119,52 @@ export function SpeedtestCard() {
 
         <div className='flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-3'>
           <label className='flex items-center gap-2'>
-            <Switch checked={data?.schedule.enabled ?? false} disabled={!data || saveSchedule.isPending} onCheckedChange={(v) => saveSchedule.mutate({ enabled: v, time })} />
-            Замер раз в сутки в
+            <Switch checked={data?.schedule.enabled ?? false} disabled={!data || saveSchedule.isPending} onCheckedChange={(v) => saveSchedule.mutate({ enabled: v, time, mode })} />
+            Замер по расписанию
           </label>
-          <Input
-            type='time'
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            onBlur={() => data && time !== data.schedule.time && /^\d{2}:\d{2}$/.test(time) && saveSchedule.mutate({ enabled: data.schedule.enabled, time })}
-            className='w-28'
-            aria-label='Время ежедневного замера'
-          />
-          {data?.schedule.lastDay && <span className='text-xs text-muted-foreground'>последний плановый — {data.schedule.lastDay}</span>}
+          <div className='inline-flex rounded-md border p-0.5' role='group' aria-label='Частота замеров'>
+            {(['hourly', 'daily'] as const).map((m) => (
+              <Button key={m} size='sm' variant={mode === m ? 'default' : 'ghost'} disabled={!data || saveSchedule.isPending} onClick={() => mode !== m && saveSchedule.mutate({ enabled: data?.schedule.enabled ?? false, time, mode: m })}>
+                {m === 'hourly' ? 'Раз в час' : 'Раз в сутки'}
+              </Button>
+            ))}
+          </div>
+          {mode === 'daily' ? (
+            <Input
+              type='time'
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              onBlur={() => data && time !== data.schedule.time && /^\d{2}:\d{2}$/.test(time) && saveSchedule.mutate({ enabled: data.schedule.enabled, time, mode })}
+              className='w-28'
+              aria-label='Время ежедневного замера'
+            />
+          ) : (
+            <span className='text-xs text-muted-foreground'>каждый час в :{String(data?.schedule.hourlyMinute ?? 7).padStart(2, '0')}</span>
+          )}
+          {mode === 'daily' && data?.schedule.lastDay && <span className='text-xs text-muted-foreground'>последний плановый — {data.schedule.lastDay}</span>}
         </div>
+        {data?.backoffUntil && (
+          <p className='flex items-start gap-2 text-xs text-warn-foreground'>
+            <CircleAlert className='mt-0.5 size-4 shrink-0' /> Cloudflare ограничил частоту тестов — плановые замеры приостановлены до {formatDateTime(data.backoffUntil)}. Кнопка «Измерить скорость» остаётся доступной.
+          </p>
+        )}
+
+        <MetricChart
+          title='Скорость по замерам, Мбит/с'
+          series={[
+            { name: 'inet.speed_down', label: 'загрузка ↓', color: 'var(--rx)' },
+            { name: 'inet.speed_up', label: 'отдача ↑', color: 'var(--tx)' },
+          ]}
+          range={range}
+          format={(v) => `${v >= 100 ? Math.round(v) : v.toFixed(1)} Мбит/с`}
+          domain={[0, 'auto']}
+        />
 
         <p className='text-xs text-muted-foreground'>
           Как это работает: панель скачивает и отдаёт тестовые данные на публичные адреса Cloudflare (speed.cloudflare.com) — без ключей и регистрации. Замер идёт до
           <b> ближайшего</b> узла Cloudflare (сейчас {last?.colo ?? '—'}), поэтому показывает скорость канала до крупного узла, а не до конкретного сайта: у отдельных сервисов маршрут
           может быть медленнее. Тест длится до ~20 с и тратит не более ~450 МБ трафика; пока он идёт, канал занят — пинг и потери на графиках выше могут вырасти, это нормально.
-          Чаще раза в 10 минут не запускается: Cloudflare сам ограничивает частые замеры (при серии тестов отвечает отказом примерно на час).
+          Ручной замер — не чаще раза в 10 минут: Cloudflare сам ограничивает частые тесты (при серии отвечает отказом примерно на час). «Раз в час» привязан к часам (замер в :07) и не сбивается ручными замерами; если ручной замер был менее 15 минут назад, плановый в этот час пропускается. После отказа Cloudflare плановые замеры замолкают на час. Расход — до ~450 МБ на замер, при почасовом режиме до ~10 ГБ в сутки. В график попадают все удачные замеры (ручные и плановые), хранятся месяцами.
         </p>
       </CardContent>
     </Card>

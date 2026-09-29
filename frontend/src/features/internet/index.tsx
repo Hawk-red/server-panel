@@ -145,7 +145,7 @@ export function Internet() {
 
           <TargetsCard data={data} range={range} />
 
-          <SpeedtestCard />
+          <SpeedtestCard range={range} />
 
           <Card className='mt-4 gap-2'>
             <CardHeader>
