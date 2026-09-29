@@ -87,7 +87,7 @@ export type SpeedResult = {
 export type SpeedtestState = {
   running: { startedAt: number; phase: string } | null
   results: SpeedResult[]
-  schedule: { enabled: boolean; mode: 'daily' | 'hourly'; time: string; lastDay: string | null; lastSlot: string | null; hourlyMinute: number }
+  schedule: { enabled: boolean; mode: 'daily' | 'hourly' | 'every3h'; time: string; lastDay: string | null; lastSlot: string | null; hourlyMinute: number }
   backoffUntil: number | null
   provider: { name: string; anycast: boolean }
 }

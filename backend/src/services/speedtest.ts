@@ -43,14 +43,17 @@ export type SpeedResult = {
   durationSec: number
   error: string | null
 }
-export type SpeedSchedule = { enabled: boolean; mode: 'daily' | 'hourly'; time: string; lastDay: string | null; lastSlot: string | null; hourlyMinute: number }
+export type SpeedMode = 'daily' | 'hourly' | 'every3h'
+// Шаг режима в часах (для не-суточных); слот = календарный час, кратный шагу, отсчёт с 00:00
+const STEP_HOURS: Record<Exclude<SpeedMode, 'daily'>, number> = { hourly: 1, every3h: 3 }
+export type SpeedSchedule = { enabled: boolean; mode: SpeedMode; time: string; lastDay: string | null; lastSlot: string | null; hourlyMinute: number }
 
 let running: { startedAt: number; phase: string } | null = null
 
 export const getSpeedSchedule = (): SpeedSchedule => ({ enabled: false, mode: 'daily', time: '04:00', lastDay: null, lastSlot: null, ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}), hourlyMinute: HOURLY_MINUTE })
-export function saveSpeedSchedule(s: { enabled: boolean; time: string; mode?: 'daily' | 'hourly' }) {
+export function saveSpeedSchedule(s: { enabled: boolean; time: string; mode?: SpeedMode }) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(s.time)) throw Object.assign(new Error('Время должно быть в формате ЧЧ:ММ'), { statusCode: 400 })
-  if (s.mode && s.mode !== 'daily' && s.mode !== 'hourly') throw Object.assign(new Error('Режим: daily или hourly'), { statusCode: 400 })
+  if (s.mode && s.mode !== 'daily' && !(s.mode in STEP_HOURS)) throw Object.assign(new Error('Режим: daily, hourly или every3h'), { statusCode: 400 })
   setSetting(SCHED_KEY, { ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}), enabled: s.enabled, time: s.time, mode: s.mode ?? getSpeedSchedule().mode })
 }
 
@@ -190,7 +193,7 @@ export async function runSpeedtest(trigger: SpeedResult['trigger']): Promise<Spe
 }
 
 // Расписание. daily — раз в сутки после заданного времени, один раз за день (если панель была выключена — выполнится при следующей проверке того же дня).
-// hourly — раз в час, в HOURLY_MINUTE-ю минуту, один раз за календарный час. Слот помечается использованным сразу при решении (запустить/пропустить),
+// hourly / every3h — раз в час / раз в 3 часа (00, 03, 06… ч), в HOURLY_MINUTE-ю минуту, один раз за календарный час. Слот помечается использованным сразу при решении (запустить/пропустить),
 // чтобы не долбить Cloudflare повторами; после 429 плановые замеры молчат (BACKOFF_KEY), ручная кнопка при этом не блокируется.
 export function startSpeedtest() {
   setInterval(() => {
@@ -199,7 +202,8 @@ export function startSpeedtest() {
     const now = new Date()
     const day = now.toLocaleDateString('sv-SE')
     const hhmm = now.toTimeString().slice(0, 5)
-    if (s.mode === 'hourly') {
+    if (s.mode !== 'daily') {
+      if (now.getHours() % STEP_HOURS[s.mode] !== 0) return
       const slot = `${day}T${hhmm.slice(0, 2)}`
       if (s.lastSlot === slot || now.getMinutes() < HOURLY_MINUTE) return
       setSetting(SCHED_KEY, { ...getSetting<Partial<SpeedSchedule>>(SCHED_KEY, {}), lastSlot: slot })

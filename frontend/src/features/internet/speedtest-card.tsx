@@ -15,6 +15,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 
+type SpeedMode = 'daily' | 'hourly' | 'every3h'
+const MODES: { id: SpeedMode; label: string }[] = [
+  { id: 'every3h', label: 'Раз в 3 часа' },
+  { id: 'hourly', label: 'Раз в час' },
+  { id: 'daily', label: 'Раз в сутки' },
+]
 const errMsg = (e: unknown) => (e instanceof AxiosError && e.response?.data?.message) || 'ошибка'
 const mbps = (v: number | null) => (v == null ? '—' : `${v >= 100 ? Math.round(v) : v.toFixed(1)} Мбит/с`)
 
@@ -48,7 +54,7 @@ export function SpeedtestCard({ range }: { range: Range }) {
     if (data) setTime(data.schedule.time)
   }, [data?.schedule.time]) // eslint-disable-line react-hooks/exhaustive-deps
   const saveSchedule = useMutation({
-    mutationFn: (s: { enabled: boolean; time: string; mode: 'daily' | 'hourly' }) => api.put('/internet/speedtest/schedule', s),
+    mutationFn: (s: { enabled: boolean; time: string; mode: SpeedMode }) => api.put('/internet/speedtest/schedule', s),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['speedtest'] }),
     onError: (e) => toast.error(errMsg(e)),
   })
@@ -123,9 +129,9 @@ export function SpeedtestCard({ range }: { range: Range }) {
             Замер по расписанию
           </label>
           <div className='inline-flex rounded-md border p-0.5' role='group' aria-label='Частота замеров'>
-            {(['hourly', 'daily'] as const).map((m) => (
+            {MODES.map(({ id: m, label }) => (
               <Button key={m} size='sm' variant={mode === m ? 'default' : 'ghost'} disabled={!data || saveSchedule.isPending} onClick={() => mode !== m && saveSchedule.mutate({ enabled: data?.schedule.enabled ?? false, time, mode: m })}>
-                {m === 'hourly' ? 'Раз в час' : 'Раз в сутки'}
+                {label}
               </Button>
             ))}
           </div>
@@ -139,7 +145,7 @@ export function SpeedtestCard({ range }: { range: Range }) {
               aria-label='Время ежедневного замера'
             />
           ) : (
-            <span className='text-xs text-muted-foreground'>каждый час в :{String(data?.schedule.hourlyMinute ?? 7).padStart(2, '0')}</span>
+            <span className='text-xs text-muted-foreground'>{mode === 'every3h' ? 'в 00, 03, 06… ч, в :' : 'каждый час в :'}{String(data?.schedule.hourlyMinute ?? 7).padStart(2, '0')}</span>
           )}
           {mode === 'daily' && data?.schedule.lastDay && <span className='text-xs text-muted-foreground'>последний плановый — {data.schedule.lastDay}</span>}
         </div>
@@ -164,7 +170,7 @@ export function SpeedtestCard({ range }: { range: Range }) {
           Как это работает: панель скачивает и отдаёт тестовые данные на публичные адреса Cloudflare (speed.cloudflare.com) — без ключей и регистрации. Замер идёт до
           <b> ближайшего</b> узла Cloudflare (сейчас {last?.colo ?? '—'}), поэтому показывает скорость канала до крупного узла, а не до конкретного сайта: у отдельных сервисов маршрут
           может быть медленнее. Тест длится до ~20 с и тратит не более ~450 МБ трафика; пока он идёт, канал занят — пинг и потери на графиках выше могут вырасти, это нормально.
-          Ручной замер — не чаще раза в 10 минут: Cloudflare сам ограничивает частые тесты (при серии отвечает отказом примерно на час). «Раз в час» привязан к часам (замер в :07) и не сбивается ручными замерами; если ручной замер был менее 15 минут назад, плановый в этот час пропускается. После отказа Cloudflare плановые замеры замолкают на час. Расход — до ~450 МБ на замер, при почасовом режиме до ~10 ГБ в сутки. В график попадают все удачные замеры (ручные и плановые), хранятся месяцами.
+          Ручной замер — не чаще раза в 10 минут: Cloudflare сам ограничивает частые тесты (при серии отвечает отказом примерно на час). «Раз в час» и «Раз в 3 часа» привязаны к часам (замер в :07; для 3 часов — в 00, 03, 06… ч) и не сбивается ручными замерами; если ручной замер был менее 15 минут назад, плановый в этот час пропускается. После отказа Cloudflare плановые замеры замолкают на час. Расход — до ~450 МБ на замер, до ~10 ГБ в сутки при режиме «раз в час», до ~3,6 ГБ при «раз в 3 часа». В график попадают все удачные замеры (ручные и плановые), хранятся месяцами.
         </p>
       </CardContent>
     </Card>
