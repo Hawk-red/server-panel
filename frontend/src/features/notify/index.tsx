@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { BellRing, CheckCircle2, Moon, Save, Search, Send } from 'lucide-react'
+import { BellRing, CheckCircle2, Hash, Megaphone, Moon, Save, Search, Send, User, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
@@ -26,6 +26,14 @@ type Status = {
   sent: { ts: number; text: string; ok: boolean; urgent: boolean; error?: string }[]
 }
 type Chat = { id: number; name: string; type: string; last: number; text: string }
+type TestResult = { ok: boolean; chat: { id: number; type: string; name: string } }
+
+const CHAT_TYPE: Record<string, { label: string; icon: typeof User }> = {
+  private: { label: 'личный чат', icon: User },
+  group: { label: 'группа', icon: Users },
+  supergroup: { label: 'группа', icon: Users },
+  channel: { label: 'канал', icon: Megaphone },
+}
 
 const errMsg = (e: unknown) => (e instanceof AxiosError && e.response?.data?.message) || 'ошибка'
 
@@ -34,6 +42,7 @@ export function Notifications() {
   const { data, isError } = useQuery({ queryKey: ['notify'], queryFn: async () => (await api.get<Status>('/notify')).data, refetchInterval: 30_000 })
   const [form, setForm] = useState<Settings | null>(null)
   const [chats, setChats] = useState<Chat[] | null>(null)
+  const [manual, setManual] = useState('')
   useEffect(() => {
     if (data && !form) setForm(data.settings)
   }, [data, form])
@@ -50,7 +59,7 @@ export function Notifications() {
     mutationFn: async () => (await api.post<Chat[]>('/notify/detect-chat', {})).data,
     onSuccess: (c) => {
       setChats(c)
-      if (!c.length) toast.info('Боту ещё никто не писал — отправьте ему /start и нажмите ещё раз')
+      if (!c.length) toast.info('Бот пока не видит ни одного чата — напишите ему /start (в личке) или добавьте в группу и напишите там /start@имя_бота, затем нажмите ещё раз')
     },
     onError: (e) => toast.error(errMsg(e)),
   })
@@ -59,6 +68,18 @@ export function Notifications() {
     onSuccess: () => {
       toast.success('Тестовое сообщение отправлено — проверьте Telegram')
       qc.invalidateQueries({ queryKey: ['notify'] })
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  })
+
+  // Ручной ввод: тест уходит в этот чат ДО сохранения; сохраняем, только если Telegram принял сообщение
+  const manualId = /^-?\d{5,20}$/.test(manual.trim()) ? Number(manual.trim()) : null
+  const checkManual = useMutation({
+    mutationFn: async (id: number) => (await api.post<TestResult>('/notify/test', { chatId: id })).data,
+    onSuccess: (r) => {
+      toast.success(`Тест доставлен: ${r.chat.name || r.chat.id} (${CHAT_TYPE[r.chat.type]?.label ?? r.chat.type}). Чат выбран`)
+      pickChat(r.chat.id)
+      setManual('')
     },
     onError: (e) => toast.error(errMsg(e)),
   })
@@ -112,8 +133,12 @@ export function Notifications() {
                   <span className='font-medium'>2.</span>
                   <div className='space-y-2'>
                     <div>
-                      Напишите боту {data.bot ? <a className='text-info underline' href={`https://t.me/${data.bot.username}`} target='_blank' rel='noreferrer'>@{data.bot.username}</a> : 'в Telegram'} любое сообщение
-                      (например, /start) и нажмите «Найти чат».
+                      Личные уведомления: напишите боту {data.bot ? <a className='text-info underline' href={`https://t.me/${data.bot.username}`} target='_blank' rel='noreferrer'>@{data.bot.username}</a> : 'в Telegram'} /start и нажмите «Найти чат».
+                    </div>
+                    <div className='text-xs text-muted-foreground'>
+                      Для нескольких получателей создайте группу в Telegram, добавьте туда бота и всех, кому нужны уведомления. Бот появится в списке сразу после добавления; если нет — напишите в группе{' '}
+                      <code className='font-mono text-address'>/start{data.bot ? `@${data.bot.username}` : '@имя_бота'}</code> (бот в группе видит только команды и упоминания) и нажмите «Найти чат» ещё раз.
+                      Данные Telegram хранит около суток.
                     </div>
                     <div className='flex flex-wrap items-center gap-2'>
                       <Button size='sm' variant='outline' onClick={() => detect.mutate()} disabled={!data.tokenSet || detect.isPending}>
@@ -121,23 +146,38 @@ export function Notifications() {
                       </Button>
                       <span className='text-xs text-muted-foreground'>
                         Выбран: {form.chatId ? <span className='font-mono text-address'>{form.chatId}</span> : 'нет'}
+                        {form.chatId != null && form.chatId < 0 && ' (группа или канал)'}
                       </span>
                     </div>
                     {chats && chats.length > 0 && (
                       <ul className='space-y-1'>
-                        {chats.map((c) => (
-                          <li key={c.id} className='flex items-center justify-between gap-2 rounded border px-2 py-1'>
-                            <span className='min-w-0 truncate'>
-                              {c.name || c.type} <span className='font-mono text-xs text-address'>{c.id}</span>
-                              {c.text && <span className='text-xs text-muted-foreground'> · «{c.text}»</span>}
-                            </span>
-                            <Button size='sm' onClick={() => pickChat(c.id)}>
-                              <CheckCircle2 /> Это я
-                            </Button>
-                          </li>
-                        ))}
+                        {chats.map((c) => {
+                          const t = CHAT_TYPE[c.type] ?? { label: c.type, icon: Hash }
+                          const TypeIcon = t.icon
+                          return (
+                            <li key={c.id} className='flex items-center justify-between gap-2 rounded border px-2 py-1'>
+                              <span className='min-w-0 truncate'>
+                                <TypeIcon className='me-1 inline size-4 text-muted-foreground' aria-hidden /> {c.name || t.label}{' '}
+                                <span className='text-xs text-muted-foreground'>({t.label})</span> <span className='font-mono text-xs text-address'>{c.id}</span>
+                                {c.text && <span className='text-xs text-muted-foreground'> · «{c.text}»</span>}
+                              </span>
+                              <Button size='sm' onClick={() => pickChat(c.id)}>
+                                <CheckCircle2 /> Выбрать
+                              </Button>
+                            </li>
+                          )
+                        })}
                       </ul>
                     )}
+                    <div className='border-t pt-2'>
+                      <div className='mb-1 text-xs text-muted-foreground'>Или впишите chat_id вручную (у группы он отрицательный, например -1001234567890). Бот должен уже быть в группе — на этот id уйдёт тестовое сообщение, и только после его доставки чат сохранится.</div>
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <Input className='w-56 font-mono' inputMode='numeric' placeholder='-1001234567890' value={manual} onChange={(e) => setManual(e.target.value)} aria-label='chat_id' />
+                        <Button size='sm' variant='outline' disabled={manualId === null || !data.tokenSet || checkManual.isPending} onClick={() => manualId !== null && checkManual.mutate(manualId)}>
+                          <Send /> Проверить и выбрать
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </li>
                 <li className='flex gap-2'>

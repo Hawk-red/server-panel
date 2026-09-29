@@ -47,14 +47,20 @@ export async function notifyRoutes(app: FastifyInstance) {
     return { ok: Boolean(me.value), username: me.value?.username ?? null, error: me.error }
   })
 
-  app.post('/api/notify/test', async (req, reply) => {
-    try {
-      await n.sendTest()
-      audit({ ip: req.clientIp, user: 'admin', action: 'notify.test', result: 'ok' })
-      return { ok: true }
-    } catch (e) {
-      audit({ ip: req.clientIp, user: 'admin', action: 'notify.test', result: 'error', details: { message: errText(e) } })
-      return reply.code(400).send({ message: errText(e) })
+  // Тест в выбранный чат; с телом { chatId } — проверка произвольного чата (группа — отрицательное число) до сохранения
+  app.post<{ Body: { chatId?: number } | undefined }>(
+    '/api/notify/test',
+    { schema: { body: { type: ['object', 'null'], properties: { chatId: { type: 'integer' } } } } },
+    async (req, reply) => {
+      const chatId = req.body?.chatId
+      try {
+        const chat = await n.sendTest(chatId)
+        audit({ ip: req.clientIp, user: 'admin', action: 'notify.test', target: String(chat.id), details: { type: chat.type, name: chat.name }, result: 'ok' })
+        return { ok: true, chat }
+      } catch (e) {
+        audit({ ip: req.clientIp, user: 'admin', action: 'notify.test', target: chatId != null ? String(chatId) : undefined, result: 'error', details: { message: errText(e) } })
+        return reply.code(400).send({ message: errText(e) })
+      }
     }
-  })
+  )
 }

@@ -66,6 +66,7 @@ function tgError(code: number | undefined, description = ''): string {
   if (code === 409 || d.includes('conflict'))
     return 'Этот токен уже использует другой бот или процесс (он сам получает обновления через getUpdates). Для уведомлений панели нужен отдельный бот — создайте его в @BotFather и задайте его токен в NOTIFY_BOT_TOKEN.'
   if (code === 401 || d.includes('unauthorized')) return 'Telegram не принял токен: он отозван или введён с ошибкой. Задайте новый NOTIFY_BOT_TOKEN.'
+  if (d.includes('upgraded to a supergroup')) return 'Группа стала супергруппой, и её chat_id изменился. Нажмите «Найти чат» (после сообщения боту в группе) и выберите группу заново.'
   if (d.includes('chat not found')) return 'Чат не найден: напишите боту /start и выберите чат заново.'
   if (code === 403 || d.includes('blocked')) return 'Бот не может писать в этот чат: он заблокирован или удалён из чата.'
   if (code === 429) return 'Telegram просит подождать: слишком много запросов. Повторите через минуту.'
@@ -240,29 +241,58 @@ async function checkDeadlines() {
   }
 }
 
-export async function sendTest() {
-  const s = getNotifySettings()
-  if (!s.chatId) throw new Error('не выбран чат (chat_id)')
-  await tg('sendMessage', { chat_id: s.chatId, text: '✅ Тест: панель Mac Mini умеет присылать уведомления.' })
-  remember({ ts: Date.now(), text: 'Тестовое сообщение', ok: true, urgent: true })
+// Тест в выбранный чат или в переданный chatId (проверка перед сохранением; для группы — отрицательное число).
+// Возвращает название чата, чтобы было видно, куда ушло сообщение.
+export async function sendTest(chatId?: number) {
+  const id = chatId ?? getNotifySettings().chatId
+  if (!id) throw new Error('не выбран чат (chat_id)')
+  const chat = await tg<{ id: number; type: string; title?: string; first_name?: string; username?: string }>('getChat', { chat_id: id })
+  const name = chat.title ?? [chat.first_name, chat.username && `@${chat.username}`].filter(Boolean).join(' ')
+  await tg('sendMessage', { chat_id: id, text: '✅ Тест: панель Mac Mini умеет присылать уведомления.' })
+  remember({ ts: Date.now(), text: `Тестовое сообщение → ${name || id}`, ok: true, urgent: true })
+  return { id, type: chat.type, name }
 }
 
-// Кто писал боту — чтобы выбрать свой chat_id без ручного поиска
+// Кто писал боту и куда его добавили — чтобы выбрать chat_id без ручного поиска.
+// Личные чаты, группы, супергруппы и каналы. Группа появляется сразу после добавления в неё бота
+// (событие my_chat_member), сообщение в группе не обязательно; но при включённом «Group Privacy» бот видит
+// в группе только команды и упоминания — поэтому в подсказке просим написать /start@бот.
+type ChatRef = { id: number; type: string; username?: string; first_name?: string; title?: string }
+type Upd = {
+  message?: { chat: ChatRef; text?: string; date: number }
+  edited_message?: { chat: ChatRef; text?: string; date: number }
+  channel_post?: { chat: ChatRef; text?: string; date: number }
+  edited_channel_post?: { chat: ChatRef; text?: string; date: number }
+  my_chat_member?: { chat: ChatRef; date: number; new_chat_member: { status: string } }
+}
+export type FoundChat = { id: number; name: string; type: string; last: number; text: string }
+
 export async function detectChats() {
-  const updates = await tg<{ message?: { chat: { id: number; type: string; username?: string; first_name?: string; title?: string }; text?: string; date: number } }[]>('getUpdates', { limit: 50, timeout: 0 })
-  const chats = new Map<number, { id: number; name: string; type: string; last: number; text: string }>()
-  for (const u of updates) {
-    const m = u.message
-    if (!m) continue
-    chats.set(m.chat.id, {
-      id: m.chat.id,
-      name: m.chat.title ?? [m.chat.first_name, m.chat.username && `@${m.chat.username}`].filter(Boolean).join(' '),
-      type: m.chat.type,
-      last: m.date * 1000,
-      text: (m.text ?? '').slice(0, 40),
+  const updates = await tg<Upd[]>('getUpdates', { limit: 100, timeout: 0 })
+  const chats = new Map<number, FoundChat & { gone: boolean }>()
+  const seen = (chat: ChatRef, date: number, text: string, gone?: boolean) => {
+    const prev = chats.get(chat.id)
+    if (prev && prev.last > date * 1000) return // обновления идут по возрастанию; берём самое свежее состояние
+    chats.set(chat.id, {
+      id: chat.id,
+      name: chat.title ?? [chat.first_name, chat.username && `@${chat.username}`].filter(Boolean).join(' '),
+      type: chat.type,
+      last: date * 1000,
+      text: text.slice(0, 40),
+      gone: gone ?? prev?.gone ?? false,
     })
   }
-  return [...chats.values()].sort((a, b) => b.last - a.last)
+  for (const u of updates) {
+    const m = u.message ?? u.edited_message ?? u.channel_post ?? u.edited_channel_post
+    if (m) seen(m.chat, m.date, m.text ?? '', false)
+    else if (u.my_chat_member) {
+      const st = u.my_chat_member.new_chat_member.status
+      const gone = st === 'left' || st === 'kicked'
+      seen(u.my_chat_member.chat, u.my_chat_member.date, gone ? 'бота убрали из чата' : 'бота добавили', gone)
+    }
+  }
+  // чаты, откуда бота убрали, писать бесполезно
+  return [...chats.values()].filter((c) => !c.gone).map(({ gone: _g, ...c }) => c).sort((a, b) => b.last - a.last)
 }
 
 export async function botInfo() {
