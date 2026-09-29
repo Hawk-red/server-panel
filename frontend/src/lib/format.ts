@@ -33,6 +33,13 @@ export function formatDuration(sec: number | null | undefined): string {
   return `${m} мин`
 }
 
+// Аптайм в разных масштабах: часы, дни, недели, месяцы (месяц = 30 дней)
+export function formatUptimeScales(sec: number): string {
+  const fmt = (n: number) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10).toLocaleString('ru-RU')
+  const h = sec / 3600
+  return `${fmt(h)} ч · ${fmt(h / 24)} дн · ${fmt(h / 24 / 7)} нед · ${fmt(h / 24 / 30)} мес`
+}
+
 export function formatDateTime(ts: number | null | undefined): string {
   if (!ts) return '—'
   return new Date(ts).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })

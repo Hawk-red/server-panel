@@ -85,6 +85,10 @@ const migrations: string[] = [
   );
   CREATE INDEX events_ts ON events (ts);
   `,
+  `
+  -- Этап 10: история доступности сервисов — ускоряет выборку переходов по конкретному target
+  CREATE INDEX events_target_kind ON events (target, kind, ts);
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number

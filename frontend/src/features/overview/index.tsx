@@ -11,12 +11,14 @@ import { NoData } from '@/components/no-data'
 import { Meter } from '@/components/meter'
 import { StatTile } from '@/components/stat-tile'
 import { Value } from '@/components/value'
+import { formatUptimeScales } from '@/lib/format'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DeadlinesCard } from './deadlines-card'
 import { ProblemSheet } from './problem-sheet'
 import { QuickActions } from './quick-actions'
+import { UptimeCard } from './uptime-card'
 
 type Health = { status: 'ok'; version: string; uptimeSec: number; node: string; memoryMb: number }
 
@@ -115,12 +117,18 @@ export function Overview() {
           direction='higher-worse'
           noDataReason={err('memory')}
         />
-        <StatTile title='Аптайм' icon={Clock} value={s?.uptimeSec != null ? <Value kind='duration' value={s.uptimeSec} /> : null} noDataReason={err('uptime')} />
+        <StatTile
+          title='Аптайм'
+          icon={Clock}
+          value={s?.uptimeSec != null ? <Value kind='duration' value={s.uptimeSec} /> : null}
+          sub={s?.uptimeSec != null ? formatUptimeScales(s.uptimeSec) : undefined}
+          noDataReason={err('uptime')}
+        />
         <StatTile
           title='Сеть (LAN)'
           icon={Network}
-          value={net ? <Value kind='speed' value={net.rxBps} prefix='↓ ' /> : null}
-          sub={net ? <Value kind='speed' value={net.txBps} prefix='↑ ' /> : undefined}
+          value={net ? <Value kind='speed' value={net.rxBps} flow='rx' prefix='↓ ' /> : null}
+          sub={net ? <Value kind='speed' value={net.txBps} flow='tx' prefix='↑ ' /> : undefined}
           noDataReason={err('network')}
         />
         <StatTile
@@ -281,6 +289,8 @@ export function Overview() {
         <QuickActions />
         <DeadlinesCard />
       </div>
+
+      <UptimeCard />
 
       <Card className='mt-4 gap-2'>
         <CardHeader>
