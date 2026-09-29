@@ -18,6 +18,7 @@ import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as TvSectionRouteImport } from './routes/tv_.$section'
 import { Route as AuthenticatedAccessIndexRouteImport } from './routes/_authenticated/access/index'
 import { Route as AuthenticatedAdguardIndexRouteImport } from './routes/_authenticated/adguard/index'
 import { Route as AuthenticatedAuditIndexRouteImport } from './routes/_authenticated/audit/index'
@@ -76,6 +77,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const TvSectionRoute = TvSectionRouteImport.update({
+  id: '/tv_/$section',
+  path: '/tv/$section',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAccessIndexRoute =
   AuthenticatedAccessIndexRouteImport.update({
@@ -168,6 +174,7 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/tv/$section': typeof TvSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/access/': typeof AuthenticatedAccessIndexRoute
   '/adguard/': typeof AuthenticatedAdguardIndexRoute
@@ -191,6 +198,7 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/tv/$section': typeof TvSectionRoute
   '/': typeof AuthenticatedIndexRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/access': typeof AuthenticatedAccessIndexRoute
@@ -217,6 +225,7 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
+  '/tv_/$section': typeof TvSectionRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/access/': typeof AuthenticatedAccessIndexRoute
@@ -244,6 +253,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/tv/$section'
     | '/errors/$error'
     | '/access/'
     | '/adguard/'
@@ -267,6 +277,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/tv/$section'
     | '/'
     | '/errors/$error'
     | '/access'
@@ -292,6 +303,7 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
+    | '/tv_/$section'
     | '/_authenticated/'
     | '/_authenticated/errors/$error'
     | '/_authenticated/access/'
@@ -318,6 +330,7 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
+  TvSectionRoute: typeof TvSectionRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -384,6 +397,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/tv_/$section': {
+      id: '/tv_/$section'
+      path: '/tv/$section'
+      fullPath: '/tv/$section'
+      preLoaderRoute: typeof TvSectionRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/access/': {
       id: '/_authenticated/access/'
@@ -534,6 +554,7 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
+  TvSectionRoute: TvSectionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

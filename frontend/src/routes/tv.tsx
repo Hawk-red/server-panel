@@ -1,17 +1,9 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { AxiosError } from 'axios'
-import { meQuery } from '@/lib/auth'
-import { TvMode } from '@/features/tv'
+import { createFileRoute } from '@tanstack/react-router'
+import { tvBeforeLoad } from '@/features/tv/auth'
+import { TvView } from '@/features/tv'
 
-// /tv — полноэкранный режим для телевизора, без меню; вход — та же сессия, что и у панели
+// /tv — полноэкранный режим для телевизора, без меню
 export const Route = createFileRoute('/tv')({
-  beforeLoad: async ({ context, location }) => {
-    try {
-      await context.queryClient.ensureQueryData(meQuery)
-    } catch (error) {
-      if (error instanceof AxiosError && error.response?.status === 401) throw redirect({ to: '/sign-in', search: { redirect: location.href } })
-      throw error
-    }
-  },
-  component: TvMode,
+  beforeLoad: tvBeforeLoad,
+  component: () => <TvView />,
 })

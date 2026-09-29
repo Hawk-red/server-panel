@@ -1,7 +1,10 @@
-import { useLocation } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
+import { Tv } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Search } from '@/components/search'
+import { Button } from '@/components/ui/button'
+import { isTvSection } from '@/features/tv/sections'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { sidebarData } from './data/sidebar-data'
 import { Header } from './header'
@@ -30,6 +33,9 @@ function useSection() {
 export function Page({ title, description, actions, children }: PageProps) {
   const section = useSection()
   const Icon = section?.icon
+  // Обзор ставит свою кнопку; у разделов без ТВ-версии кнопка ведёт на общий /tv
+  const slug = section?.url ? String(section.url).replace(/^\//, '') : ''
+  const tvLink = !section || slug === '' ? null : isTvSection(slug) ? { to: '/tv/$section' as const, params: { section: slug } } : { to: '/tv' as const, params: {} }
   return (
     <>
       <Header fixed>
@@ -48,7 +54,16 @@ export function Page({ title, description, actions, children }: PageProps) {
               <p className='text-muted-foreground'>{description}</p>
             )}
           </div>
-          {actions}
+          <div className='flex flex-wrap items-center gap-2'>
+            {actions}
+            {tvLink && (
+              <Button variant='outline' size='sm' asChild>
+                <Link to={tvLink.to} params={tvLink.params as never}>
+                  <Tv /> Режим ТВ
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
         {children}
       </Main>
