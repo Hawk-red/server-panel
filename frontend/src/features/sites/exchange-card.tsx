@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Check, Copy, ExternalLink, FolderUp, Settings2 } from 'lucide-react'
+import { Check, Copy, FolderUp, Globe, Settings2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
 import { formatDateTime } from '@/lib/format'
 import type { ExchangeState } from '@/features/infra-types'
+import { useMonitor } from '@/lib/uptime'
 import { Meter } from '@/components/meter'
 import { NoData } from '@/components/no-data'
 import { StatusBadge } from '@/components/status-badge'
+import { UptimeStrip } from '@/components/uptime-bars'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -38,7 +40,7 @@ function LinkRow({ label, url, hint }: { label: string; url: string; hint: strin
         </Button>
         <Button size='sm' variant='outline' asChild>
           <a href={url} target='_blank' rel='noreferrer'>
-            <ExternalLink /> Открыть
+            <Globe /> Открыть в браузере
           </a>
         </Button>
       </div>
@@ -51,6 +53,7 @@ export function ExchangeCard() {
   const running = data?.container?.state === 'running'
   const status = !data ? null : !data.installed ? 'unknown' : running && data.health?.ok ? 'ok' : running ? 'warning' : 'error'
   const label = !data ? '' : !data.installed ? 'не установлен' : running && data.health?.ok ? `работает · ответ за ${data.health.ms} мс` : running ? 'запущен, но не отвечает' : `контейнер: ${data.container?.state}`
+  const monitor = useMonitor('sftpgo')
   return (
     <Card id='exchange' className='gap-3'>
       <CardHeader className='flex flex-row flex-wrap items-start gap-x-3 gap-y-2'>
@@ -70,6 +73,7 @@ export function ExchangeCard() {
           <p className='text-muted-foreground'>Контейнер sftpgo не найден. Установка: sudo /opt/server-panel/deploy/exchange/install.sh</p>
         ) : (
           <>
+            <UptimeStrip monitor={monitor} />
             <div className='divide-y'>
               <LinkRow label='Снаружи (для гостей)' url={data.urls.external} hint='порт 9443 на роутере → 443 сервера' />
               <LinkRow label='Из дома' url={data.urls.home} hint='нужна запись в AdGuard: api.pulsdev.net → 192.168.31.112' />

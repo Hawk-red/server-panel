@@ -9,6 +9,8 @@ import { getDeadlineConfig, listDeadlines, refreshDomains, saveDeadlineConfig, t
 import * as docker from '../services/docker.js'
 import { exchangeState } from '../services/exchange.js'
 import { internetStatus, refreshExternalIp } from '../services/internet.js'
+import { checkSpeedtestAllowed, getSpeedSchedule, runSpeedtest, saveSpeedSchedule, speedtestState } from '../services/speedtest.js'
+import { unitsInfo } from '../services/sites.js'
 import * as qbt from '../services/qbittorrent.js'
 
 type Part<T> = { data: T; error: null } | { data: null; error: string }
@@ -30,6 +32,32 @@ export async function infraRoutes(app: FastifyInstance) {
     audit({ ...who(req), action: 'internet.refresh-ip', result: 'ok' })
     return internetStatus().ip
   })
+
+  // Спидтест: запуск в фоне (страница опрашивает состояние), расписание — раз в сутки
+  app.get('/api/internet/speedtest', async () => speedtestState())
+  app.post('/api/internet/speedtest', async (req, reply) => {
+    try {
+      checkSpeedtestAllowed('manual')
+    } catch (e) {
+      return reply.code((e as { statusCode?: number }).statusCode ?? 400).send({ message: (e as Error).message })
+    }
+    audit({ ...who(req), action: 'internet.speedtest', result: 'ok' })
+    void runSpeedtest('manual').catch(() => {})
+    return reply.code(202).send({ ok: true })
+  })
+  app.put<{ Body: { enabled: boolean; time: string } }>(
+    '/api/internet/speedtest/schedule',
+    { schema: { body: { type: 'object', required: ['enabled', 'time'], properties: { enabled: { type: 'boolean' }, time: { type: 'string', pattern: '^\\d{2}:\\d{2}$' } } } } },
+    async (req, reply) => {
+      try {
+        saveSpeedSchedule(req.body)
+        audit({ ...who(req), action: 'settings.speedtest', details: req.body, result: 'ok' })
+        return getSpeedSchedule()
+      } catch (e) {
+        return reply.code((e as { statusCode?: number }).statusCode ?? 500).send({ message: (e as Error).message })
+      }
+    }
+  )
 
   app.get('/api/exchange', async () => exchangeState())
 
@@ -81,7 +109,7 @@ export async function infraRoutes(app: FastifyInstance) {
   // (контейнер qBittorrent: /api/docker/containers/qbittorrent/restart, торренты: /api/torrents/stop-all|start-all,
   // AdGuard: /api/adguard/protection) — они уже пишут в журнал действий.
   app.get('/api/quick', async () => {
-    const [container, torrents, protection] = await Promise.all([
+    const [container, torrents, protection, alertBot] = await Promise.all([
       part(async () => {
         const c = await docker.getContainer('qbittorrent')
         if (!c) throw new Error('контейнер не найден')
@@ -92,7 +120,12 @@ export async function infraRoutes(app: FastifyInstance) {
         const s = await adguard.status()
         return { enabled: s.protection_enabled, disabledLeftSec: s.protection_disabled_duration ? Math.round(s.protection_disabled_duration / 1000) : null }
       }),
+      part(async () => {
+        const u = (await unitsInfo(['alert_monitor.service']))[0]
+        if (!u) throw new Error('служба alert_monitor не найдена')
+        return { active: u.active, sub: u.sub, since: u.since }
+      }),
     ])
-    return { container, torrents, protection }
+    return { container, torrents, protection, alertBot }
   })
 }

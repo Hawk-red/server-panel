@@ -2,13 +2,14 @@
 export type Part<T> = { data: T; error: null } | { data: null; error: string }
 
 export type InternetStatus = {
-  now: { ts: number; main: number | null; second: number | null; online: boolean } | null
+  now: { ts: number; main: number | null; second: number | null; online: boolean; extra?: { router: number | null; prod: number | null; adguard: number | null } } | null
   downSince: number | null
   ip: { ip: string; since: number; checkedAt: number } | null
   outages: { from: number; to: number; sec: number }[]
   day: InternetStats
   week: InternetStats
-  targets: { main: string; second: string }
+  targets: { main: string; second: string; router: string; prod: string; adguard: string }
+  targetDay: Record<'main' | 'second' | 'router' | 'prod' | 'adguard', { avgMs: number | null; maxMs: number | null }>
 }
 export type InternetStats = { avgMs: number | null; maxMs: number | null; lossPct: number | null; samples: number }
 
@@ -53,7 +54,13 @@ export type QuickState = {
   container: Part<{ state: string }>
   torrents: Part<{ total: number; stopped: number; running: number; allStopped: boolean }>
   protection: Part<{ enabled: boolean; disabledLeftSec: number | null }>
+  alertBot: Part<{ active: string; sub: string; since: number | null }>
 }
+
+export type BarStatus = 'up' | 'partial' | 'down' | 'unknown'
+export type UptimeBar = { ts: number; status: BarStatus; downPct: number }
+export type MonitorBars = { id: string; title: string; group: string; day: UptimeBar[]; week: UptimeBar[]; upDay: number | null; upWeek: number | null }
+export type UptimeResponse = { generatedAt: number; monitors: MonitorBars[] }
 
 export type ExchangeState = {
   installed: boolean
@@ -63,4 +70,23 @@ export type ExchangeState = {
   disk: { fs: { total: number; used: number; free: number; percent: number } | null; exchangeBytes: number | null; uploadsBytes: number | null } | null
   recent: { ts: number; user: string; ip: string; name: string; size: number }[]
   owner: string
+}
+
+export type SpeedResult = {
+  ts: number
+  trigger: 'manual' | 'schedule'
+  downMbps: number | null
+  upMbps: number | null
+  latencyMs: number | null
+  jitterMs: number | null
+  colo: string | null
+  bytes: number
+  durationSec: number
+  error: string | null
+}
+export type SpeedtestState = {
+  running: { startedAt: number; phase: string } | null
+  results: SpeedResult[]
+  schedule: { enabled: boolean; time: string; lastDay: string | null }
+  provider: { name: string; anycast: boolean }
 }

@@ -13,6 +13,8 @@ import { StatTile } from '@/components/stat-tile'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SpeedtestCard } from './speedtest-card'
+import { TargetsCard } from './targets-card'
 
 const ms = (v: number) => `${v < 10 ? v.toFixed(1) : Math.round(v)} мс`
 // Потери хранятся долей (0…1) — в графике показываем проценты
@@ -140,6 +142,10 @@ export function Internet() {
             {/* Вторая серия — другой цвет: потери показаны красным, чтобы не путать с пингом */}
             <MetricChart title='Потери пакетов' series={[{ name: 'inet.loss', label: 'потери', color: 'var(--danger)' }]} range={range} format={lossPct} domain={[0, 1]} />
           </div>
+
+          <TargetsCard data={data} range={range} />
+
+          <SpeedtestCard />
 
           <Card className='mt-4 gap-2'>
             <CardHeader>

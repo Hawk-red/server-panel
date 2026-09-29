@@ -1,6 +1,7 @@
 // Интернет (этап 10.5): пинг до 1.1.1.1 (основной) и 8.8.8.8 (проверка «это мы или он»), внешний IP, обрывы связи.
 // «Интернета нет» — только когда не отвечают ОБА адреса (один недоступный узел — не обрыв).
 // Уведомление об обрыве > 5 минут уходит уже после восстановления связи: пока интернета нет, Telegram недоступен.
+import { Resolver } from 'node:dns/promises'
 import net from 'node:net'
 import { db } from '../db.js'
 import { emitEvent } from '../events.js'
@@ -10,6 +11,9 @@ import { getSetting, setSetting } from '../settings.js'
 
 export const PING_MAIN = '1.1.1.1'
 export const PING_SECOND = '8.8.8.8'
+export const PING_ROUTER = '192.168.31.1'
+export const PING_PROD = '148.251.76.118'
+export const DNS_LOCAL = '127.0.0.1' // AdGuard Home
 export const OUTAGE_NOTIFY_SEC = 300 // обрыв длиннее — уведомление
 export const OUTAGE_RECORD_SEC = 60 // обрыв длиннее — запись в историю
 
@@ -21,7 +25,9 @@ const STATE_KEY = 'internet.state'
 const OUTAGES_KEY = 'internet.outages'
 const IP_KEY = 'internet.ip'
 
-export type PingResult = { ts: number; main: number | null; second: number | null; online: boolean }
+// Дополнительные цели (только для диагностики, на определение «обрыва» не влияют)
+export type ExtraPing = { router: number | null; prod: number | null; adguard: number | null }
+export type PingResult = { ts: number; main: number | null; second: number | null; online: boolean; extra: ExtraPing }
 let last: PingResult | null = null
 
 function tcpPing(host: string, port = 443, timeoutMs = 2500): Promise<number | null> {
@@ -52,6 +58,19 @@ async function ping(host: string): Promise<number | null> {
   }
 }
 
+// Время ответа AdGuard на DNS-запрос (чаще всего из кэша — показывает «жив ли DNS», а не скорость апстрима)
+async function dnsPing(): Promise<number | null> {
+  const r = new Resolver({ timeout: 2000, tries: 1 })
+  r.setServers([DNS_LOCAL])
+  const t0 = performance.now()
+  try {
+    await r.resolve4('cloudflare.com')
+    return Math.round((performance.now() - t0) * 10) / 10
+  } catch {
+    return null
+  }
+}
+
 export const lastPing = () => last
 
 const getState = () => getSetting<State>(STATE_KEY, { downSince: null, downEventSent: false, lastSeen: null })
@@ -67,9 +86,9 @@ export function fmtDur(sec: number) {
 
 // Один замер: пинг + автомат «обрыв связи». Возвращает значения для записи в метрики.
 export async function checkInternet(now = Date.now()): Promise<Record<string, number>> {
-  const [main, second] = await Promise.all([ping(PING_MAIN), ping(PING_SECOND)])
+  const [main, second, router, prod, adguard] = await Promise.all([ping(PING_MAIN), ping(PING_SECOND), ping(PING_ROUTER), ping(PING_PROD), dnsPing()])
   const online = main !== null || second !== null
-  last = { ts: now, main, second, online }
+  last = { ts: now, main, second, online, extra: { router, prod, adguard } }
 
   const st = getState()
   // Панель (или сервер) была выключена: что происходило с интернетом в это время — неизвестно
@@ -109,6 +128,10 @@ export async function checkInternet(now = Date.now()): Promise<Record<string, nu
   // loss: 1 — основной адрес не ответил (в 5-минутных средних получается доля потерь)
   const values: Record<string, number> = { 'inet.loss': main === null ? 1 : 0 }
   if (main !== null) values['inet.ping_ms'] = main
+  if (second !== null) values['inet.second_ms'] = second
+  if (router !== null) values['inet.router_ms'] = router
+  if (prod !== null) values['inet.prod_ms'] = prod
+  if (adguard !== null) values['inet.adguard_ms'] = adguard
   return values
 }
 
@@ -150,6 +173,20 @@ function statsSince(table: 'metric_raw' | 'metric_5m', from: number) {
   }
 }
 
+// Среднее/максимум за сутки по каждой цели (из сырых замеров)
+const TARGET_METRICS = { main: 'inet.ping_ms', second: 'inet.second_ms', router: 'inet.router_ms', prod: 'inet.prod_ms', adguard: 'inet.adguard_ms' } as const
+function targetDay() {
+  const from = Date.now() - 24 * 3600_000
+  const q = db.prepare('SELECT AVG(value) AS a, MAX(value) AS m FROM metric_raw WHERE name = ? AND ts >= ?')
+  const r1 = (v: number | null) => (v === null ? null : Math.round(v * 10) / 10)
+  return Object.fromEntries(
+    Object.entries(TARGET_METRICS).map(([k, name]) => {
+      const row = q.get(name, from) as { a: number | null; m: number | null }
+      return [k, { avgMs: r1(row.a), maxMs: r1(row.m) }]
+    }),
+  ) as Record<keyof typeof TARGET_METRICS, { avgMs: number | null; maxMs: number | null }>
+}
+
 export function internetStatus() {
   const st = getState()
   return {
@@ -159,6 +196,7 @@ export function internetStatus() {
     outages: getSetting<Outage[]>(OUTAGES_KEY, []),
     day: statsSince('metric_raw', Date.now() - 24 * 3600_000),
     week: statsSince('metric_5m', Date.now() - 7 * 24 * 3600_000),
-    targets: { main: PING_MAIN, second: PING_SECOND },
+    targets: { main: PING_MAIN, second: PING_SECOND, router: PING_ROUTER, prod: PING_PROD, adguard: DNS_LOCAL },
+    targetDay: targetDay(),
   }
 }

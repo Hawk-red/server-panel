@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Value } from '@/components/value'
 import { Link } from '@tanstack/react-router'
-import { ExternalLink, ScrollText, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Globe, ScrollText, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import type { Part, SitesData, UnitInfo } from '@/lib/types'
@@ -11,6 +11,8 @@ import { webUrl } from '@/components/service-card'
 import { ServiceIcon } from '@/components/service-icon'
 import { StatusBadge, unitStatus } from '@/components/status-badge'
 import { UnitControls } from '@/components/unit-controls'
+import { UptimeStrip } from '@/components/uptime-bars'
+import { useMonitor } from '@/lib/uptime'
 import { Button } from '@/components/ui/button'
 import { ExchangeCard } from './exchange-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -122,6 +124,8 @@ export function Sites() {
   const puls = unit(data?.units, 'pulsdev-api.service')
   const sync = data?.sync.data
   const cert = data?.pulsdev.cert.data
+  const jetsetterMonitor = useMonitor('jetsetter')
+  const pulsdevMonitor = useMonitor('pulsdev-api')
   const siteStatus = !nginx ? 'unknown' : ['nginx.service', 'php8.3-fpm.service', 'mariadb.service', 'mongod.service'].every((n) => unit(data?.units, n)?.active === 'active') ? 'ok' : 'error'
 
   return (
@@ -137,6 +141,7 @@ export function Sites() {
           <StatusBadge status={siteStatus} />
         </CardHeader>
         <CardContent className='space-y-4 text-sm'>
+          <UptimeStrip monitor={jetsetterMonitor} />
           {data?.exposure.data &&
             (data.exposure.data.restricted ? (
               <p className='flex items-center gap-2 text-ok-foreground'>
@@ -156,14 +161,14 @@ export function Sites() {
             </div>
             <div className='space-y-2'>
               <div className='flex flex-wrap gap-2'>
-                <Button size='sm' asChild>
+                <Button size='sm' variant='web' asChild>
                   <a href={webUrl(80)} target='_blank' rel='noreferrer'>
-                    <ExternalLink /> Сайт
+                    <Globe /> Открыть сайт
                   </a>
                 </Button>
                 <Button size='sm' variant='outline' asChild>
                   <a href={webUrl(80, '/wp-admin/')} target='_blank' rel='noreferrer'>
-                    <ExternalLink /> /wp-admin
+                    <Globe /> Админка WordPress (/wp-admin)
                   </a>
                 </Button>
               </div>
@@ -218,7 +223,7 @@ export function Sites() {
             </div>
             <div className='space-y-1'>
               <div className='flex items-center justify-between'>
-                <span className='font-medium'>prod-code-backup</span>
+                <span className='font-medium'>prod-code-backup — копия кода боевого сайта</span>
                 {data?.backup.data ? (
                   <StatusBadge
                     status={data.backup.data.latestMtime && Date.now() - data.backup.data.latestMtime < 36 * 3_600_000 ? 'ok' : 'warning'}
@@ -228,6 +233,11 @@ export function Sites() {
                   <NoData reason={data?.backup.error} />
                 )}
               </div>
+              <p className='text-xs text-muted-foreground'>
+                Что это: архив папки wp-content боевого jetsetter.ua (темы, плагины, загрузки) на момент ночного синка. Зачем: запасная копия на случай, если на проде
+                что-то сломают или удалят; на зеркало эти файлы не разворачиваются — они только хранятся. Откуда: шаг 5 из 7 скрипта синка в 05:00, забирается с боевого
+                сервера в /mnt/backup-ssd/prod-code-backup/ГГГГ-ММ-ДД/; старше 7 дней удаляются сами.
+              </p>
               {data?.backup.data && (
                 <p className='text-muted-foreground'>
                   Последний: {data.backup.data.latest} · копий {data.backup.data.count} (хранится 7 дней) · {formatRelative(data.backup.data.latestMtime)}
@@ -287,6 +297,7 @@ export function Sites() {
                 )}
               </dd>
             </dl>
+            <UptimeStrip monitor={pulsdevMonitor} />
             {cert && cert.daysLeft < CERT_WARN_DAYS && (
               <p className='flex items-start gap-2 font-medium text-warn-foreground'>
                 <TriangleAlert className='mt-0.5 size-4 shrink-0' /> Сертификат истекает через {cert.daysLeft} дн. Автопродление сейчас не работает (ручной DNS-01) — см. план продления.

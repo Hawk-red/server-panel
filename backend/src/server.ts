@@ -20,8 +20,10 @@ import { notifyRoutes } from './routes/notify.js'
 import { startNotifier } from './notifier.js'
 import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
+import { startSpeedtest } from './services/speedtest.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
+import { uptimeRoutes } from './routes/uptime.js'
 
 const app = Fastify({
   logger: {
@@ -77,6 +79,7 @@ await app.register(networkRoutes)
 await app.register(auditRoutes)
 await app.register(notifyRoutes)
 await app.register(infraRoutes)
+await app.register(uptimeRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',
@@ -136,6 +139,7 @@ startCollector(app.log)
 startDetectors(app.log)
 startNotifier(app.log)
 startDeadlines()
+startSpeedtest()
 startExchange(app.log)
 {
   const n = scrubAuditSecrets()
