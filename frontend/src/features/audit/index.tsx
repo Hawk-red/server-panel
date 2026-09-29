@@ -11,9 +11,11 @@ import { StatusBadge } from '@/components/status-badge'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { describeDetails, feedLink, kindLabel, LEVEL } from './feed-meta'
+import { PanelChanges } from './panel-changes'
 
 const DayChart = lazy(() => import('./day-chart').then((m) => ({ default: m.DayChart })))
 const PERIODS: Record<string, number> = { day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_400_000 }
@@ -82,7 +84,7 @@ function Context({ r }: { r: FeedRow }) {
   )
 }
 
-export function Audit() {
+function Journal() {
   const [type, setType] = useState('all')
   const [kind, setKind] = useState('all')
   const [level, setLevel] = useState('all')
@@ -120,7 +122,7 @@ export function Audit() {
   const s = summary.data
 
   return (
-    <Page title='Журнал действий' description='Действия в панели и события сервера (хранятся год)'>
+    <>
       <div className='grid gap-4 lg:grid-cols-3'>
         <Card className='gap-2 py-4 lg:col-span-1'>
           <CardContent className='grid grid-cols-3 gap-3 px-4 text-sm lg:grid-cols-1'>
@@ -272,6 +274,25 @@ export function Audit() {
           </Button>
         </div>
       </div>
+    </>
+  )
+}
+
+export function Audit() {
+  return (
+    <Page title='Журнал действий' description='Действия в панели, события сервера и история изменений самой панели'>
+      <Tabs defaultValue='journal'>
+        <TabsList className='mb-4'>
+          <TabsTrigger value='journal'>Журнал</TabsTrigger>
+          <TabsTrigger value='changes'>Изменения панели</TabsTrigger>
+        </TabsList>
+        <TabsContent value='journal'>
+          <Journal />
+        </TabsContent>
+        <TabsContent value='changes'>
+          <PanelChanges />
+        </TabsContent>
+      </Tabs>
     </Page>
   )
 }
