@@ -284,7 +284,7 @@ export type AccessData = {
 }
 
 // ---------- Этап 6 ----------
-export type DeviceType = 'router' | 'server' | 'desktop' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'receiver' | 'ir' | 'iot' | 'printer' | 'unknown'
+export type DeviceType = 'router' | 'laptop' | 'phone' | 'tv' | 'media' | 'iot' | 'unknown'
 export type Device = {
   mac: string
   ip: string

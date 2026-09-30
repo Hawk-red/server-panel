@@ -8,6 +8,7 @@ import { getSnapshot } from './collector/index.js'
 import { config } from './config.js'
 import { onEvent, type ServerEvent } from './events.js'
 import { errText } from './mask.js'
+import { TYPE_LABEL, type DeviceType } from './network/scanner.js'
 import { registryTokens } from './services/bots.js'
 import { backupsOverview } from './services/backups.js'
 import { listDeadlines } from './services/deadlines.js'
@@ -136,7 +137,7 @@ async function flushQueue() {
   if (!q.length) return
   setSetting('notify.queue', [])
   const time = (t: number) => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  const text = [`🌙 <b>За тихие часы (${q.length})</b>`, '', ...q.map((x) => `${time(x.ts)} — ${x.text.replace(/<[^>]+>/g, '')}`)].join('\n')
+  const text = [`🌙 <b>За тихие часы (${q.length})</b>`, '', ...q.map((x) => `${time(x.ts)} — ${x.text.replace(/<[^>]+>/g, '').replace(/\s*\n+\s*/g, ' · ')}`)].join('\n')
   await send(text.slice(0, 3900), true)
 }
 
@@ -155,10 +156,29 @@ function setFlag(key: string, v: boolean) {
   return true
 }
 
+// Новое устройство: IP, полный MAC, производитель, имя, тип и время обнаружения (что неизвестно — строку не выводим)
+function newDeviceText(e: ServerEvent) {
+  const d = e.details as { ip?: string; mac?: string; vendor?: string | null; hostname?: string | null; type?: DeviceType; random?: boolean; ts?: number } | undefined
+  if (!d?.mac) return `📡 ${esc(e.text)}`
+  const when = new Date(d.ts ?? e.ts ?? Date.now()).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return [
+    '📡 <b>Новое устройство в сети</b>',
+    '',
+    `🌐 IP: <code>${esc(d.ip ?? '—')}</code>`,
+    `🔖 MAC: <code>${esc(d.mac)}</code>${d.random ? ' (частный, случайный адрес)' : ''}`,
+    d.vendor ? `🏭 Производитель: ${esc(d.vendor)}` : null,
+    d.hostname ? `🏷 Имя: ${esc(d.hostname)}` : null,
+    d.type && d.type !== 'unknown' ? `📂 Тип: ${TYPE_LABEL[d.type] ?? esc(d.type)}` : null,
+    `🕐 Обнаружено: ${when}`,
+  ]
+    .filter((x) => x !== null)
+    .join('\n')
+}
+
 function onServerEvent(e: ServerEvent) {
   if (e.kind === 'unit.failed' && rule('unit')) void send(`🔴 <b>Служба упала:</b> ${esc(e.target ?? '')}`, true)
   else if (e.kind === 'unit.recovered' && rule('unit')) void send(`🟢 Служба снова работает: ${esc(e.target ?? '')}`, false)
-  else if (e.kind === 'device.new' && rule('device')) void send(`📡 ${esc(e.text)}`, false)
+  else if (e.kind === 'device.new' && rule('device')) void send(newDeviceText(e), false)
   else if (e.kind === 'sync.error' && rule('sync')) void send(`⚠️ ${esc(e.text)}`, false)
   // Обрыв интернета: событие приходит уже после восстановления связи
   else if (e.kind === 'internet.outage' && rule('internet') && ((e.details as { sec?: number } | undefined)?.sec ?? 0) >= OUTAGE_NOTIFY_SEC) void send(`🌐 ${esc(e.text)}`, false)

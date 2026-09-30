@@ -4,7 +4,7 @@ import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordi
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { ExternalLink, GripVertical, Loader2, Pencil, Radar, Radio, RefreshCw, X } from 'lucide-react'
+import { ExternalLink, GripVertical, Loader2, Pencil, Radio, RefreshCw, ScanSearch, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
@@ -127,10 +127,10 @@ function DeviceCard({ d, scanning, busy, onOpen, onScan, dragDisabled }: { d: De
 
           <div className='mt-auto flex flex-wrap gap-1 pt-1'>
             <Button size='sm' variant='outline' onClick={onScan} disabled={!d.online || scanning || busy} title={busy && !scanning ? 'Идёт сканирование другого устройства' : undefined}>
-              {scanning ? <Loader2 className='animate-spin' /> : <Radar />} Порты
+              {scanning ? <Loader2 className='animate-spin' /> : <ScanSearch />} Сканировать порты
             </Button>
             <Button size='sm' variant='outline' onClick={onOpen}>
-              <Pencil /> Изменить
+              <Pencil /> Редактировать
             </Button>
             {web && (
               <Button size='sm' variant='ghost' asChild>
@@ -218,7 +218,7 @@ export function Network({ initialDevice }: { initialDevice?: string } = {}) {
   }
 
   const st = data?.status
-  const ir = all.find((d) => d.type === 'ir')
+  const ir = all.find((d) => /broadlink/i.test(d.vendor ?? ''))
   const open = all.find((d) => d.mac === openMac) ?? null
   const counts = (g: (typeof TYPE_GROUPS)[number]) => all.filter((d) => g.types.includes(d.type)).length
 

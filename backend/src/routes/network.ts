@@ -3,7 +3,7 @@ import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
 import * as scanner from '../network/scanner.js'
 
-const TYPES = ['router', 'server', 'desktop', 'laptop', 'phone', 'tablet', 'tv', 'receiver', 'ir', 'iot', 'printer', 'unknown']
+const TYPES = ['router', 'laptop', 'phone', 'tv', 'media', 'iot', 'unknown']
 const MAC_RE = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/
 
 export async function networkRoutes(app: FastifyInstance) {

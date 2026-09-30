@@ -15,15 +15,35 @@ const SELF_IP = '192.168.31.112'
 // Заранее подписанные устройства (по IP при первом появлении)
 const PRESETS: Record<string, { name: string; type: DeviceType }> = {
   '192.168.31.1': { name: 'Роутер Xiaomi', type: 'router' },
-  '192.168.31.112': { name: 'Mac Mini (этот сервер)', type: 'server' },
+  '192.168.31.112': { name: 'Mac Mini (этот сервер)', type: 'unknown' },
   '192.168.31.146': { name: 'MacBook Pro M1 (кабель)', type: 'laptop' },
   '192.168.31.51': { name: 'MacBook Pro M1 (Wi-Fi)', type: 'laptop' },
   '192.168.31.82': { name: 'Ugoos SK1 (Android TV)', type: 'tv' },
-  '192.168.31.94': { name: 'Marantz NR1604', type: 'receiver' },
+  '192.168.31.94': { name: 'Marantz NR1604', type: 'media' },
   '192.168.31.181': { name: 'Samsung 7 Series (ТВ)', type: 'tv' },
 }
 
-export type DeviceType = 'router' | 'server' | 'desktop' | 'laptop' | 'phone' | 'tablet' | 'tv' | 'receiver' | 'ir' | 'iot' | 'printer' | 'unknown'
+// Типы: телефон и планшет — один тип «phone»; «media» — ресиверы и аудио; «unknown» — «Другое» (принтеры, компьютеры, серверы и всё нераспознанное)
+export type DeviceType = 'router' | 'laptop' | 'phone' | 'tv' | 'media' | 'iot' | 'unknown'
+export const TYPE_LABEL: Record<DeviceType, string> = {
+  router: 'Роутер / сеть', laptop: 'Ноутбук', phone: 'Телефон / планшет', tv: 'ТВ', media: 'Медиа', iot: 'Умный дом', unknown: 'Другое',
+}
+
+// Прежние типы, которые убрали из списка → куда переносятся (ir — ближайший по смыслу «Умный дом»)
+const RETIRED: Record<string, DeviceType> = { tablet: 'phone', receiver: 'media', ir: 'iot', printer: 'unknown', desktop: 'unknown', server: 'unknown' }
+
+// Разовая (идемпотентная) переброска уже сохранённых устройств; каждое изменение пишется в журнал событий
+export function migrateDeviceTypes() {
+  const rows = db.prepare('SELECT mac, ip, name, hostname, vendor, type FROM devices').all() as { mac: string; ip: string | null; name: string | null; hostname: string | null; vendor: string | null; type: string | null }[]
+  const upd = db.prepare('UPDATE devices SET type = ? WHERE mac = ?')
+  for (const d of rows) {
+    const to = d.type ? RETIRED[d.type] : undefined
+    if (!to) continue
+    upd.run(to, d.mac)
+    const label = d.name ?? d.hostname ?? d.vendor ?? d.mac
+    emitEvent({ kind: 'device.retype', level: 'info', text: `Тип устройства «${label}» (${d.ip ?? d.mac}): ${d.type} → ${TYPE_LABEL[to]}`, target: d.mac, details: { from: d.type, to } })
+  }
+}
 
 type Found = { ip: string; mac: string; vendor?: string | null }
 
@@ -67,14 +87,14 @@ function guessType(ip: string, vendor: string | null, hostname: string | null, r
   const v = (vendor ?? '').toLowerCase()
   const h = (hostname ?? '').toLowerCase()
   if (ip.endsWith('.1')) return 'router'
-  if (/broadlink/.test(v)) return 'ir'
-  if (/ipad/.test(h)) return 'tablet'
+  if (/broadlink/.test(v)) return 'iot'
+  if (/ipad/.test(h)) return 'phone'
   if (/iphone|android|pixel|galaxy/.test(h)) return h.includes('android') ? 'tv' : 'phone'
   if (/macbook|laptop|thinkpad/.test(h)) return 'laptop'
-  if (/d&m|denon|marantz|yamaha|onkyo/.test(v)) return 'receiver'
+  if (/d&m|denon|marantz|yamaha|onkyo/.test(v)) return 'media'
   if (/samsung electronics|lg electronics|sony|tcl|hisense/.test(v) && /tv|samsung\./.test(h)) return 'tv'
   if (/espressif|tuya|shelly|sonoff|bilian|xiaomi electronics|lumi/.test(v)) return 'iot'
-  if (/hewlett|canon|epson|brother|kyocera/.test(v)) return 'printer'
+  if (/hewlett|canon|epson|brother|kyocera/.test(v)) return 'unknown'
   if (random) return 'phone'
   return 'unknown'
 }
@@ -189,13 +209,17 @@ export async function discover() {
         known: preset ? 1 : 0,
         now,
       })
-      if (!preset && status.lastDiscovery)
+      if (!preset && status.lastDiscovery) {
+        const type = guessType(f.ip, vendor, hostname, random)
         emitEvent({
           kind: 'device.new',
           level: 'warning',
-          text: `В сети новое устройство: ${f.ip} (${vendor ?? (random ? 'случайный MAC' : 'производитель неизвестен')}${hostname ? `, ${hostname}` : ''})`,
+          text: `В сети новое устройство: ${f.ip} · ${f.mac}${vendor ? ` · ${vendor}` : ''}${hostname ? ` · ${hostname}` : ''}`,
           target: f.mac,
+          // подробности нужны Telegram-уведомлению (notifier.ts)
+          details: { ip: f.ip, mac: f.mac, vendor, hostname, type, random, ts: now },
         })
+      }
     } else {
       q.seen.run({ mac: f.mac, ip: f.ip, vendor, hostname, now })
     }
@@ -322,4 +346,9 @@ export function summary() {
 
 export function startScanner(logger: FastifyBaseLogger) {
   log = logger
+  try {
+    migrateDeviceTypes()
+  } catch (e) {
+    log.warn({ err: (e as Error).message }, 'не удалось перенести типы устройств')
+  }
 }

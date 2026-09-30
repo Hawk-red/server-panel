@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { ExternalLink, Loader2, Radar, Save, Trash2 } from 'lucide-react'
+import { ExternalLink, Loader2, ScanSearch, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
@@ -119,7 +119,7 @@ export function DeviceSheet({ device, scanning, onClose }: Props) {
                 <div className='flex items-center justify-between gap-2'>
                   <h3 className='font-medium'>Открытые порты (TCP, top-1000)</h3>
                   <Button size='sm' variant='outline' onClick={() => scan.mutate()} disabled={!d.online || isScanning || busyOther || scan.isPending}>
-                    {isScanning ? <Loader2 className='animate-spin' /> : <Radar />} {isScanning ? 'Сканирую…' : 'Обновить порты'}
+                    {isScanning ? <Loader2 className='animate-spin' /> : <ScanSearch />} {isScanning ? 'Сканирую…' : 'Сканировать порты'}
                   </Button>
                 </div>
                 <p className='text-xs text-muted-foreground'>
