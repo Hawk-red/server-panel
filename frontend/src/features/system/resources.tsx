@@ -5,6 +5,7 @@ import { formatBps } from '@/lib/format'
 import type { Range, Snapshot } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { MetricChart, RANGE_LABELS, type SeriesDef } from '@/components/metric-chart'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { Button } from '@/components/ui/button'
 
 const pct = (v: number) => `${Math.round(v)}%`
@@ -38,6 +39,60 @@ export function Resources() {
   const ifaces = Object.keys(snap?.network ?? {})
   const lan = ifaces.find((i) => /^(enp|eth)/.test(i))
 
+  const blocks: Block[] = [
+    { id: 'cpu', title: 'Загрузка CPU', node: (
+        <MetricChart title='Загрузка CPU' series={cpuSeries} range={range} format={pct} domain={[0, 100]} />
+    ) },
+    { id: 'load', title: 'Load average', node: (
+        <MetricChart title='Load average (1 мин)' series={[{ name: 'load.1', label: 'Load 1m', color: 'var(--info)' }]} range={range} format={(v) => v.toFixed(2)} domain={[0, 'auto']} />
+    ) },
+    { id: 'temp-cpu', title: 'Температура CPU', node: (
+        <MetricChart title='Температура CPU' series={[{ name: 'temp.cpu', label: 'CPU', color: 'var(--info)' }]} range={range} format={deg} />
+    ) },
+    { id: 'fan', title: 'Вентилятор', node: (
+        <MetricChart title='Вентилятор, об/мин' series={[{ name: 'fan.rpm', label: 'об/мин', color: 'var(--info)' }]} range={range} format={(v) => `${Math.round(v)}`} domain={[0, 'auto']} />
+    ) },
+    { id: 'memory', title: 'Память и swap', node: (
+        <MetricChart
+          title='Память и swap'
+          series={[
+            { name: 'mem.used_pct', label: 'RAM', color: 'var(--info)' },
+            { name: 'swap.used_pct', label: 'Swap', color: 'var(--brand)' },
+          ]}
+          range={range}
+          format={pct}
+          domain={[0, 100]}
+        />
+    ) },
+    ...(lan ? [{ id: 'net-lan', title: 'Сеть LAN', node: (
+          <MetricChart
+            title={`Сеть LAN (${lan})`}
+            series={[
+              { name: `net.${lan}.rx`, label: 'Приём', color: 'var(--rx)' },
+              { name: `net.${lan}.tx`, label: 'Отдача', color: 'var(--tx)' },
+            ]}
+            range={range}
+            format={formatBps}
+            domain={[0, 'auto']}
+          />
+    ) }] : []),
+    { id: 'temp-disks', title: 'Температура дисков', node: (
+        <MetricChart title='Температура дисков' series={diskTemps} range={range} format={deg} />
+    ) },
+    ...(ifaces.includes('wg0') ? [{ id: 'vpn', title: 'VPN (wg0)', node: (
+          <MetricChart
+            title='VPN (wg0)'
+            series={[
+              { name: 'net.wg0.rx', label: 'Приём', color: 'var(--rx)' },
+              { name: 'net.wg0.tx', label: 'Отдача', color: 'var(--tx)' },
+            ]}
+            range={range}
+            format={formatBps}
+            domain={[0, 'auto']}
+          />
+    ) }] : []),
+  ]
+
   return (
     <div className='space-y-3'>
       <div className='flex flex-wrap items-center gap-2'>
@@ -52,47 +107,7 @@ export function Resources() {
       </div>
       {/* Порядок по важности: CPU и load → температура и вентилятор → RAM/swap → сеть → диски → VPN.
           На 1440×900 и 1920×1080 все 8 графиков помещаются на один экран (сетка 4×2). */}
-      <div className='grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-        <MetricChart title='Загрузка CPU' series={cpuSeries} range={range} format={pct} domain={[0, 100]} />
-        <MetricChart title='Load average (1 мин)' series={[{ name: 'load.1', label: 'Load 1m', color: 'var(--info)' }]} range={range} format={(v) => v.toFixed(2)} domain={[0, 'auto']} />
-        <MetricChart title='Температура CPU' series={[{ name: 'temp.cpu', label: 'CPU', color: 'var(--info)' }]} range={range} format={deg} />
-        <MetricChart title='Вентилятор, об/мин' series={[{ name: 'fan.rpm', label: 'об/мин', color: 'var(--info)' }]} range={range} format={(v) => `${Math.round(v)}`} domain={[0, 'auto']} />
-        <MetricChart
-          title='Память и swap'
-          series={[
-            { name: 'mem.used_pct', label: 'RAM', color: 'var(--info)' },
-            { name: 'swap.used_pct', label: 'Swap', color: 'var(--brand)' },
-          ]}
-          range={range}
-          format={pct}
-          domain={[0, 100]}
-        />
-        {lan && (
-          <MetricChart
-            title={`Сеть LAN (${lan})`}
-            series={[
-              { name: `net.${lan}.rx`, label: 'Приём', color: 'var(--rx)' },
-              { name: `net.${lan}.tx`, label: 'Отдача', color: 'var(--tx)' },
-            ]}
-            range={range}
-            format={formatBps}
-            domain={[0, 'auto']}
-          />
-        )}
-        <MetricChart title='Температура дисков' series={diskTemps} range={range} format={deg} />
-        {ifaces.includes('wg0') && (
-          <MetricChart
-            title='VPN (wg0)'
-            series={[
-              { name: 'net.wg0.rx', label: 'Приём', color: 'var(--rx)' },
-              { name: 'net.wg0.tx', label: 'Отдача', color: 'var(--tx)' },
-            ]}
-            range={range}
-            format={formatBps}
-            domain={[0, 'auto']}
-          />
-        )}
-      </div>
+      <SortableBlocks grid className='grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' blocks={blocks} />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowUpDown, Check, Tv } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
@@ -37,6 +37,8 @@ function useSection() {
 export function Page({ title, description, actions, children, layoutPage }: PageProps) {
   const section = useSection()
   const [editing, setEditing] = useState(false)
+  // Режим изменения порядка относится к конкретному набору блоков (например, к вкладке): при смене страницы/вкладки выключаем
+  useEffect(() => setEditing(false), [layoutPage])
   const Icon = section?.icon
   // Обзор ставит свою кнопку; у разделов без ТВ-версии кнопка ведёт на общий /tv
   const slug = section?.url ? String(section.url).replace(/^\//, '') : ''
