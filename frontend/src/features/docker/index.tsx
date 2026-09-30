@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import type { Container, DockerData } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { webUrl } from '@/components/service-card'
 import { StatTile } from '@/components/stat-tile'
@@ -85,22 +86,12 @@ export function Docker() {
   const unused = images.filter((i) => !i.used)
   const portainer = containers.find((c) => c.name === 'portainer')
 
-  return (
-    <Page
-      title='Docker'
-      description='Контейнеры, образы и compose-стеки (через docker-socket-proxy)'
-      actions={
-        portainer && (
-          <Button asChild variant='web'>
-            <a href={webUrl(9000)} target='_blank' rel='noreferrer'>
-              <Globe /> Открыть Portainer
-            </a>
-          </Button>
-        )
-      }
-    >
-      {isError && <NoData reason='бэкенд не ответил' />}
-      <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'>
+  const blocks: Block[] = [
+    {
+      id: 'engine',
+      title: 'Docker',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Docker'
           icon={ContainerIcon}
@@ -108,6 +99,13 @@ export function Docker() {
           sub={data?.version.data ? `Compose ${data.version.data.compose?.split('+')[0] ?? '—'} · API ${data.version.data.api}` : undefined}
           noDataReason={data?.version.error}
         />
+      ),
+    },
+    {
+      id: 'containers-count',
+      title: 'Контейнеры (счётчик)',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Контейнеры'
           icon={Layers}
@@ -121,6 +119,13 @@ export function Docker() {
           sub={data?.containers.data ? `остановлено: ${containers.length - running}` : undefined}
           noDataReason={data?.containers.error}
         />
+      ),
+    },
+    {
+      id: 'images',
+      title: 'Образы',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Образы'
           icon={HardDrive}
@@ -134,6 +139,13 @@ export function Docker() {
           }
           noDataReason={data?.images.error}
         />
+      ),
+    },
+    {
+      id: 'unused',
+      title: 'Неиспользуемые образы',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Неиспользуемые образы'
           icon={HardDrive}
@@ -148,9 +160,14 @@ export function Docker() {
             )
           }
         />
-      </div>
-
-      <Card className='mt-4 gap-2'>
+      ),
+    },
+    {
+      id: 'containers',
+      title: 'Контейнеры',
+      className: 'col-span-2 lg:col-span-4',
+      node: (
+      <Card className='gap-2'>
         <CardHeader>
           <CardTitle className='text-sm font-medium'>Контейнеры</CardTitle>
         </CardHeader>
@@ -267,7 +284,27 @@ export function Docker() {
           </div>
         </CardContent>
       </Card>
+      ),
+    },
+  ]
 
+  return (
+    <Page
+      title='Docker'
+      description='Контейнеры, образы и compose-стеки (через docker-socket-proxy)'
+      actions={
+        portainer && (
+          <Button asChild variant='web'>
+            <a href={webUrl(9000)} target='_blank' rel='noreferrer'>
+              <Globe /> Открыть Portainer
+            </a>
+          </Button>
+        )
+      }
+      layoutPage='docker'
+    >
+      {isError && <NoData reason='бэкенд не ответил' />}
+      <SortableBlocks grid blocks={blocks} className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4' />
       {pending && (
         <ConfirmDialog
           open

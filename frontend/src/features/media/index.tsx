@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { formatRelative } from '@/lib/format'
 import type { MediaData } from '@/lib/types'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { containerStatus, ServiceCard, webUrl } from '@/components/service-card'
 import { StatusBadge } from '@/components/status-badge'
@@ -19,9 +20,11 @@ export function Media() {
   const jf = data?.jellyfin
   const mz = data?.marantz
 
-  return (
-    <Page title='Медиа' description='Стек /home/macmini/audio-streaming и ресивер'>
-      <div className='grid gap-4 md:grid-cols-2'>
+  const blocks: Block[] = [
+    {
+      id: 'jellyfin',
+      title: 'Jellyfin',
+      node: (
         <ServiceCard
           title='Jellyfin'
           icon='jellyfin'
@@ -65,7 +68,12 @@ export function Media() {
             )}
           </div>
         </ServiceCard>
-
+      ),
+    },
+    {
+      id: 'minimserver',
+      title: 'MinimServer',
+      node: (
         <ServiceCard
           title='MinimServer'
           icon='minimserver'
@@ -78,7 +86,12 @@ export function Media() {
           invalidate={['media']}
           monitorId='minimserver'
         />
-
+      ),
+    },
+    {
+      id: 'bubbleupnp',
+      title: 'BubbleUPnP',
+      node: (
         <ServiceCard
           title='BubbleUPnP Server'
           description='UPnP-сервер и транскодер для BubbleUPnP'
@@ -90,7 +103,12 @@ export function Media() {
           invalidate={['media']}
           monitorId='bubbleupnpserver'
         />
-
+      ),
+    },
+    {
+      id: 'marantz',
+      title: 'Ресивер Marantz',
+      node: (
         <Card className='gap-3'>
           <CardHeader className='flex flex-row items-start gap-3'>
             <Speaker className='size-10 shrink-0 text-muted-foreground' />
@@ -124,7 +142,13 @@ export function Media() {
             <p className='text-xs text-muted-foreground'>Веб-интерфейс ресивера открывается только из домашней сети.</p>
           </CardContent>
         </Card>
-      </div>
+      ),
+    },
+  ]
+
+  return (
+    <Page title='Медиа' description='Стек /home/macmini/audio-streaming и ресивер' layoutPage='media'>
+      <SortableBlocks grid blocks={blocks} className='grid gap-4 md:grid-cols-2' />
     </Page>
   )
 }

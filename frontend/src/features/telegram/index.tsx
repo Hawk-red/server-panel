@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import type { AlertAnalytics, BotInfo, FileInfo, LeadAnalytics, PanelNotifierAnalytics } from '@/lib/types'
 import { Page } from '@/components/layout/page'
+import { type Block, blockId, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { ServiceIcon } from '@/components/service-icon'
 import { StatusBadge, unitStatus } from '@/components/status-badge'
@@ -386,13 +387,13 @@ export function Telegram() {
     refetchInterval: 30_000,
   })
   return (
-    <Page title='Telegram-боты' description='Боты из реестра backend/bots.json — добавить бота = добавить запись'>
+    <Page title='Telegram-боты' description='Боты из реестра backend/bots.json — добавить бота = добавить запись' layoutPage='telegram'>
       {isError && <NoData reason='не удалось получить список ботов' />}
-      <div className='grid items-start gap-4 xl:grid-cols-2'>
-        {data?.map((b) => (
-          <BotCard key={b.id} b={b} />
-        ))}
-      </div>
+      <SortableBlocks
+        grid
+        className='grid items-start gap-4 xl:grid-cols-2'
+        blocks={(data ?? []).map((b): Block => ({ id: blockId('bot', b.id), title: b.title, node: <BotCard b={b} /> }))}
+      />
     </Page>
   )
 }

@@ -10,6 +10,7 @@ import { formatBps, formatDateTime } from '@/lib/format'
 import type { MetricsResponse, Range, TorrentsData } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { MetricChart, RANGE_LABELS } from '@/components/metric-chart'
 import { NoData } from '@/components/no-data'
 import { containerStatus, ServiceCard, webUrl } from '@/components/service-card'
@@ -65,9 +66,12 @@ export function Torrents() {
   const s = data?.summary.data
   const g = data?.guard.data
 
-  return (
-    <Page title='Торренты' description='qBittorrent: состояние и статистика; добавлять торренты — в родном интерфейсе'>
-      <div className='grid gap-4 lg:grid-cols-3'>
+  const blocks: Block[] = [
+    {
+      id: 'service',
+      title: 'qBittorrent',
+      className: 'lg:col-span-1',
+      node: (
         <ServiceCard
           title='qBittorrent'
           icon='qbittorrent'
@@ -89,8 +93,14 @@ export function Torrents() {
           </div>
           {data?.summary.error && <NoData reason={data.summary.error} />}
         </ServiceCard>
-
-        <div className='grid gap-4 sm:grid-cols-2 lg:col-span-2'>
+      ),
+    },
+    {
+      id: 'stats',
+      title: 'Статистика',
+      className: 'lg:col-span-2',
+      node: (
+        <div className='grid gap-4 sm:grid-cols-2'>
           <StatTile
             title='Скорость сейчас'
             value={s ? <Value kind='speed' value={s.speed.dl} flow='rx' prefix='↓ ' /> : null}
@@ -125,9 +135,14 @@ export function Torrents() {
             }
           />
         </div>
-      </div>
-
-      <div className='mt-4 space-y-2'>
+      ),
+    },
+    {
+      id: 'speed',
+      title: 'График скорости',
+      className: 'lg:col-span-3',
+      node: (
+      <div className='space-y-2'>
         <div className='flex flex-wrap gap-2'>
           {(Object.keys(RANGE_LABELS) as Range[]).map((r) => (
             <Button key={r} size='sm' variant={r === range ? 'default' : 'outline'} onClick={() => setRange(r)}>
@@ -138,8 +153,14 @@ export function Torrents() {
         <MetricChart title='Скорость' series={SERIES} range={range} format={formatBps} domain={[0, 'auto']} />
         <SpeedStats range={range} />
       </div>
-
-      <Card className='mt-4 gap-2'>
+      ),
+    },
+    {
+      id: 'active',
+      title: 'Активные торренты',
+      className: 'lg:col-span-3',
+      node: (
+      <Card className='gap-2'>
         <CardHeader>
           <CardTitle className='text-sm font-medium'>Активные торренты</CardTitle>
         </CardHeader>
@@ -191,8 +212,14 @@ export function Torrents() {
           )}
         </CardContent>
       </Card>
-
-      <Card className='mt-4 gap-2'>
+      ),
+    },
+    {
+      id: 'guard',
+      title: 'Защита места',
+      className: 'lg:col-span-3',
+      node: (
+      <Card className='gap-2'>
         <CardHeader>
           <CardTitle className='text-sm font-medium'>Защита места (torrent-space-guard.sh, каждые 5 мин)</CardTitle>
         </CardHeader>
@@ -228,7 +255,13 @@ export function Torrents() {
           )}
         </CardContent>
       </Card>
+      ),
+    },
+  ]
 
+  return (
+    <Page title='Торренты' description='qBittorrent: состояние и статистика; добавлять торренты — в родном интерфейсе' layoutPage='torrents'>
+      <SortableBlocks grid blocks={blocks} className='grid gap-4 lg:grid-cols-3' />
       {confirm && (
         <ConfirmDialog
           open

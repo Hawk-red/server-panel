@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import type { BackupItem } from '@/features/infra-types'
 import { Page } from '@/components/layout/page'
+import { type Block, blockId, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { Value } from '@/components/value'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -131,14 +132,22 @@ export function Backups() {
   const { data, isError } = useQuery({ queryKey: ['backups'], queryFn: async () => (await api.get<{ items: BackupItem[] }>('/backups')).data.items, refetchInterval: 30_000 })
   const bad = data?.filter((b) => b.type === 'scheduled' && (b.status === 'stale' || b.status === 'missing')) ?? []
   return (
-    <Page title='Бэкапы' description='Свежесть и размер резервных копий на сервере'>
+    <Page title='Бэкапы' description='Свежесть и размер резервных копий на сервере' layoutPage='backups'>
       {isError ? (
         <NoData reason='бэкенд не ответил' />
       ) : !data ? (
         <span className='text-sm text-muted-foreground'>Загрузка…</span>
       ) : (
-        <>
-          <div className='mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm'>
+        <SortableBlocks
+          grid
+          className='grid gap-4 lg:grid-cols-2'
+          blocks={[
+            {
+              id: 'summary',
+              title: 'Итог по копиям',
+              className: 'lg:col-span-2',
+              node: (
+          <div className='flex flex-wrap items-center gap-x-4 gap-y-1 text-sm'>
             {bad.length === 0 ? (
               <span className='inline-flex items-center gap-1.5 font-medium text-ok-foreground'>
                 <CircleCheck className='size-4' /> Все регулярные копии свежие
@@ -152,15 +161,21 @@ export function Backups() {
               <HardDrive className='size-4' /> Отдельного диска под бэкапы нет: всё лежит на системном SSD
             </span>
           </div>
-          <div className='grid gap-4 lg:grid-cols-2'>
-            {data.map((b) => (
-              <BackupCard key={b.id} b={b} />
-            ))}
-          </div>
-          <p className='mt-4 text-xs text-muted-foreground'>
+              ),
+            },
+            ...data.map((b): Block => ({ id: blockId('b', b.id), title: b.title, node: <BackupCard b={b} /> })),
+            {
+              id: 'note',
+              title: 'Пояснение',
+              className: 'lg:col-span-2',
+              node: (
+          <p className='text-xs text-muted-foreground'>
             Устаревшие копии уведомляют в Telegram один раз (проверка раз в час). Разовые копии «перед обновлением» по расписанию не обновляются, панель их не удаляет — чистить нужно вручную.
           </p>
-        </>
+              ),
+            },
+          ]}
+        />
       )}
     </Page>
   )

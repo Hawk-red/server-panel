@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import type { Part, SitesData, UnitInfo } from '@/lib/types'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { webUrl } from '@/components/service-card'
 import { ServiceIcon } from '@/components/service-icon'
@@ -128,9 +129,11 @@ export function Sites() {
   const pulsdevMonitor = useMonitor('pulsdev-api')
   const siteStatus = !nginx ? 'unknown' : ['nginx.service', 'php8.3-fpm.service', 'mariadb.service', 'mongod.service'].every((n) => unit(data?.units, n)?.active === 'active') ? 'ok' : 'error'
 
-  return (
-    <Page title='Сайты и API' description='Зеркало jetsetter.ua и api.pulsdev.net'>
-      {/* ---------- jetsetter ---------- */}
+  const blocks: Block[] = [
+    {
+      id: 'jetsetter',
+      title: 'Зеркало jetsetter.ua',
+      node: (
       <Card className='gap-3'>
         <CardHeader className='flex flex-row items-start gap-3'>
           <ServiceIcon slug='wordpress' className='size-10 shrink-0' />
@@ -247,13 +250,19 @@ export function Sites() {
           </div>
         </CardContent>
       </Card>
-
-      <div className='mt-4'>
+      ),
+    },
+    {
+      id: 'wp-changes',
+      title: 'Изменения WordPress',
+      node: (
         <WpChanges />
-      </div>
-
-      <div className='mt-4'>
-        {/* ---------- pulsdev-api ---------- */}
+      ),
+    },
+    {
+      id: 'pulsdev',
+      title: 'API pulsdev.net',
+      node: (
         <Card className='gap-3'>
           <CardHeader className='flex flex-row items-start gap-3'>
             <ServiceIcon slug='nodejs' className='size-10 shrink-0' />
@@ -311,12 +320,20 @@ export function Sites() {
             <UnitControls unit='pulsdev-api.service' title='pulsdev-api' active={puls?.active === 'active'} invalidate={['sites']} warning='api.pulsdev.net перестанет отвечать; заявки с сайта pulsdev.net не будут доходить в Telegram.' />
           </CardContent>
         </Card>
-
-      </div>
-
-      <div className='mt-4'>
+      ),
+    },
+    {
+      id: 'exchange',
+      title: 'Обменник файлов',
+      node: (
         <ExchangeCard />
-      </div>
+      ),
+    },
+  ]
+
+  return (
+    <Page title='Сайты и API' description='Зеркало jetsetter.ua и api.pulsdev.net' layoutPage='sites'>
+      <SortableBlocks blocks={blocks} className='space-y-4' />
     </Page>
   )
 }

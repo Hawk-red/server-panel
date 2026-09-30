@@ -9,6 +9,7 @@ import { formatDuration } from '@/lib/format'
 import type { AdguardData, Range } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { MetricChart, RANGE_LABELS } from '@/components/metric-chart'
 import { NoData } from '@/components/no-data'
 import { containerStatus, ServiceCard, webUrl } from '@/components/service-card'
@@ -78,9 +79,12 @@ export function Adguard() {
   const qlog = data?.querylogSize.data
   const intervalDays = data?.interval.data ? Math.round(data.interval.data / 86_400_000) : null
 
-  return (
-    <Page title='AdGuard Home' description='DNS-фильтр для домашней сети и VPN'>
-      <div className='grid gap-4 lg:grid-cols-3'>
+  const blocks: Block[] = [
+    {
+      id: 'service',
+      title: 'AdGuard Home',
+      className: 'md:col-span-2 lg:col-span-2',
+      node: (
         <ServiceCard
           title='AdGuard Home'
           icon='adguard-home'
@@ -123,8 +127,14 @@ export function Adguard() {
             )}
           </div>
         </ServiceCard>
-
-        <div className='grid gap-4 sm:grid-cols-2 lg:col-span-2'>
+      ),
+    },
+    {
+      id: 'stats',
+      title: 'Статистика',
+      className: 'md:col-span-2 lg:col-span-4',
+      node: (
+        <div className='grid gap-4 sm:grid-cols-2'>
           <StatTile
             title='DNS-запросов'
             value={stats ? <Value kind='count' value={stats.queries} /> : null}
@@ -160,9 +170,14 @@ export function Adguard() {
             noDataReason='нет прав на чтение размера (sudoers)'
           />
         </div>
-      </div>
-
-      <div className='mt-4 space-y-2'>
+      ),
+    },
+    {
+      id: 'chart',
+      title: 'График запросов',
+      className: 'md:col-span-2 lg:col-span-6',
+      node: (
+      <div className='space-y-2'>
         <div className='flex flex-wrap gap-2'>
           {(['day', 'week', 'month', 'quarter'] as Range[]).map((r) => (
             <Button key={r} size='sm' variant={r === range ? 'default' : 'outline'} onClick={() => setRange(r)}>
@@ -182,12 +197,29 @@ export function Adguard() {
         />
         <p className='text-xs text-muted-foreground'>История копится панелью по часам с момента запуска этапа 3 (за первые сутки — из статистики AdGuard).</p>
       </div>
-
-      <div className='mt-4 grid gap-4 md:grid-cols-2'>
+      ),
+    },
+    {
+      id: 'top-clients',
+      title: 'Топ клиентов',
+      className: 'md:col-span-1 lg:col-span-3',
+      node: (
         <TopList title='Топ клиентов' items={stats?.topClients} />
+      ),
+    },
+    {
+      id: 'top-blocked',
+      title: 'Топ заблокированных доменов',
+      className: 'md:col-span-1 lg:col-span-3',
+      node: (
         <TopList title='Топ заблокированных доменов' items={stats?.topBlocked} />
-      </div>
+      ),
+    },
+  ]
 
+  return (
+    <Page title='AdGuard Home' description='DNS-фильтр для домашней сети и VPN' layoutPage='adguard'>
+      <SortableBlocks grid blocks={blocks} className='grid gap-4 md:grid-cols-2 lg:grid-cols-6' />
       {confirm && (
         <ConfirmDialog
           open

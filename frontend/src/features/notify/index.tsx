@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import { Page } from '@/components/layout/page'
+import { SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
@@ -93,10 +94,17 @@ export function Notifications() {
   }
 
   return (
-    <Page title='Уведомления' description='Telegram-бот панели: события сервера приходят сообщениями'>
+    <Page title='Уведомления' description='Telegram-бот панели: события сервера приходят сообщениями' layoutPage='notify'>
       {isError && <NoData reason='не удалось получить настройки' />}
       {data && form && (
-        <div className='grid items-start gap-4 lg:grid-cols-2'>
+        <SortableBlocks
+          grid
+          className='grid items-start gap-4 lg:grid-cols-2'
+          blocks={[
+            {
+              id: 'connection',
+              title: 'Подключение',
+              node: (
           <Card className='gap-3'>
             <CardHeader>
               <CardTitle className='flex items-center gap-2 text-base'>
@@ -194,7 +202,12 @@ export function Notifications() {
               </label>
             </CardContent>
           </Card>
-
+              ),
+            },
+            {
+              id: 'rules',
+              title: 'Тихие часы и правила',
+              node: (
           <Card className='gap-3'>
             <CardHeader>
               <CardTitle className='flex items-center gap-2 text-base'>
@@ -229,8 +242,14 @@ export function Notifications() {
               </Button>
             </CardContent>
           </Card>
-
-          <Card className='gap-2 lg:col-span-2'>
+              ),
+            },
+            {
+              id: 'recent',
+              title: 'Последние уведомления',
+              className: 'lg:col-span-2',
+              node: (
+          <Card className='gap-2'>
             <CardHeader>
               <CardTitle className='text-sm font-medium'>Последние уведомления</CardTitle>
             </CardHeader>
@@ -248,7 +267,10 @@ export function Notifications() {
               )}
             </CardContent>
           </Card>
-        </div>
+              ),
+            },
+          ]}
+        />
       )}
     </Page>
   )

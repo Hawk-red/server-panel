@@ -13,6 +13,9 @@ import { Button } from '@/components/ui/button'
 // Блок страницы: постоянный id (по нему хранится порядок), заголовок для подписи в режиме изменения, вёрстка блока
 export type Block = { id: string; title: string; node: React.ReactNode; className?: string }
 
+// id блока из данных (id бота, копии…): только строчные латинские буквы, цифры и дефис, как требует сервер
+export const blockId = (prefix: string, raw: string) => `${prefix}-${raw}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40)
+
 type LayoutResponse = { order: string[] }
 
 // Порядок из настроек применяется к блокам: сохранённые — по порядку, новые (которых там нет) — в конец, исчезнувшие — игнорируются
@@ -29,7 +32,7 @@ function Item({ block, editing, index, count, onMove }: { block: Block; editing:
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn('min-w-0', block.className, editing && 'relative rounded-xl outline-2 outline-offset-2 outline-dashed outline-info/60', isDragging && 'z-30 opacity-80')}
+      className={cn('min-w-0', block.className, editing && 'relative rounded-xl pt-4 outline-2 outline-offset-2 outline-dashed outline-info/60', isDragging && 'z-30 opacity-80')}
     >
       {/* В режиме изменения содержимое «заморожено»: нажатия и фокус не проходят внутрь, чтобы блок можно было схватить в любом месте */}
       <div className={cn('h-full [&>*]:h-full', editing && 'pointer-events-none select-none')} inert={editing}>
