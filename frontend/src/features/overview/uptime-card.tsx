@@ -34,7 +34,7 @@ export function UptimeCard() {
   for (const m of data?.monitors ?? []) groups.set(m.group, [...(groups.get(m.group) ?? []), m])
 
   return (
-    <Card className='mt-4 gap-2'>
+    <Card className='gap-2'>
       <CardHeader>
         <CardTitle className='text-sm font-medium'>Доступность сервисов</CardTitle>
       </CardHeader>

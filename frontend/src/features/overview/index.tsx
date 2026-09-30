@@ -7,6 +7,7 @@ import type { BackupItem, InternetStatus } from '@/features/infra-types'
 import { meQuery } from '@/lib/auth'
 import type { Overview as OverviewData, Problem } from '@/lib/types'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { Meter } from '@/components/meter'
 import { StatTile } from '@/components/stat-tile'
@@ -64,19 +65,12 @@ export function Overview() {
   const net = s?.network?.[LAN_IFACE]
   const mem = s?.memory
 
-  return (
-    <Page
-      title='Обзор'
-      description='Состояние сервера Mac Mini'
-      actions={
-        <Button variant='outline' asChild>
-          <Link to='/tv'>
-            <Tv /> Режим ТВ
-          </Link>
-        </Button>
-      }
-    >
-      <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6'>
+  const blocks: Block[] = [
+    {
+      id: 'cpu',
+      title: 'CPU',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='CPU'
           icon={Cpu}
@@ -86,6 +80,13 @@ export function Overview() {
           direction='higher-worse'
           noDataReason={err('cpu')}
         />
+      ),
+    },
+    {
+      id: 'temp',
+      title: 'Температура',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Температура'
           icon={Thermometer}
@@ -101,6 +102,13 @@ export function Overview() {
           }
           noDataReason={err('temperature')}
         />
+      ),
+    },
+    {
+      id: 'memory',
+      title: 'Память',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Память'
           icon={MemoryStick}
@@ -117,6 +125,13 @@ export function Overview() {
           direction='higher-worse'
           noDataReason={err('memory')}
         />
+      ),
+    },
+    {
+      id: 'uptime',
+      title: 'Аптайм',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Аптайм'
           icon={Clock}
@@ -124,6 +139,13 @@ export function Overview() {
           sub={s?.uptimeSec != null ? formatUptimeScales(s.uptimeSec) : undefined}
           noDataReason={err('uptime')}
         />
+      ),
+    },
+    {
+      id: 'network',
+      title: 'Сеть (LAN)',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Сеть (LAN)'
           icon={Network}
@@ -131,6 +153,13 @@ export function Overview() {
           sub={net ? <Value kind='speed' value={net.txBps} flow='tx' prefix='↑ ' /> : undefined}
           noDataReason={err('network')}
         />
+      ),
+    },
+    {
+      id: 'services',
+      title: 'Службы',
+      className: 'col-span-1',
+      node: (
         <StatTile
           title='Службы'
           icon={Activity}
@@ -153,10 +182,14 @@ export function Overview() {
             ) : undefined
           }
         />
-      </div>
-
-      <div className='mt-4 grid gap-4 lg:grid-cols-3'>
-        <Card className='gap-2 lg:col-span-2'>
+      ),
+    },
+    {
+      id: 'disks',
+      title: 'Диски',
+      className: 'col-span-2 lg:col-span-2 xl:col-span-4',
+      node: (
+        <Card className='gap-2'>
           <CardHeader className='flex flex-row items-center justify-between'>
             <CardTitle className='text-sm font-medium'>Диски</CardTitle>
             <HardDrive className='size-4 text-muted-foreground' />
@@ -189,7 +222,13 @@ export function Overview() {
             )}
           </CardContent>
         </Card>
-
+      ),
+    },
+    {
+      id: 'summary',
+      title: 'Сводка',
+      className: 'col-span-2 lg:col-span-1 xl:col-span-2',
+      node: (
         <Card className='gap-2'>
           <CardHeader>
             <CardTitle className='text-sm font-medium'>Сводка</CardTitle>
@@ -283,16 +322,17 @@ export function Overview() {
             </SummaryRow>
           </CardContent>
         </Card>
-      </div>
-
-      <div className='mt-4 grid gap-4 lg:grid-cols-2'>
-        <QuickActions />
-        <DeadlinesCard />
-      </div>
-
-      <UptimeCard />
-
-      <Card className='mt-4 gap-2'>
+      ),
+    },
+    { id: 'quick', title: 'Быстрые действия', className: 'col-span-2 lg:col-span-3', node: <QuickActions /> },
+    { id: 'deadlines', title: 'Сроки', className: 'col-span-2 lg:col-span-3', node: <DeadlinesCard /> },
+    { id: 'availability', title: 'Доступность сервисов', className: 'col-span-2 lg:col-span-3 xl:col-span-6', node: <UptimeCard /> },
+    {
+      id: 'problems',
+      title: 'Проблемы',
+      className: 'col-span-2 lg:col-span-3 xl:col-span-6',
+      node: (
+      <Card className='gap-2'>
         <CardHeader>
           <CardTitle className='text-sm font-medium'>Проблемы</CardTitle>
         </CardHeader>
@@ -326,6 +366,24 @@ export function Overview() {
           )}
         </CardContent>
       </Card>
+      ),
+    },
+  ]
+
+  return (
+    <Page
+      title='Обзор'
+      description='Состояние сервера Mac Mini'
+      layoutPage='overview'
+      actions={
+        <Button variant='outline' asChild>
+          <Link to='/tv'>
+            <Tv /> Режим ТВ
+          </Link>
+        </Button>
+      }
+    >
+      <SortableBlocks grid blocks={blocks} className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6' />
       <ProblemSheet problem={openProblem} onClose={() => setOpenProblem(null)} />
     </Page>
   )

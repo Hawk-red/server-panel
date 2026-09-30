@@ -32,7 +32,7 @@ function Item({ block, editing, index, count, onMove }: { block: Block; editing:
       className={cn('min-w-0', block.className, editing && 'relative rounded-xl outline-2 outline-offset-2 outline-dashed outline-info/60', isDragging && 'z-30 opacity-80')}
     >
       {/* В режиме изменения содержимое «заморожено»: нажатия и фокус не проходят внутрь, чтобы блок можно было схватить в любом месте */}
-      <div className={cn(editing && 'pointer-events-none select-none')} inert={editing}>
+      <div className={cn('h-full [&>*]:h-full', editing && 'pointer-events-none select-none')} inert={editing}>
         {block.node}
       </div>
       {editing && (
@@ -45,14 +45,14 @@ function Item({ block, editing, index, count, onMove }: { block: Block; editing:
             aria-label={`Перетащить блок «${block.title}»`}
             className='absolute inset-0 z-10 cursor-grab touch-none rounded-xl bg-info/5 active:cursor-grabbing'
           />
-          <div className='pointer-events-none absolute start-3 -top-3.5 z-20 inline-flex items-center gap-1 rounded-md bg-background/95 px-2 py-1 text-sm font-medium shadow ring-1 ring-border'>
-            <GripVertical className='size-4 text-muted-foreground' aria-hidden /> {block.title}
+          <div className='pointer-events-none absolute start-3 -top-3.5 z-20 inline-flex max-w-[calc(100%-6.5rem)] items-center gap-1 rounded-md bg-background/95 px-2 py-1 text-sm font-medium shadow ring-1 ring-border'>
+            <GripVertical className='size-4 shrink-0 text-muted-foreground' aria-hidden /> <span className='truncate'>{block.title}</span>
           </div>
           <div className='absolute end-3 -top-3.5 z-20 flex gap-1'>
-            <Button type='button' size='icon' variant='secondary' className='size-9 shadow ring-1 ring-border' disabled={index === 0} onClick={() => onMove(index, index - 1)} aria-label={`Поднять блок «${block.title}»`}>
+            <Button type='button' size='icon' variant='secondary' className='size-8 shadow ring-1 ring-border' disabled={index === 0} onClick={() => onMove(index, index - 1)} aria-label={`Поднять блок «${block.title}»`}>
               <ArrowUp />
             </Button>
-            <Button type='button' size='icon' variant='secondary' className='size-9 shadow ring-1 ring-border' disabled={index === count - 1} onClick={() => onMove(index, index + 1)} aria-label={`Опустить блок «${block.title}»`}>
+            <Button type='button' size='icon' variant='secondary' className='size-8 shadow ring-1 ring-border' disabled={index === count - 1} onClick={() => onMove(index, index + 1)} aria-label={`Опустить блок «${block.title}»`}>
               <ArrowDown />
             </Button>
           </div>
@@ -114,7 +114,7 @@ export function SortableBlocks({ blocks, className, grid = false }: { blocks: Bl
       )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={ids} strategy={grid ? rectSortingStrategy : verticalListSortingStrategy}>
-          <div className={cn(!className && 'space-y-4', className)}>
+          <div className={cn(!className && 'space-y-4', className, editing && 'gap-y-9 sm:gap-y-9')}>
             {ordered.map((b, i) => (
               <Item key={b.id} block={b} editing={editing} index={i} count={ordered.length} onMove={move} />
             ))}
