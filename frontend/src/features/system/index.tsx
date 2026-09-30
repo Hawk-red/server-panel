@@ -26,7 +26,7 @@ const LABELS: Record<SystemTab, string> = {
 export function System({ tab, source }: { tab: SystemTab; source?: string }) {
   const navigate = useNavigate({ from: '/system/' })
   return (
-    <Page title='Система' description='CPU, память, температура, диски, расписания, службы и логи' layoutPage={tab === 'resources' ? 'system' : undefined}>
+    <Page title='Система' description='CPU, память, температура, диски, расписания, службы и логи' layoutPage={tab === 'resources' ? 'system' : tab === 'disks' ? 'system-disks' : undefined}>
       <Tabs value={tab} onValueChange={(v) => navigate({ search: { tab: v as SystemTab } })}>
         <div className='-mx-4 overflow-x-auto px-4 pb-1'>
           <TabsList>

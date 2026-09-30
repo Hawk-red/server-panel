@@ -6,6 +6,7 @@ import { formatBytes, formatRelative } from '@/lib/format'
 import type { DiskInfo } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { NoData } from '@/components/no-data'
+import { type Block, blockId, SortableBlocks } from '@/components/sortable-blocks'
 import { Meter } from '@/components/meter'
 import { StatusBadge } from '@/components/status-badge'
 import { Value } from '@/components/value'
@@ -45,9 +46,16 @@ export function Disks() {
           <RefreshCw className={cn(refresh.isPending && 'animate-spin')} /> Обновить SMART
         </Button>
       </div>
-      <div className='grid gap-4 md:grid-cols-2'>
-        {(data ?? []).map((d) => (
-          <Card key={d.device} className={cn('gap-2', d.state === 'missing' && 'border-danger/50')}>
+      {/* Id блока — по UUID/точке монтирования: буквы /dev/sdX от перезагрузки к перезагрузке меняются */}
+      <SortableBlocks
+        grid
+        className='grid gap-4 md:grid-cols-2'
+        blocks={(data ?? []).map(
+          (d): Block => ({
+            id: blockId('d', d.uuid ?? d.mount ?? d.device),
+            title: d.mount ?? d.device,
+            node: (
+          <Card className={cn('gap-2', d.state === 'missing' && 'border-danger/50')}>
             <CardHeader className='flex flex-row items-start justify-between gap-2'>
               <div>
                 <CardTitle className='text-base'>{d.mount ?? d.device}</CardTitle>
@@ -107,8 +115,10 @@ export function Disks() {
               </dl>
             </CardContent>
           </Card>
-        ))}
-      </div>
+            ),
+          })
+        )}
+      />
     </div>
   )
 }
