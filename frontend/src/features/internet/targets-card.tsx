@@ -36,7 +36,7 @@ export function TargetsCard({ data, range }: { data: InternetStatus | undefined;
 
   return (
     <>
-      <Card className='mt-4 gap-2'>
+      <Card className='gap-2'>
         <CardHeader>
           <CardTitle className='text-sm font-medium'>Задержка до узлов</CardTitle>
         </CardHeader>

@@ -7,6 +7,7 @@ import { formatDateTime, formatDuration, formatRelative } from '@/lib/format'
 import type { Range } from '@/lib/types'
 import type { InternetStatus } from '@/features/infra-types'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { MetricChart, RANGE_LABELS } from '@/components/metric-chart'
 import { NoData } from '@/components/no-data'
 import { StatTile } from '@/components/stat-tile'
@@ -49,12 +50,22 @@ export function Internet() {
   const down = data ? Boolean(data.downSince) : false
   const level = now?.main != null ? pingLevel(now.main) : null
 
-  return (
-    <Page title='Интернет' description='Доступность связи, задержка до 1.1.1.1 и внешний IP'>
-      {isError ? (
-        <NoData reason='бэкенд не ответил' />
-      ) : (
-        <>
+  // Переключатель периода общий для графиков пинга и графиков «Задержки до узлов»: показываем его в обоих блоках
+  const rangeBar = (
+          <div className='flex flex-wrap items-center gap-2'>
+            {(Object.keys(RANGE_LABELS) as Range[]).map((r) => (
+              <Button key={r} size='sm' variant={r === range ? 'default' : 'outline'} onClick={() => setRange(r)}>
+                {RANGE_LABELS[r]}
+              </Button>
+            ))}
+          </div>
+  )
+
+  const blocks: Block[] = [
+    {
+      id: 'summary',
+      title: 'Сводка',
+      node: (
           <div className='grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4'>
             <StatTile
               title='Связь'
@@ -130,27 +141,39 @@ export function Internet() {
               noDataReason={null}
             />
           </div>
-
-          <PingCard />
-
-          <SpeedtestCard />
-
-          <div className='mt-4 flex flex-wrap items-center gap-2'>
-            {(Object.keys(RANGE_LABELS) as Range[]).map((r) => (
-              <Button key={r} size='sm' variant={r === range ? 'default' : 'outline'} onClick={() => setRange(r)}>
-                {RANGE_LABELS[r]}
-              </Button>
-            ))}
-          </div>
-          <div className='mt-3 grid gap-3 lg:grid-cols-2'>
+      ),
+    },
+    { id: 'ping', title: 'Проверить адрес', node: <PingCard /> },
+    { id: 'speed', title: 'Скорость интернета', node: <SpeedtestCard /> },
+    {
+      id: 'charts',
+      title: 'Графики пинга и потерь',
+      node: (
+        <div className='space-y-3'>
+          {rangeBar}
+          <div className='grid gap-3 lg:grid-cols-2'>
             <MetricChart title={`Пинг до ${data?.targets.main ?? '1.1.1.1'}, мс`} series={[{ name: 'inet.ping_ms', label: 'пинг', color: 'var(--info)' }]} range={range} format={ms} domain={[0, 'auto']} />
             {/* Вторая серия — другой цвет: потери показаны красным, чтобы не путать с пингом */}
             <MetricChart title='Потери пакетов' series={[{ name: 'inet.loss', label: 'потери', color: 'var(--danger)' }]} range={range} format={lossPct} domain={[0, 1]} />
           </div>
-
+        </div>
+      ),
+    },
+    {
+      id: 'targets',
+      title: 'Задержка до узлов',
+      node: (
+        <div className='space-y-3'>
+          {rangeBar}
           <TargetsCard data={data} range={range} />
-
-          <Card className='mt-4 gap-2'>
+        </div>
+      ),
+    },
+    {
+      id: 'outages',
+      title: 'Обрывы связи',
+      node: (
+          <Card className='gap-2'>
             <CardHeader>
               <CardTitle className='text-sm font-medium'>Обрывы связи</CardTitle>
             </CardHeader>
@@ -184,8 +207,13 @@ export function Internet() {
               </p>
             </CardContent>
           </Card>
-        </>
-      )}
+      ),
+    },
+  ]
+
+  return (
+    <Page title='Интернет' description='Доступность связи, задержка до 1.1.1.1 и внешний IP' layoutPage='internet'>
+      {isError ? <NoData reason='бэкенд не ответил' /> : <SortableBlocks blocks={blocks} />}
     </Page>
   )
 }

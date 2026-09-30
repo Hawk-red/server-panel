@@ -14,6 +14,7 @@ import { isAllowed, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
 import { accessRoutes } from './routes/access.js'
 import { auditRoutes } from './routes/audit.js'
+import { layoutRoutes } from './routes/layout.js'
 import { panelChangesRoutes } from './routes/panel-changes.js'
 import { infraRoutes } from './routes/infra.js'
 import { networkRoutes } from './routes/network.js'
@@ -79,6 +80,7 @@ await app.register(accessRoutes)
 await app.register(networkRoutes)
 await app.register(auditRoutes)
 await app.register(panelChangesRoutes)
+await app.register(layoutRoutes)
 await app.register(notifyRoutes)
 await app.register(infraRoutes)
 await app.register(uptimeRoutes)

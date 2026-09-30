@@ -16,21 +16,21 @@ const SELF_IP = '192.168.31.112'
 const PRESETS: Record<string, { name: string; type: DeviceType }> = {
   '192.168.31.1': { name: 'Роутер Xiaomi', type: 'router' },
   '192.168.31.112': { name: 'Mac Mini (этот сервер)', type: 'unknown' },
-  '192.168.31.146': { name: 'MacBook Pro M1 (кабель)', type: 'laptop' },
-  '192.168.31.51': { name: 'MacBook Pro M1 (Wi-Fi)', type: 'laptop' },
+  '192.168.31.146': { name: 'MacBook Pro M1 (кабель)', type: 'unknown' },
+  '192.168.31.51': { name: 'MacBook Pro M1 (Wi-Fi)', type: 'unknown' },
   '192.168.31.82': { name: 'Ugoos SK1 (Android TV)', type: 'tv' },
   '192.168.31.94': { name: 'Marantz NR1604', type: 'media' },
   '192.168.31.181': { name: 'Samsung 7 Series (ТВ)', type: 'tv' },
 }
 
-// Типы: телефон и планшет — один тип «phone»; «media» — ресиверы и аудио; «unknown» — «Другое» (принтеры, компьютеры, серверы и всё нераспознанное)
-export type DeviceType = 'router' | 'laptop' | 'phone' | 'tv' | 'media' | 'iot' | 'unknown'
+// Типы: телефон и планшет — один тип «phone»; ноутбуки, принтеры, компьютеры, серверы — «Другое»; «media» — ресиверы и аудио; «unknown» — «Другое» (принтеры, компьютеры, серверы и всё нераспознанное)
+export type DeviceType = 'router' | 'phone' | 'tv' | 'media' | 'iot' | 'unknown'
 export const TYPE_LABEL: Record<DeviceType, string> = {
-  router: 'Роутер / сеть', laptop: 'Ноутбук', phone: 'Телефон / планшет', tv: 'ТВ', media: 'Медиа', iot: 'Умный дом', unknown: 'Другое',
+  router: 'Роутер / сеть', phone: 'Телефон / планшет', tv: 'ТВ', media: 'Медиа', iot: 'Умный дом', unknown: 'Другое',
 }
 
 // Прежние типы, которые убрали из списка → куда переносятся (ir — ближайший по смыслу «Умный дом»)
-const RETIRED: Record<string, DeviceType> = { tablet: 'phone', receiver: 'media', ir: 'iot', printer: 'unknown', desktop: 'unknown', server: 'unknown' }
+const RETIRED: Record<string, DeviceType> = { tablet: 'phone', receiver: 'media', ir: 'iot', printer: 'unknown', desktop: 'unknown', server: 'unknown', laptop: 'unknown' }
 
 // Разовая (идемпотентная) переброска уже сохранённых устройств; каждое изменение пишется в журнал событий
 export function migrateDeviceTypes() {
@@ -90,7 +90,6 @@ function guessType(ip: string, vendor: string | null, hostname: string | null, r
   if (/broadlink/.test(v)) return 'iot'
   if (/ipad/.test(h)) return 'phone'
   if (/iphone|android|pixel|galaxy/.test(h)) return h.includes('android') ? 'tv' : 'phone'
-  if (/macbook|laptop|thinkpad/.test(h)) return 'laptop'
   if (/d&m|denon|marantz|yamaha|onkyo/.test(v)) return 'media'
   if (/samsung electronics|lg electronics|sony|tcl|hisense/.test(v) && /tv|samsung\./.test(h)) return 'tv'
   if (/espressif|tuya|shelly|sonoff|bilian|xiaomi electronics|lumi/.test(v)) return 'iot'

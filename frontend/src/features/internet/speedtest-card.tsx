@@ -71,7 +71,7 @@ export function SpeedtestCard() {
   const running = data?.running
   const last: SpeedResult | undefined = data?.results[0]
   return (
-    <Card className='mt-4 gap-3'>
+    <Card className='gap-3'>
       <CardHeader className='flex flex-row flex-wrap items-center justify-between gap-2'>
         <CardTitle className='flex items-center gap-2 text-sm font-medium'>
           <Gauge className='size-4 text-brand' aria-hidden='true' /> Скорость интернета

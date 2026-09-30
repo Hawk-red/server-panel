@@ -6,7 +6,7 @@ import type { Device, DeviceType, NetworkData } from '@/lib/types'
 import { Tile } from './shell'
 
 const TYPE: Record<DeviceType, string> = {
-  router: 'роутер', laptop: 'ноутбук', phone: 'телефон / планшет', tv: 'ТВ', media: 'медиа', iot: 'умный дом', unknown: 'другое',
+  router: 'роутер', phone: 'телефон / планшет', tv: 'ТВ', media: 'медиа', iot: 'умный дом', unknown: 'другое',
 }
 const label = (d: Device) => d.name ?? d.hostname ?? d.vendor ?? d.ip
 

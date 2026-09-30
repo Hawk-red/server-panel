@@ -1,10 +1,12 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { Tv } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowUpDown, Check, Tv } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Search } from '@/components/search'
 import { Button } from '@/components/ui/button'
 import { isTvSection } from '@/features/tv/sections'
+import { LayoutEditContext } from './layout-edit'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { sidebarData } from './data/sidebar-data'
 import { Header } from './header'
@@ -15,6 +17,8 @@ type PageProps = {
   description?: string
   actions?: React.ReactNode
   children?: React.ReactNode
+  /** Идентификатор страницы с перетаскиваемыми блоками (SortableBlocks): в шапке появляется кнопка «Изменить порядок» */
+  layoutPage?: string
 }
 
 // Общий каркас страницы раздела: шапка с поиском/темой + заголовок
@@ -30,8 +34,9 @@ function useSection() {
   return null
 }
 
-export function Page({ title, description, actions, children }: PageProps) {
+export function Page({ title, description, actions, children, layoutPage }: PageProps) {
   const section = useSection()
+  const [editing, setEditing] = useState(false)
   const Icon = section?.icon
   // Обзор ставит свою кнопку; у разделов без ТВ-версии кнопка ведёт на общий /tv
   const slug = section?.url ? String(section.url).replace(/^\//, '') : ''
@@ -56,6 +61,11 @@ export function Page({ title, description, actions, children }: PageProps) {
           </div>
           <div className='flex flex-wrap items-center gap-2'>
             {actions}
+            {layoutPage && (
+              <Button variant={editing ? 'default' : 'outline'} size='sm' onClick={() => setEditing(!editing)} aria-pressed={editing}>
+                {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
+              </Button>
+            )}
             {tvLink && (
               <Button variant='outline' size='sm' asChild>
                 <Link to={tvLink.to} params={tvLink.params as never}>
@@ -65,7 +75,7 @@ export function Page({ title, description, actions, children }: PageProps) {
             )}
           </div>
         </div>
-        {children}
+        {layoutPage ? <LayoutEditContext.Provider value={{ page: layoutPage, editing, setEditing }}>{children}</LayoutEditContext.Provider> : children}
       </Main>
     </>
   )

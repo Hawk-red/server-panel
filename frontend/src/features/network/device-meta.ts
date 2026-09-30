@@ -1,10 +1,9 @@
-import { CircleHelp, Cpu, Laptop, Router, Smartphone, Speaker, Tv } from 'lucide-react'
+import { CircleHelp, Cpu, Router, Smartphone, Speaker, Tv } from 'lucide-react'
 import type { Device, DeviceType } from '@/lib/types'
 
-// «Телефон / планшет» — один тип; «Другое» — всё остальное (принтеры, компьютеры, серверы и нераспознанное)
+// «Телефон / планшет» — один тип; «Другое» — всё остальное (ноутбуки, принтеры, компьютеры, серверы и нераспознанное)
 export const TYPES: Record<DeviceType, { label: string; icon: React.ElementType }> = {
   router: { label: 'Роутер / сеть', icon: Router },
-  laptop: { label: 'Ноутбук', icon: Laptop },
   phone: { label: 'Телефон / планшет', icon: Smartphone },
   tv: { label: 'ТВ', icon: Tv },
   media: { label: 'Медиа', icon: Speaker },
@@ -14,7 +13,6 @@ export const TYPES: Record<DeviceType, { label: string; icon: React.ElementType 
 
 // Группы для фильтра
 export const TYPE_GROUPS: { id: string; label: string; types: DeviceType[] }[] = [
-  { id: 'laptop', label: 'Ноутбуки', types: ['laptop'] },
   { id: 'phone', label: 'Телефоны и планшеты', types: ['phone'] },
   { id: 'tv', label: 'ТВ', types: ['tv'] },
   { id: 'media', label: 'Медиа', types: ['media'] },

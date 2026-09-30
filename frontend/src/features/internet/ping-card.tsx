@@ -79,7 +79,7 @@ export function PingCard() {
   const v = result ? verdict(result) : null
 
   return (
-    <Card className='mt-4 gap-3'>
+    <Card className='gap-3'>
       <CardHeader>
         <CardTitle className='text-sm font-medium'>Проверить адрес</CardTitle>
       </CardHeader>
