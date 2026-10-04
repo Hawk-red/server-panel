@@ -7,16 +7,18 @@ import { summary as torrentSummary } from '../services/qbittorrent.js'
 import { listSeriesNames, querySeries, RANGES, type Range } from '../collector/store.js'
 import { listCron } from '../system/cron.js'
 import { listDisks, refreshAllSmart } from '../system/disks.js'
+import { getDiskIoHistory, getDiskIoLatest } from '../system/disk-io.js'
 import { listSources, readLog, type LogLevel } from '../system/logs.js'
 import { run } from '../exec.js'
 import { staleBackups, backupsOverview } from '../services/backups.js'
 import { listDeadlines } from '../services/deadlines.js'
 import { fmtDur, internetStatus, lastPing } from '../services/internet.js'
+import { listUpdates } from '../services/updates.js'
 import { ACTIONS, CONTROLLABLE, controlUnit, failedUnits, listAutostart, listServices, type UnitAction } from '../system/units.js'
 
 // Сводка проблем для главной: только то, что реально требует внимания.
 // kind + ref позволяют открыть по проблеме диагностику (лог, статус, переход в раздел).
-type Problem = { level: 'error' | 'warning'; text: string; kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source' | 'internet' | 'backup' | 'deadline'; ref: string; link: string }
+type Problem = { level: 'error' | 'warning'; text: string; kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source' | 'internet' | 'backup' | 'deadline' | 'update'; ref: string; link: string }
 
 async function collectProblems(): Promise<Problem[]> {
   const snap = getSnapshot()
@@ -63,6 +65,11 @@ async function collectProblems(): Promise<Problem[]> {
   for (const [src, e] of Object.entries(snap?.errors ?? {})) {
     problems.push({ level: 'warning', text: `Нет данных от источника «${src}»: ${e!.message}`, kind: 'source', ref: src, link: SOURCE_LINK[src] ?? '/system' })
   }
+  const upd = await listUpdates().catch(() => null)
+  if (upd?.apt.rebootRequired.required)
+    problems.push({ level: 'warning', text: 'Требуется перезагрузка — обновлено ядро или системная библиотека', kind: 'update', ref: 'reboot', link: '/system?tab=updates' })
+  if (upd && upd.apt.securityCount > 0)
+    problems.push({ level: 'warning', text: `Доступно ${upd.apt.securityCount} обновлени${upd.apt.securityCount === 1 ? 'е' : 'й'} безопасности`, kind: 'update', ref: 'security', link: '/system?tab=updates' })
   return problems
 }
 
@@ -134,6 +141,12 @@ async function diagnose(kind: string, ref: string) {
   } else if (kind === 'deadline') {
     const d = (await listDeadlines()).find((x) => x.id === ref)
     status = d ? [d.title, `Срок: ${d.expires ? new Date(d.expires).toLocaleDateString('ru-RU') : 'неизвестен'}`, `Осталось дней: ${d.daysLeft ?? '?'}`, d.note ?? '', d.error ?? ''].filter(Boolean).join('\n') : `Срок ${ref}: нет данных`
+  } else if (kind === 'update') {
+    const u = await listUpdates()
+    status =
+      ref === 'reboot'
+        ? `Требуется перезагрузка.\nПричина: ${u.apt.rebootRequired.pkgs.join(', ') || 'неизвестна'}`
+        : [`Обновлений безопасности: ${u.apt.securityCount}`, ...u.apt.packages.filter((p) => p.security).map((p) => `  ${p.name}: ${p.from} → ${p.to}`)].join('\n')
   } else {
     const e = getSnapshot()?.errors[ref as keyof NonNullable<ReturnType<typeof getSnapshot>>['errors']]
     status = e ? `Источник «${ref}» недоступен с ${new Date(e.since).toLocaleString('ru-RU')}: ${e.message}` : `Источник «${ref}»: ошибок сейчас нет`
@@ -158,7 +171,7 @@ export async function systemRoutes(app: FastifyInstance) {
 
   app.get<{ Querystring: { kind?: string; ref?: string } }>('/api/diagnostics', async (req, reply) => {
     const { kind, ref } = req.query
-    if (!kind || !ref || !['unit', 'disk', 'smart', 'temp', 'devices', 'source', 'internet', 'backup', 'deadline'].includes(kind)) return reply.code(400).send({ message: 'нужны kind и ref' })
+    if (!kind || !ref || !['unit', 'disk', 'smart', 'temp', 'devices', 'source', 'internet', 'backup', 'deadline', 'update'].includes(kind)) return reply.code(400).send({ message: 'нужны kind и ref' })
     try {
       return await diagnose(kind, ref)
     } catch (e) {
@@ -200,7 +213,11 @@ export async function systemRoutes(app: FastifyInstance) {
   })
   app.get('/api/metrics/names', async () => listSeriesNames())
 
+  app.get('/api/system/updates', async () => listUpdates())
+
   app.get('/api/system/disks', async () => listDisks())
+  app.get('/api/system/disks/io', async () => getDiskIoLatest())
+  app.get('/api/system/disks/io-history', async () => getDiskIoHistory())
   app.post('/api/system/disks/smart-refresh', async (req) => {
     await refreshAllSmart()
     audit({ ip: req.clientIp, user: 'admin', action: 'disks.smart-refresh', result: 'ok' })

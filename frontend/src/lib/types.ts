@@ -25,6 +25,11 @@ export type DiskInfo = {
   smart: Smart | null
 }
 
+export type DiskIoRate = { readBps: number; writeBps: number }
+export type DiskIoSnapshot = { ts: number; disks: Record<string, DiskIoRate> }
+export type DiskIoPoint = { ts: number; readBps: number; writeBps: number }
+export type DiskIoHistorySnapshot = Record<string, DiskIoPoint[]>
+
 export type Snapshot = {
   ts: number
   cpu: { total: number; cores: number[] } | null
@@ -41,7 +46,7 @@ export type Snapshot = {
 export type Problem = {
   level: 'error' | 'warning'
   text: string
-  kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source' | 'internet' | 'backup' | 'deadline'
+  kind: 'unit' | 'disk' | 'smart' | 'temp' | 'devices' | 'source' | 'internet' | 'backup' | 'deadline' | 'update'
   ref: string
   link: string
 }
@@ -363,6 +368,36 @@ export type LeadAnalytics = {
   rejected30d: number
   greeted30d: number
   pollErrors24h: number
+}
+
+// ---------- Вкладка «Обновления»: только показ, установка — вручную в терминале ----------
+export type AptPackage = { name: string; from: string; to: string; origin: string; security: boolean; description: string | null }
+export type AptStatus = {
+  checkedAt: number | null
+  error: string | null
+  packages: AptPackage[]
+  securityCount: number
+  heldBack: string[]
+  rebootRequired: { required: boolean; pkgs: string[] }
+}
+export type AptHistoryEntry = { date: number; manual: boolean; packages: { name: string; from: string | null; to: string }[] }
+export type DockerImageStatus = {
+  container: string
+  repo: string
+  localDigest: string | null
+  remoteDigest: string | null
+  upToDate: boolean | null
+  imageCreated: number | null
+  checkedAt: number | null
+  error: string | null
+}
+export type DockerUpdateEvent = { container: string; repo: string; oldDigest: string | null; newDigest: string; detectedAt: number }
+export type UpdatesSnapshot = {
+  apt: AptStatus
+  docker: DockerImageStatus[]
+  dockerTrackingSince: number | null
+  aptHistory: AptHistoryEntry[]
+  dockerHistory: DockerUpdateEvent[]
 }
 
 // ---------- Этап 9: журнал (действия + системные события) ----------

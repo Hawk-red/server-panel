@@ -89,6 +89,19 @@ const migrations: string[] = [
   -- Этап 10: история доступности сервисов — ускоряет выборку переходов по конкретному target
   CREATE INDEX events_target_kind ON events (target, kind, ts);
   `,
+  `
+  -- Вкладка «Обновления»: своя история Docker-образов — прошлого не было, фиксируем смену локального
+  -- digest с момента появления этой фичи (см. services/updates.ts)
+  CREATE TABLE docker_image_updates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    container   TEXT NOT NULL,
+    repo        TEXT NOT NULL,
+    old_digest  TEXT,
+    new_digest  TEXT NOT NULL,
+    detected_at INTEGER NOT NULL
+  );
+  CREATE INDEX docker_image_updates_detected_at ON docker_image_updates (detected_at);
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number

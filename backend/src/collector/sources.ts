@@ -107,6 +107,21 @@ export async function readNetCounters(): Promise<NetCounters> {
   return out
 }
 
+export type DiskIoCounters = Record<string, { readSectors: number; writeSectors: number }>
+
+// Только целые диски (sda, nvme0n1, vda, mmcblk0) — разделы (sda1, nvme0n1p1) пропускаем
+const DISK_DEV_RE = /^(sd[a-z]+|nvme\d+n\d+|vd[a-z]+|mmcblk\d+)$/
+
+export async function readDiskIoCounters(): Promise<DiskIoCounters> {
+  const out: DiskIoCounters = {}
+  for (const line of (await readFile('/proc/diskstats', 'utf8')).split('\n')) {
+    const f = line.trim().split(/\s+/)
+    if (f.length < 10 || !DISK_DEV_RE.test(f[2])) continue
+    out[f[2]] = { readSectors: Number(f[5]), writeSectors: Number(f[9]) }
+  }
+  return out
+}
+
 export async function readFsUsage(mount: string) {
   const s = await statfs(mount)
   const total = s.blocks * s.bsize

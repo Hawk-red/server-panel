@@ -6,6 +6,7 @@ import Fastify, { LogController } from 'fastify'
 import { authRoutes, cleanupAuth } from './auth.js'
 import { startCollector, stopCollector } from './collector/index.js'
 import { startDetectors } from './detectors.js'
+import { startDiskIoCollector, stopDiskIoCollector } from './system/disk-io.js'
 import { config } from './config.js'
 import { db } from './db.js'
 import { hasSecret, maskSecrets } from './mask.js'
@@ -23,6 +24,7 @@ import { startNotifier } from './notifier.js'
 import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
+import { startUpdates } from './services/updates.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 import { uptimeRoutes } from './routes/uptime.js'
@@ -128,6 +130,7 @@ async function shutdown(signal: string) {
   app.log.info({ signal }, 'остановка')
   clearInterval(cleanupTimer)
   stopCollector()
+  stopDiskIoCollector()
   await app.close()
   db.close()
   process.exit(0)
@@ -140,9 +143,11 @@ if (!config.passwordHash) app.log.warn('PANEL_PASSWORD_HASH не задан — 
 await app.listen({ host: config.host, port: config.port })
 // Коллектор стартует после API: его сбои не влияют на запуск сервера
 startCollector(app.log)
+startDiskIoCollector(app.log)
 startDetectors(app.log)
 startNotifier(app.log)
 startDeadlines()
+startUpdates()
 startSpeedtest()
 startExchange(app.log)
 {
