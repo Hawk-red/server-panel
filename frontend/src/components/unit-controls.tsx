@@ -16,12 +16,14 @@ type UnitControlsProps = {
   title: string
   active: boolean
   warning?: React.ReactNode
+  /** Предупреждение перед запуском (например, сколько памяти займёт служба) */
+  startWarning?: React.ReactNode
   invalidate?: string[]
   labels?: Partial<Record<Action, string>>
 }
 
 // Кнопки systemd-службы (белый список на бэкенде) с подтверждением последствий
-export function UnitControls({ unit, title, active, warning, invalidate = [], labels = {} }: UnitControlsProps) {
+export function UnitControls({ unit, title, active, warning, startWarning, invalidate = [], labels = {} }: UnitControlsProps) {
   const qc = useQueryClient()
   const [pending, setPending] = useState<Action | null>(null)
   const control = useMutation({
@@ -59,7 +61,7 @@ export function UnitControls({ unit, title, active, warning, invalidate = [], la
           open
           onOpenChange={(o) => !o && !control.isPending && setPending(null)}
           title={`${label(pending)}: ${title}?`}
-          desc={<div className='space-y-2'>{pending !== 'start' && warning ? <div className='font-medium text-danger-foreground'>⚠ {warning}</div> : <p>Служба {unit}.</p>}</div>}
+          desc={<div className='space-y-2'>{pending !== 'start' && warning ? <div className='font-medium text-danger-foreground'>⚠ {warning}</div> : pending === 'start' && startWarning ? <div className='font-medium text-warn-foreground'>⚠ {startWarning}</div> : <p>Служба {unit}.</p>}</div>}
           confirmText={label(pending)}
           destructive={pending !== 'start'}
           isLoading={control.isPending}

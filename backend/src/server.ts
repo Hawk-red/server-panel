@@ -13,6 +13,7 @@ import { hasSecret, maskSecrets } from './mask.js'
 import { scrubAuditSecrets } from './audit.js'
 import { isAllowed, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
+import { aiRoutes } from './routes/ai.js'
 import { accessRoutes } from './routes/access.js'
 import { auditRoutes } from './routes/audit.js'
 import { layoutRoutes } from './routes/layout.js'
@@ -86,6 +87,7 @@ await app.register(layoutRoutes)
 await app.register(notifyRoutes)
 await app.register(infraRoutes)
 await app.register(uptimeRoutes)
+await app.register(aiRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',

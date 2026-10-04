@@ -21,6 +21,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as TvSectionRouteImport } from './routes/tv_.$section'
 import { Route as AuthenticatedAccessIndexRouteImport } from './routes/_authenticated/access/index'
 import { Route as AuthenticatedAdguardIndexRouteImport } from './routes/_authenticated/adguard/index'
+import { Route as AuthenticatedAiIndexRouteImport } from './routes/_authenticated/ai/index'
 import { Route as AuthenticatedAuditIndexRouteImport } from './routes/_authenticated/audit/index'
 import { Route as AuthenticatedBackupsIndexRouteImport } from './routes/_authenticated/backups/index'
 import { Route as AuthenticatedDockerIndexRouteImport } from './routes/_authenticated/docker/index'
@@ -95,6 +96,11 @@ const AuthenticatedAdguardIndexRoute =
     path: '/adguard/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAiIndexRoute = AuthenticatedAiIndexRouteImport.update({
+  id: '/ai/',
+  path: '/ai/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAuditIndexRoute = AuthenticatedAuditIndexRouteImport.update({
   id: '/audit/',
   path: '/audit/',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/access/': typeof AuthenticatedAccessIndexRoute
   '/adguard/': typeof AuthenticatedAdguardIndexRoute
+  '/ai/': typeof AuthenticatedAiIndexRoute
   '/audit/': typeof AuthenticatedAuditIndexRoute
   '/backups/': typeof AuthenticatedBackupsIndexRoute
   '/docker/': typeof AuthenticatedDockerIndexRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/access': typeof AuthenticatedAccessIndexRoute
   '/adguard': typeof AuthenticatedAdguardIndexRoute
+  '/ai': typeof AuthenticatedAiIndexRoute
   '/audit': typeof AuthenticatedAuditIndexRoute
   '/backups': typeof AuthenticatedBackupsIndexRoute
   '/docker': typeof AuthenticatedDockerIndexRoute
@@ -230,6 +238,7 @@ export interface FileRoutesById {
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/access/': typeof AuthenticatedAccessIndexRoute
   '/_authenticated/adguard/': typeof AuthenticatedAdguardIndexRoute
+  '/_authenticated/ai/': typeof AuthenticatedAiIndexRoute
   '/_authenticated/audit/': typeof AuthenticatedAuditIndexRoute
   '/_authenticated/backups/': typeof AuthenticatedBackupsIndexRoute
   '/_authenticated/docker/': typeof AuthenticatedDockerIndexRoute
@@ -257,6 +266,7 @@ export interface FileRouteTypes {
     | '/errors/$error'
     | '/access/'
     | '/adguard/'
+    | '/ai/'
     | '/audit/'
     | '/backups/'
     | '/docker/'
@@ -282,6 +292,7 @@ export interface FileRouteTypes {
     | '/errors/$error'
     | '/access'
     | '/adguard'
+    | '/ai'
     | '/audit'
     | '/backups'
     | '/docker'
@@ -308,6 +319,7 @@ export interface FileRouteTypes {
     | '/_authenticated/errors/$error'
     | '/_authenticated/access/'
     | '/_authenticated/adguard/'
+    | '/_authenticated/ai/'
     | '/_authenticated/audit/'
     | '/_authenticated/backups/'
     | '/_authenticated/docker/'
@@ -419,6 +431,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdguardIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/ai/': {
+      id: '/_authenticated/ai/'
+      path: '/ai'
+      fullPath: '/ai/'
+      preLoaderRoute: typeof AuthenticatedAiIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/audit/': {
       id: '/_authenticated/audit/'
       path: '/audit'
@@ -511,6 +530,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedAccessIndexRoute: typeof AuthenticatedAccessIndexRoute
   AuthenticatedAdguardIndexRoute: typeof AuthenticatedAdguardIndexRoute
+  AuthenticatedAiIndexRoute: typeof AuthenticatedAiIndexRoute
   AuthenticatedAuditIndexRoute: typeof AuthenticatedAuditIndexRoute
   AuthenticatedBackupsIndexRoute: typeof AuthenticatedBackupsIndexRoute
   AuthenticatedDockerIndexRoute: typeof AuthenticatedDockerIndexRoute
@@ -529,6 +549,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedAccessIndexRoute: AuthenticatedAccessIndexRoute,
   AuthenticatedAdguardIndexRoute: AuthenticatedAdguardIndexRoute,
+  AuthenticatedAiIndexRoute: AuthenticatedAiIndexRoute,
   AuthenticatedAuditIndexRoute: AuthenticatedAuditIndexRoute,
   AuthenticatedBackupsIndexRoute: AuthenticatedBackupsIndexRoute,
   AuthenticatedDockerIndexRoute: AuthenticatedDockerIndexRoute,

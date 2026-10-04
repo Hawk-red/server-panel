@@ -23,6 +23,7 @@ export const CONTROLLABLE: Record<string, { title: string; warning?: string }> =
   'mbpfan.service': { title: 'mbpfan (вентилятор)', warning: 'Вентилятор перестанет регулироваться — возможен перегрев.' },
   'smartmontools.service': { title: 'smartmontools' },
   'cron.service': { title: 'cron', warning: 'Перестанут выполняться задачи по расписанию (синк, бэкапы, мониторинг).' },
+  'ollama.service': { title: 'Ollama (локальный AI)', warning: 'Модель выгрузится из памяти, идущий ответ чата прервётся.' },
 }
 
 export const ACTIONS = ['start', 'stop', 'restart'] as const

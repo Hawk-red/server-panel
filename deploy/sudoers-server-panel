@@ -49,7 +49,10 @@ Cmnd_Alias SP_UNITS = /usr/bin/systemctl start nginx.service, \
     /usr/bin/systemctl restart smartmontools.service, \
     /usr/bin/systemctl start cron.service, \
     /usr/bin/systemctl stop cron.service, \
-    /usr/bin/systemctl restart cron.service
+    /usr/bin/systemctl restart cron.service, \
+    /usr/bin/systemctl start ollama.service, \
+    /usr/bin/systemctl stop ollama.service, \
+    /usr/bin/systemctl restart ollama.service
 
 # Этап 3: размер журнала запросов AdGuard (файл в volume Docker, только root)
 Cmnd_Alias SP_ADGUARD = /usr/bin/stat -c %s /var/lib/docker/volumes/adguardhome_work/_data/data/querylog.json
