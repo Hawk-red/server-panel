@@ -7,7 +7,7 @@ import { http } from '../http.js'
 
 const SITE_ROOT = '/var/www/www/jetsetter.ua'
 const SYNC_LOG = '/var/log/sync-jetsetter.log'
-const PROD_CODE_BACKUP = '/mnt/backup-ssd/prod-code-backup'
+const PROD_CODE_BACKUP = '/mnt/uploads1/site-backups/prod-code-backup'
 const PULSDEV_DIR = '/home/hawk/pulsdev-api'
 const API_DOMAIN = 'api.pulsdev.net'
 
@@ -55,7 +55,7 @@ export async function lastSync() {
   const endLine = run_.find((l) => l.includes('Синхронізація завершена'))
   const started = ts(lines[startIdx])
   const finished = endLine ? ts(endLine) : null
-  const errors = run_.filter((l) => /ERROR|помилк|FAILED|rsync error/i.test(l))
+  const errors = run_.filter((l) => /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s+ERROR:/.test(l))
   return {
     started,
     finished,

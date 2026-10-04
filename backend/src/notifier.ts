@@ -15,6 +15,7 @@ import { listDeadlines } from './services/deadlines.js'
 import { OUTAGE_NOTIFY_SEC } from './services/internet.js'
 import { certificate } from './services/sites.js'
 import { getSetting, setSetting } from './settings.js'
+import type { DiskInfo } from './system/disks.js'
 
 export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload'
 
@@ -186,6 +187,26 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'internet.ip' && rule('internet')) void send(`🌐 ${esc(e.text)}`, false)
 }
 
+// Диск: mount + модель/метка + тип носителя, занято/свободно в ГБ (не только проценты)
+function diskDescriptor(d: DiskInfo) {
+  return d.mount === '/' ? 'системный' : d.transport === 'usb' ? 'USB' : d.transport ?? '—'
+}
+function diskAlertText(d: DiskInfo, danger: boolean) {
+  const name = d.label || d.model || d.mount || ''
+  const p = Math.round(d.percent ?? 0)
+  const usedGB = d.used != null ? Math.round(d.used / 1024 ** 3) : null
+  const freeGB = d.free != null ? Math.round(d.free / 1024 ** 3) : null
+  const totalGB = usedGB != null && freeGB != null ? usedGB + freeGB : null
+  return [
+    `${danger ? '🔴' : '🟡'} <b>Диск заполнен на ${p}%</b>`,
+    '',
+    `💾 ${esc(d.mount ?? '')} (${esc(name)}, ${esc(diskDescriptor(d))})`,
+    totalGB != null ? `📊 занято ${usedGB} ГБ из ${totalGB}, свободно ${freeGB} ГБ` : null,
+  ]
+    .filter((x) => x !== null)
+    .join('\n')
+}
+
 // Проверки по снимку коллектора (раз в минуту)
 let hotCount = 0
 function checkSnapshot() {
@@ -194,11 +215,13 @@ function checkSnapshot() {
   if (rule('disk'))
     for (const d of snap.disks ?? []) {
       if (!d.mount || d.percent == null) continue
-      const p = Math.round(d.percent)
-      if (d.percent > 95 && setFlag(`disk95:${d.mount}`, true)) void send(`🔴 <b>Диск ${esc(d.mount)} заполнен на ${p}%</b> — выше 95%`, true)
-      else if (d.percent > 90 && setFlag(`disk90:${d.mount}`, true)) void send(`🟡 Диск ${esc(d.mount)} заполнен на ${p}% — выше 90%`, false)
-      if (d.percent < 93) setFlag(`disk95:${d.mount}`, false)
-      if (d.percent < 88) setFlag(`disk90:${d.mount}`, false)
+      if (d.percent > 95 && setFlag(`disk95:${d.mount}`, true)) void send(diskAlertText(d, true), true)
+      else if (d.percent > 90 && setFlag(`disk90:${d.mount}`, true)) void send(diskAlertText(d, false), false)
+      // Гистерезис с запасом: 10пп/5пп, а не 2пп — иначе обычные колебания (например, временная
+      // закачка торрента на корневой SSD в /home/torrents-tmp) гонят флаг туда-обратно и дублируют
+      // уведомление за те же несколько часов, хотя диск по сути всё время был заполнен
+      if (d.percent < 90) setFlag(`disk95:${d.mount}`, false)
+      if (d.percent < 80) setFlag(`disk90:${d.mount}`, false)
     }
   const t = snap.temperature?.cpu
   if (rule('temp') && t != null) {

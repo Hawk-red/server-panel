@@ -144,24 +144,26 @@ case "$cmd" in
     ;;
 
   backups-ipad)
-    # Этап 10.3: состояние бэкапов iPad (каталог root-only): снимки, метка последней полной выгрузки, свободное место
-    base=/srv/ipad-backups
-    [[ -d "$base/snapshots" ]] || die "нет каталога $base/snapshots"
-    for d in "$base"/snapshots/*/; do
-      [[ -d "$d" ]] || continue
-      n=$(basename "$d")
-      [[ "$n" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || continue
-      printf 'snap\t%s\t%s\n' "$n" "$(stat -c %Y "$d")"
-    done
-    [[ -f "$base/current/.backup-complete" ]] && printf 'marker\t%s\n' "$(stat -c %Y "$base/current/.backup-complete")"
+    # Этап 10.3 (обновлено 02.10.2026): копия iPad переехала на /mnt/hdd1tb/ipad-backup (ext4, hawk:hawk 750,
+    # root-only для panel) — схема снимков (snapshots/, .backup-complete) больше не используется, это просто
+    # актуальная копия как есть. Свежесть — по mtime самого нового НЕ-служебного файла (без мусора Finder/Spotlight
+    # от просмотра шары [1TB] — .DS_Store, ._*, .Spotlight-V100, .fseventsd).
+    base=/mnt/hdd1tb/ipad-backup
+    [[ -d "$base" ]] || die "нет каталога $base"
+    latest=$(find "$base" -type f \
+      -not -name '.DS_Store' -not -name '._*' \
+      -not -path '*/.Spotlight-V100/*' -not -path '*/.fseventsd/*' \
+      -printf '%T@\n' 2>/dev/null | sort -rn | head -1) || true
+    [[ -n "$latest" ]] && printf 'latest\t%s\n' "${latest%.*}"
     printf 'free\t%s\n' "$(df -B1 --output=avail "$base" | tail -1 | tr -dc 0-9)"
     ;;
 
   backups-sizes)
-    # Размеры бэкапов, недоступных panel: iPad (current + снимки; жёсткие ссылки считаются один раз) и разовые копии.
-    # Фиксированный список путей, без аргументов. du по снимкам может идти минуту — панель вызывает редко и с кэшем.
-    if [[ -d /srv/ipad-backups/current && -d /srv/ipad-backups/snapshots ]]; then
-      timeout 150 du -sb -- /srv/ipad-backups/current /srv/ipad-backups/snapshots 2>/dev/null | awk -F'\t' '{print $2 "\t" $1}' || true
+    # Размеры бэкапов, недоступных panel: iPad (02.10.2026: единая копия на /mnt/hdd1tb/ipad-backup,
+    # больше не current+snapshots) и разовые копии.
+    # Фиксированный список путей, без аргументов. du может идти долго на крупных деревьях — панель вызывает редко и с кэшем.
+    if [[ -d /mnt/hdd1tb/ipad-backup ]]; then
+      timeout 150 du -sb -- /mnt/hdd1tb/ipad-backup 2>/dev/null | awk -F'\t' '{print $2 "\t" $1}' || true
     fi
     for p in /mnt/backup-ssd/pre-upgrade-2024.04 /mnt/backup-ssd/pre-update-backup /mnt/backup-ssd/wp-pre-update-20260913; do
       [[ -d "$p" ]] || continue

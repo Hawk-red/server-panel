@@ -6,7 +6,7 @@ import { run } from '../exec.js'
 import { helper } from './access.js'
 import { lastSync } from './sites.js'
 
-const BACKUP_ROOT = '/mnt/backup-ssd'
+const BACKUP_ROOT = '/mnt/uploads1/site-backups'
 const SYNC_DB_DIR = `${BACKUP_ROOT}/sync-jetsetter/database`
 const PROD_CODE_DIR = `${BACKUP_ROOT}/prod-code-backup`
 const HOUR = 3_600_000
@@ -89,7 +89,7 @@ async function syncJetsetter(): Promise<BackupItem> {
   const base: BackupItem = {
     id: 'sync-jetsetter',
     title: 'Синк jetsetter (дамп БД)',
-    description: 'Ночной синк с прода в 05:00: дамп MySQL приходит в /mnt/backup-ssd/sync-jetsetter/database, хранится 30 дней.',
+    description: 'Ночной синк с прода в 05:00: дамп MySQL приходит в /mnt/uploads1/site-backups/sync-jetsetter/database, хранится 30 дней.',
     path: SYNC_DB_DIR,
     type: 'scheduled',
     maxAgeH,
@@ -133,7 +133,7 @@ async function prodCode(): Promise<BackupItem> {
   const item: BackupItem = {
     id: 'prod-code',
     title: 'prod-code-backup',
-    description: 'Архив папки wp-content боевого jetsetter.ua (темы, плагины, загрузки) — запасная копия на случай сбоя или удаления на проде. Забирается с боевого сервера ночным синком в 05:00 (шаг 5 из 7) в /mnt/backup-ssd/prod-code-backup/ГГГГ-ММ-ДД/, на зеркало не разворачивается; хранятся последние 7 дней.',
+    description: 'Архив папки wp-content боевого jetsetter.ua (темы, плагины, загрузки) — запасная копия на случай сбоя или удаления на проде. Забирается с боевого сервера ночным синком в 05:00 (шаг 5 из 7) в /mnt/uploads1/site-backups/prod-code-backup/ГГГГ-ММ-ДД/, на зеркало не разворачивается; хранятся последние 7 дней.',
     path: PROD_CODE_DIR,
     type: 'scheduled',
     maxAgeH,
@@ -163,13 +163,14 @@ async function prodCode(): Promise<BackupItem> {
   return item
 }
 
+const IPAD_DIR = '/mnt/hdd1tb/ipad-backup'
 async function ipad(): Promise<BackupItem> {
   const maxAgeH = 48
   const item: BackupItem = {
     id: 'ipad',
     title: 'Бэкапы iPad',
-    description: 'MacBook присылает копию iPad на сервер (метка .backup-complete), в 23:59 делается снимок; хранятся 14 дневных и 8 недельных.',
-    path: '/srv/ipad-backups',
+    description: 'Копия iPad с MacBook лежит на /mnt/hdd1tb/ipad-backup как есть (с 02.10.2026, после переезда диска на ext4) — без ежедневных снимков, прежняя схема snapshots/.backup-complete отключена.',
+    path: IPAD_DIR,
     type: 'scheduled',
     maxAgeH,
     status: 'nodata',
@@ -182,33 +183,27 @@ async function ipad(): Promise<BackupItem> {
   }
   try {
     const out = await helper(['backups-ipad'], 20_000)
-    const snaps: { name: string; mtime: number }[] = []
-    let marker: number | null = null
+    let latest: number | null = null
     let free: number | null = null
     for (const l of out.split('\n')) {
-      const [kind, a, b] = l.split('\t')
-      if (kind === 'snap') snaps.push({ name: a, mtime: Number(b) * 1000 })
-      else if (kind === 'marker') marker = Number(a) * 1000
+      const [kind, a] = l.split('\t')
+      if (kind === 'latest' && a) latest = Number(a) * 1000
       else if (kind === 'free') free = Number(a)
     }
-    snaps.sort((x, y) => y.name.localeCompare(x.name))
-    item.count = snaps.length
-    // Возраст — по последней ПОЛНОЙ выгрузке (метка), а не по каталогу
-    item.latest = marker ? { name: 'последняя полная выгрузка', mtime: marker } : snaps[0] ? { name: `снимок ${snaps[0].name}`, mtime: snaps[0].mtime } : null
+    // Возраст — по mtime самого нового файла в копии (без мусора Finder/Spotlight, см. helper)
+    item.latest = latest ? { name: 'последнее изменение в копии', mtime: latest } : null
     item.ageSec = ageOf(item.latest?.mtime ?? null)
     item.status = scheduledStatus(item.ageSec, maxAgeH)
-    item.entries = snaps.slice(0, 8).map((s) => ({ name: s.name, mtime: s.mtime, sizeBytes: null }))
-    item.extra = { freeBytes: free, lastSnapshot: snaps[0]?.name ?? null }
+    item.extra = { freeBytes: free }
   } catch (e) {
     item.note = helperError(e)
     return item
   }
   refreshRootSizes()
-  const cur = rootSizes?.sizes['/srv/ipad-backups/current']
-  const snaps = rootSizes?.sizes['/srv/ipad-backups/snapshots']
-  item.sizeBytes = cur ?? null
-  item.totalBytes = cur != null && snaps != null ? cur + snaps : null
-  item.extra = { ...item.extra, snapshotsExtraBytes: snaps ?? null, sizesPending: rootSizes === null || Boolean(rootSizes.error), sizesError: rootSizes?.error ?? null }
+  const size = rootSizes?.sizes[IPAD_DIR]
+  item.sizeBytes = size ?? null
+  item.totalBytes = size ?? null
+  item.extra = { ...item.extra, sizesPending: rootSizes === null || Boolean(rootSizes.error), sizesError: rootSizes?.error ?? null }
   return item
 }
 
