@@ -121,6 +121,14 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
 - **Сайты и API → Обменник** — состояние SFTPGo, ссылки, место, последние загрузки; установка — `deploy/exchange/install.sh`.
 - **Обзор** — карточки «Быстрые действия» (перезапуск qBittorrent, пауза торрентов, AdGuard off на 10 мин, всё с подтверждением) и «Сроки» (сертификат, домены через RDAP, свои даты).
 
+## HTTPS: https://panel.pulsdev.net
+
+Панель за nginx (`deploy/panel-https/`): виртуальный хост `panel.pulsdev.net` на 443 → `127.0.0.1:7575`, **доступ только из 192.168.31.0/24, 10.10.10.0/24 и 127.0.0.1** (`allow/deny` на уровне server; через проброс 9443 из интернета — 403). Имя резолвится в LAN записью DNS-rewrite в AdGuard (`deploy/exchange/adguard-rewrite.py --domain panel.pulsdev.net`). Сертификат отдельный, DNS-01 тем же хуком, что у api.pulsdev.net; общий deploy-hook перечитывает nginx после продления.
+
+Установка: `sudo deploy/panel-https/install.sh`, проверка: `deploy/panel-https/verify.sh`. Откат: `sudo rm /etc/nginx/sites-enabled/panel.pulsdev.net && sudo nginx -t && sudo systemctl reload nginx` (панель продолжит работать по `http://192.168.31.112:7575`).
+
+Панель верит заголовкам `X-Forwarded-*` только от соединений с 127.0.0.1 (`trustProxy`): в журнале и блокировках настоящий адрес клиента. Cookie сессии получает `Secure`, когда запрос пришёл по HTTPS; вход по `http://` в LAN работает как раньше.
+
 ## Обменник файлов (SFTPGo)
 
 Файлы для людей вне сети. Гости открывают `https://api.pulsdev.net:9443/files/`, из дома — `https://api.pulsdev.net/files/`. Пользователи, папки и права — в **админке** `https://api.pulsdev.net:8443/files/web/admin/`: она открывается только из домашней сети и VPN. Установка — `sudo deploy/exchange/install.sh`, обновление образа — `sudo deploy/exchange/update.sh` (пересобирает и русский перевод веб-клиента). Порты и включённые протоколы задаются в `/opt/sftpgo/compose.yaml`, в веб-интерфейсе их нет.

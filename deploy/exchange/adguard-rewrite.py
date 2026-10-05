@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Запись DNS-rewrite в AdGuard Home: api.pulsdev.net → 192.168.31.112, чтобы из дома открывался
 https://api.pulsdev.net/files/ с нормальным сертификатом (роутер не отдаёт свой внешний адрес обратно в сеть).
-Запуск: ~/Scripts/adguard-rewrite.py [--remove]. Логин и пароль AdGuard вводятся здесь (пароль скрыт)."""
+Запуск: adguard-rewrite.py [--domain имя] [--remove]. Без --domain — api.pulsdev.net; например --domain panel.pulsdev.net.
+Логин и пароль AdGuard вводятся здесь (пароль скрыт)."""
 import base64, getpass, json, os, sys, urllib.error, urllib.request
 
 URL = os.environ.get("ADGUARD_URL", "http://127.0.0.1:3000")
 DOMAIN, ANSWER = "api.pulsdev.net", "192.168.31.112"
+if "--domain" in sys.argv:
+    DOMAIN = sys.argv[sys.argv.index("--domain") + 1].strip().lower()
 
 
 def call(auth, method, path, body=None):
