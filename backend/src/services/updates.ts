@@ -20,6 +20,7 @@ import { config } from '../config.js'
 import { db } from '../db.js'
 import { run } from '../exec.js'
 import { http, httpJson } from '../http.js'
+import { emitEvent, type EventLevel } from '../events.js'
 import { getSetting, setSetting } from '../settings.js'
 
 const api = (path: string) => `${config.dockerProxy}${path}`
@@ -292,6 +293,95 @@ export type UpdatesSnapshot = {
   dockerHistory: DockerUpdateEvent[]
 }
 
+// ---------- уведомления об изменениях (сравнение с прошлым состоянием, без повторов) ----------
+
+// Что уже сообщили: список пакетов, security-пакеты, флаг перезагрузки, и для Docker — remote digest,
+// о котором уже сообщили. Хранится в settings, поэтому после перезапуска панели старое не шлётся заново.
+export type NotifyState = { apt: string[]; security: string[]; reboot: boolean; docker: Record<string, string> }
+export type UpdateEvent = { kind: 'updates.apt' | 'updates.security' | 'updates.reboot' | 'updates.docker'; level: EventLevel; text: string; target?: string | null; details: Record<string, unknown> }
+
+const NOTIFY_KEY = 'updates.notify.state'
+
+// Чистая функция: по прошлому состоянию и текущему списку решает, что сообщить. Первый запуск (state нет) —
+// только запоминаем базу, без событий, чтобы не слать весь текущий список при установке.
+export function diffUpdates(
+  prev: NotifyState | null,
+  cur: { apt: { name: string; security: boolean }[]; reboot: boolean; docker: { container: string; repo: string; upToDate: boolean | null; remoteDigest: string | null }[] }
+): { events: UpdateEvent[]; next: NotifyState } {
+  const names = cur.apt.map((p) => p.name).sort()
+  const security = cur.apt.filter((p) => p.security).map((p) => p.name).sort()
+  const dockerNext: Record<string, string> = {}
+  for (const d of cur.docker) {
+    if (d.upToDate === false && d.remoteDigest) dockerNext[d.container] = prev?.docker[d.container] ?? ''
+    else if (d.upToDate === null && prev?.docker[d.container]) dockerNext[d.container] = prev.docker[d.container] // ошибка проверки — ничего не меняем
+  }
+  const next: NotifyState = { apt: names, security, reboot: cur.reboot, docker: dockerNext }
+  if (!prev) {
+    // База для будущих сравнений: докер-digest, о котором уже «знаем», но не сообщаем
+    for (const d of cur.docker) if (d.upToDate === false && d.remoteDigest) next.docker[d.container] = d.remoteDigest
+    return { events: [], next }
+  }
+
+  const events: UpdateEvent[] = []
+  const was = new Set(prev.apt)
+  const newNames = names.filter((n) => !was.has(n))
+  if (newNames.length > 0) {
+    events.push({
+      kind: 'updates.apt',
+      level: 'info',
+      text: `Доступны новые обновления: ${names.length} пакетов`,
+      target: 'apt',
+      details: { total: names.length, security: security.length, newCount: newNames.length, reboot: cur.reboot },
+    })
+  }
+  const wasSec = new Set(prev.security)
+  const newSec = security.filter((n) => !wasSec.has(n))
+  if (newSec.length > 0) {
+    events.push({
+      kind: 'updates.security',
+      level: 'warning',
+      text: `${newSec.length} обновлений безопасности`,
+      target: 'apt',
+      details: { count: newSec.length, names: newSec.slice(0, 15), total: security.length },
+    })
+  }
+  if (cur.reboot && !prev.reboot) {
+    events.push({ kind: 'updates.reboot', level: 'warning', text: 'Нужна перезагрузка сервера', target: 'reboot', details: {} })
+  }
+  for (const d of cur.docker) {
+    if (d.upToDate !== false || !d.remoteDigest) continue
+    if (prev.docker[d.container] === d.remoteDigest) continue // уже сообщали об этой версии
+    events.push({
+      kind: 'updates.docker',
+      level: 'info',
+      text: `Новая версия образа: ${d.container}`,
+      target: d.container,
+      details: { container: d.container, repo: d.repo },
+    })
+    next.docker[d.container] = d.remoteDigest
+  }
+  return { events, next }
+}
+
+// Сравниваем текущие данные (apt-кеш и Docker-кеш) с сохранённым состоянием и публикуем только изменения
+function notifyUpdateChanges(): void {
+  const c = getSetting<AptCache | null>(APT_KEY, null)
+  if (!c || c.error) return // ошибка проверки — не считаем это «обновлений нет»
+  const docker = getDockerStatus()
+  const cur = {
+    apt: c.packages.map((p) => ({ name: p.name, security: p.security })),
+    reboot: false, // подставляется ниже из флага reboot-required
+    docker: docker.map((d) => ({ container: d.container, repo: d.repo, upToDate: d.upToDate, remoteDigest: d.remoteDigest })),
+  }
+  void rebootRequired().then((r) => {
+    cur.reboot = r.required
+    const prev = getSetting<NotifyState | null>(NOTIFY_KEY, null)
+    const { events, next } = diffUpdates(prev, cur)
+    setSetting(NOTIFY_KEY, next)
+    for (const e of events) emitEvent({ kind: e.kind, level: e.level, text: e.text, target: e.target, details: e.details })
+  })
+}
+
 let busy = false
 export async function refreshUpdates(force = false): Promise<void> {
   if (busy) return
@@ -301,6 +391,7 @@ export async function refreshUpdates(force = false): Promise<void> {
     const ttl = aptCache && !aptCache.error ? APT_TTL_OK : APT_TTL_ERR
     if (force || !aptCache || Date.now() - aptCache.checkedAt > ttl) await refreshApt()
     await refreshDocker() // у каждого образа свой TTL внутри
+    notifyUpdateChanges()
   } finally {
     busy = false
   }

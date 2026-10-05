@@ -17,7 +17,7 @@ import { certificate } from './services/sites.js'
 import { getSetting, setSetting } from './settings.js'
 import type { DiskInfo } from './system/disks.js'
 
-export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload' | 'torrents'
+export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload' | 'torrents' | 'updates'
 
 export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   unit: { title: 'Служба упала (и снова поднялась)', urgent: 'падение — всегда, даже в тихие часы' },
@@ -31,6 +31,7 @@ export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   deadline: { title: 'Срок домена или своей даты близко (за 30, 14, 7, 3 и 1 день)', urgent: '' },
   upload: { title: 'Гость загрузил файл в обменник (имя, размер, IP)', urgent: '' },
   torrents: { title: 'Торренты на паузу или возобновлены защитой диска', urgent: 'пауза — всегда, даже в тихие часы' },
+  updates: { title: 'Обновления системы: новые пакеты, безопасность, Docker-образы, перезагрузка', urgent: '' },
 }
 
 export type NotifySettings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
@@ -39,7 +40,7 @@ const DEFAULTS: NotifySettings = {
   chatId: null,
   enabled: true,
   quiet: { from: '23:00', to: '08:00' },
-  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true, torrents: true },
+  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true, torrents: true, updates: true },
 }
 
 export const getNotifySettings = (): NotifySettings => {
@@ -177,6 +178,24 @@ function newDeviceText(e: ServerEvent) {
     .join('\n')
 }
 
+type UpdDetails = { total?: number; security?: number; newCount?: number; reboot?: boolean; count?: number; names?: string[]; container?: string; repo?: string }
+function updatesAptText(e: ServerEvent) {
+  const d = (e.details ?? {}) as UpdDetails
+  const lines = [`📦 <b>Новые обновления системы:</b> ${d.total ?? '?'} пакетов`]
+  if (d.security) lines.push(`🔴 из них безопасности: ${d.security}`)
+  lines.push(`🔁 перезагрузка: ${d.reboot ? 'нужна' : 'не нужна'}`)
+  return lines.join('\n')
+}
+function updatesSecurityText(e: ServerEvent) {
+  const d = (e.details ?? {}) as UpdDetails
+  const names = (d.names ?? []).map((n) => esc(n)).join(', ')
+  return `🔴 <b>${d.count ?? '?'} обновлений безопасности</b>${names ? `\n${names}` : ''}`
+}
+function updatesDockerText(e: ServerEvent) {
+  const d = (e.details ?? {}) as UpdDetails
+  return `🐳 <b>Новая версия образа:</b> ${esc(d.container ?? e.target ?? '')}${d.repo ? ` (${esc(d.repo)})` : ''}`
+}
+
 type GuardDetails = { freeGb: number; thresholdGb: number; path: string }
 function guardPausedText(e: ServerEvent) {
   const d = e.details as GuardDetails | undefined
@@ -198,6 +217,11 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'internet.ip' && rule('internet')) void send(`🌐 ${esc(e.text)}`, false)
   // Защита диска (torrent-space-guard): пауза — срочно, возобновление — обычное
   else if (e.kind === 'torrents.paused' && rule('torrents')) void send(guardPausedText(e), true)
+  // Обновления: одно сообщение на изменение (новые пакеты, безопасность, перезагрузка, Docker-образ). Тихие часы — как у остальных
+  else if (e.kind === 'updates.apt' && rule('updates')) void send(updatesAptText(e), false)
+  else if (e.kind === 'updates.security' && rule('updates')) void send(updatesSecurityText(e), false)
+  else if (e.kind === 'updates.reboot' && rule('updates')) void send('🔁 <b>Нужна перезагрузка сервера</b> — обновлены ядро или системные библиотеки', false)
+  else if (e.kind === 'updates.docker' && rule('updates')) void send(updatesDockerText(e), false)
   else if (e.kind === 'torrents.resumed' && rule('torrents')) void send(guardResumedText(e), false)
 }
 
