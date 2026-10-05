@@ -85,21 +85,3 @@ export async function scan20s(): Promise<BtDevice[]> {
     scanning = false
   }
 }
-
-// Wi-Fi: только факт. Драйвер не ставим и не используем — показываем, что видно из системы.
-export async function wifiStatus() {
-  const lspci = await run('/usr/bin/lspci', ['-k']).catch(() => '')
-  const block = lspci.split(/\n(?=\S)/).find((b) => /Network controller/i.test(b) && /BCM4360|Broadcom/i.test(b)) ?? null
-  const driver = block?.match(/Kernel driver in use: (\S+)/)?.[1] ?? null
-  const { readdir } = await import('node:fs/promises')
-  const ifaces = (await readdir('/sys/class/net').catch(() => [] as string[])).filter((n) => /^wl/.test(n))
-  const route = await run('/usr/sbin/ip', ['-j', 'route', 'show', 'default']).catch(() => '[]')
-  const wired = (JSON.parse(route || '[]') as { dev?: string }[])[0]?.dev ?? null
-  return {
-    present: Boolean(block),
-    chip: block ? block.match(/: (.*?) \(rev/)?.[1]?.replace(/^Broadcom Inc\. and subsidiaries /, '') ?? 'Broadcom BCM4360' : null,
-    driver,
-    interfaces: ifaces,
-    wiredInterface: wired,
-  }
-}

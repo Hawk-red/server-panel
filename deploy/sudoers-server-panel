@@ -64,7 +64,12 @@ Cmnd_Alias SP_MOUNT = /usr/bin/mount /mnt/hdd1tb, /usr/bin/mount /mnt/uploads1, 
 # Bluetooth из раздела «Беспроводные»: только точные команды bluetoothctl
 Cmnd_Alias SP_BT = /usr/bin/bluetoothctl power on, /usr/bin/bluetoothctl power off, /usr/bin/bluetoothctl --timeout 20 scan on
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT
+# Wi-Fi из раздела «Беспроводные»: узкая утилита, аргументы дополнительно проверяются внутри неё
+Cmnd_Alias SP_WIFI = /usr/local/sbin/server-panel-wifi radio on, /usr/local/sbin/server-panel-wifi radio off, \
+    /usr/local/sbin/server-panel-wifi connect-saved *, /usr/local/sbin/server-panel-wifi connect-new, \
+    /usr/local/sbin/server-panel-wifi forget *, /usr/local/sbin/server-panel-wifi disconnect
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI
 
 # Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)

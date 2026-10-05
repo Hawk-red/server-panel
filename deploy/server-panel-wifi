@@ -1,0 +1,116 @@
+#!/bin/bash
+# server-panel-wifi — узкая root-утилита для раздела «Беспроводные» (Wi-Fi через NetworkManager).
+# Вызывается панелью только через sudo с точными командами (deploy/sudoers-server-panel).
+#
+# Безопасность маршрутов:
+#  - работает только с интерфейсом wlp2s0; кабель enp3s0f0 и его профиль не трогаются;
+#  - профили Wi-Fi создаются с route-metric=700, у кабеля метрика 100: основной маршрут остаётся на кабеле,
+#    Wi-Fi берёт маршрут по умолчанию только если кабеля нет (это и есть резервный канал);
+#  - автоподключение выключено (autoconnect=false) до отдельного этапа failover.
+#
+# Пароль приходит через stdin и записывается в keyfile (права 600): в командной строке nmcli его не будет.
+set -euo pipefail
+umask 077
+
+IFACE="wlp2s0"
+PROFILE_DIR="/etc/NetworkManager/system-connections"
+METRIC=700
+NMCLI=/usr/bin/nmcli
+
+die() { echo "$*" >&2; exit 2; }
+valid_uuid() { [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; }
+
+# Профиль должен быть Wi-Fi-профилем (не кабелем и не мостом), иначе отказ
+check_wifi_profile() {
+  local uuid="$1" type
+  type=$($NMCLI -g connection.type connection show uuid "$uuid" 2>/dev/null) || die "профиль не найден"
+  [ "$type" = "802-11-wireless" ] || die "это не Wi-Fi профиль"
+}
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+  radio)
+    [ "$#" -eq 1 ] || die "radio: нужно on или off"
+    case "$1" in on|off) ;; *) die "radio: допустимо только on или off" ;; esac
+    exec $NMCLI radio wifi "$1"
+    ;;
+
+  connect-saved)
+    [ "$#" -eq 1 ] || die "connect-saved: нужен uuid"
+    valid_uuid "$1" || die "недопустимый uuid"
+    check_wifi_profile "$1"
+    exec $NMCLI --wait 45 connection up uuid "$1" ifname "$IFACE"
+    ;;
+
+  connect-new)
+    [ "$#" -eq 0 ] || die "connect-new: параметры передаются через stdin"
+    IFS= read -r ssid || true
+    IFS= read -r psk || true
+    LC_ALL=C
+    [ -n "$ssid" ] && [ "${#ssid}" -le 32 ] || die "SSID должен быть от 1 до 32 символов"
+    if [ -n "$psk" ]; then
+      if ! { [ "${#psk}" -ge 8 ] && [ "${#psk}" -le 63 ]; } && ! [[ "$psk" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        die "пароль WPA должен быть от 8 до 63 символов"
+      fi
+      [[ "$psk" =~ ^[\ -~]+$ ]] || die "пароль содержит недопустимые символы"
+    fi
+    [[ "$ssid" != *$'\r'* ]] || die "недопустимый SSID"
+
+    uuid=$(cat /proc/sys/kernel/random/uuid)
+    file="$PROFILE_DIR/panel-$uuid.nmconnection"
+    {
+      echo "[connection]"
+      echo "id=$ssid"
+      echo "uuid=$uuid"
+      echo "type=wifi"
+      echo "interface-name=$IFACE"
+      echo "autoconnect=false"
+      echo ""
+      echo "[wifi]"
+      echo "mode=infrastructure"
+      echo "ssid=$ssid"
+      if [ -n "$psk" ]; then
+        echo ""
+        echo "[wifi-security]"
+        echo "key-mgmt=wpa-psk"
+        echo "psk=$psk"
+      fi
+      echo ""
+      echo "[ipv4]"
+      echo "method=auto"
+      echo "route-metric=$METRIC"
+      echo ""
+      echo "[ipv6]"
+      echo "method=auto"
+      echo "route-metric=$METRIC"
+    } > "$file"
+    chmod 600 "$file"
+    $NMCLI connection load "$file" >/dev/null
+    if $NMCLI --wait 45 connection up uuid "$uuid" ifname "$IFACE" >/dev/null 2>&1; then
+      echo "$uuid"
+    else
+      # Неверный пароль или сеть недоступна: не оставляем профиль с плохим паролем
+      $NMCLI connection delete uuid "$uuid" >/dev/null 2>&1 || true
+      rm -f "$file"
+      die "не удалось подключиться: проверьте пароль и уровень сигнала"
+    fi
+    ;;
+
+  forget)
+    [ "$#" -eq 1 ] || die "forget: нужен uuid"
+    valid_uuid "$1" || die "недопустимый uuid"
+    check_wifi_profile "$1"
+    exec $NMCLI connection delete uuid "$1"
+    ;;
+
+  disconnect)
+    [ "$#" -eq 0 ] || die "disconnect: лишние аргументы"
+    exec $NMCLI device disconnect "$IFACE"
+    ;;
+
+  *)
+    die "неизвестная команда"
+    ;;
+esac
