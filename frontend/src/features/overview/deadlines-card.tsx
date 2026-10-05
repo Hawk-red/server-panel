@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { CalendarClock, CircleAlert, CircleCheck, Globe, KeyRound, Pencil, Plus, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
+import { CalendarClock, ChevronDown, CircleAlert, CircleCheck, Globe, KeyRound, Pencil, Plus, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { Deadline, DeadlineConfig } from '@/features/infra-types'
 import { NoData } from '@/components/no-data'
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 const KIND_ICON = { cert: ShieldCheck, domain: Globe, token: KeyRound, other: CalendarClock } as const
 const KIND_LABEL = { domain: 'Домен', token: 'Токен / ключ', other: 'Другое' } as const
@@ -100,66 +103,87 @@ function EditDialog({ open, onOpenChange, config }: { open: boolean; onOpenChang
   )
 }
 
+// Сроки: в норме (всё дальше 30 дней) — свёрнуты в строку; есть срочное или ошибка проверки — раскрыты сами
 export function DeadlinesCard() {
   const [editing, setEditing] = useState(false)
+  const [open, setOpen] = useState(false)
   const { data, isError } = useQuery({
     queryKey: ['deadlines'],
     queryFn: async () => (await api.get<{ items: Deadline[]; config: DeadlineConfig }>('/deadlines')).data,
     refetchInterval: 60_000,
   })
+  const items = data?.items ?? []
+  const pending = (d: Deadline) => d.error === 'проверяется…'
+  const soonest = items.reduce<number | null>((min, d) => (d.daysLeft !== null && (min === null || d.daysLeft < min) ? d.daysLeft : min), null)
+  const attention = items.some((d) => (d.daysLeft !== null && d.daysLeft <= 30) || (d.error && !pending(d)))
+  const expanded = attention || open
+  const status = !data ? null : attention && soonest !== null && soonest <= 7 ? 'error' : attention ? 'warning' : 'ok'
   return (
-    <Card id='deadlines' className='gap-2'>
-      <CardHeader className='flex flex-row items-center justify-between space-y-0'>
-        <CardTitle className='flex items-center gap-2 text-sm font-medium'>
-          <CalendarClock className='size-4 text-time' aria-hidden='true' /> Сроки
-        </CardTitle>
-        <Button variant='ghost' size='sm' onClick={() => setEditing(true)} disabled={!data}>
-          <Pencil /> Изменить
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {isError ? (
-          <NoData reason='бэкенд не ответил' />
-        ) : !data ? (
-          <span className='text-sm text-muted-foreground'>Загрузка…</span>
-        ) : data.items.length === 0 ? (
-          <span className='text-sm text-muted-foreground'>Ничего не отслеживается — нажмите «Изменить».</span>
-        ) : (
-          <ul className='divide-y'>
-            {data.items.map((d) => {
-              const Icon = KIND_ICON[d.kind]
-              const lv = d.daysLeft !== null ? level(d.daysLeft) : null
-              return (
-                <li key={d.id} className='flex items-center justify-between gap-3 py-2.5'>
-                  <div className='flex min-w-0 items-center gap-2.5'>
-                    <Icon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
-                    <div className='min-w-0'>
-                      <div className='truncate text-sm font-medium'>{d.title}</div>
-                      <div className='text-xs text-muted-foreground'>
-                        {d.expires ? `до ${new Date(d.expires).toLocaleDateString('ru-RU')}` : 'дата неизвестна'}
-                        {d.error && d.error !== 'проверяется…' && ` · ${d.error}`}
-                        {d.error === 'проверяется…' && ' · проверяется…'}
-                        {d.note && !d.error && ` · ${d.note}`}
+    <Card id='deadlines' className='gap-2 py-3'>
+      <Collapsible open={expanded} onOpenChange={setOpen}>
+        <CardHeader className='flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 px-4'>
+          <CardTitle className='flex items-center gap-2 text-sm font-medium'>
+            <CalendarClock className='size-4 text-time' aria-hidden='true' /> Сроки
+          </CardTitle>
+          <div className='flex min-w-0 flex-wrap items-center gap-2'>
+            {status && <StatusBadge status={status} label={soonest !== null ? `ближайший: ${soonest < 0 ? 'истёк' : `${soonest} ${plural(soonest)}`}` : undefined} />}
+            <Button variant='ghost' size='sm' onClick={() => setEditing(true)} disabled={!data}>
+              <Pencil /> Изменить
+            </Button>
+            {!attention && items.length > 0 && (
+              <Button variant='ghost' size='sm' onClick={() => setOpen((v) => !v)} aria-expanded={expanded}>
+                {expanded ? 'Свернуть' : 'Подробнее'}
+                <ChevronDown className={cn('transition-transform', expanded && 'rotate-180')} />
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className='px-4'>
+            {isError ? (
+              <NoData reason='бэкенд не ответил' />
+            ) : !data ? (
+              <span className='text-sm text-muted-foreground'>Загрузка…</span>
+            ) : items.length === 0 ? (
+              <span className='text-sm text-muted-foreground'>Ничего не отслеживается — нажмите «Изменить».</span>
+            ) : (
+              <ul className='divide-y'>
+                {items.map((d) => {
+                  const Icon = KIND_ICON[d.kind]
+                  const lv = d.daysLeft !== null ? level(d.daysLeft) : null
+                  return (
+                    <li key={d.id} className='flex items-center justify-between gap-3 py-2.5'>
+                      <div className='flex min-w-0 items-center gap-2.5'>
+                        <Icon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
+                        <div className='min-w-0'>
+                          <div className='truncate text-sm font-medium'>{d.title}</div>
+                          <div className='text-xs text-muted-foreground'>
+                            {d.expires ? `до ${new Date(d.expires).toLocaleDateString('ru-RU')}` : 'дата неизвестна'}
+                            {d.error && d.error !== 'проверяется…' && ` · ${d.error}`}
+                            {d.error === 'проверяется…' && ' · проверяется…'}
+                            {d.note && !d.error && ` · ${d.note}`}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  {lv && d.daysLeft !== null ? (
-                    <div className={`flex shrink-0 items-center gap-1.5 text-end ${lv.cls}`} title={lv.word}>
-                      <lv.Icon className='size-4' aria-hidden='true' />
-                      <div className='leading-tight'>
-                        <div className='text-lg font-bold tabular-nums'>{Math.abs(d.daysLeft)}</div>
-                        <div className='text-[11px]'>{d.daysLeft < 0 ? `${plural(d.daysLeft)} назад` : plural(d.daysLeft)}</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <NoData reason={d.error} />
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </CardContent>
+                      {lv && d.daysLeft !== null ? (
+                        <div className={`flex shrink-0 items-center gap-1.5 text-end ${lv.cls}`} title={lv.word}>
+                          <lv.Icon className='size-4' aria-hidden='true' />
+                          <div className='leading-tight'>
+                            <div className='text-lg font-bold tabular-nums'>{Math.abs(d.daysLeft)}</div>
+                            <div className='text-[11px]'>{d.daysLeft < 0 ? `${plural(d.daysLeft)} назад` : plural(d.daysLeft)}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <NoData reason={d.error} />
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
       {data && <EditDialog open={editing} onOpenChange={setEditing} config={data.config} />}
     </Card>
   )

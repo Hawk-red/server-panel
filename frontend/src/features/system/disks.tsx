@@ -36,13 +36,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 // (backend/src/system/disk-io.ts) копит буфер НЕПРЕРЫВНО, пока жив процесс сервера, независимо от того,
 // открыт ли раздел. Спокойствие линии даёт сглаживание (movingAverage в IoChart) + мягкая кривая + transition.
 // Горизонт отображения — 2 минуты (80 точек × 1.5 с); сервер хранит чуть больше (~4 мин) про запас.
-const IO_POLL_MS = 1500
+export const IO_POLL_MS = 1500
 const IO_CHART_LEN = 80
 // Пара цветов для карточки диска: чтение — тот же голубой, что и rx сети; запись — СВОЙ мягкий оранжевый
 // (не --tx, трогать сетевую пару нельзя). Используются ОДНИМ набором констант и в плашках, и на графике,
 // и в тултипе — цвет гарантированно совпадает везде.
-const DISK_READ_COLOR = 'var(--rx)'
-const DISK_WRITE_COLOR = 'var(--disk-write)'
+export const DISK_READ_COLOR = 'var(--rx)'
+export const DISK_WRITE_COLOR = 'var(--disk-write)'
 
 // seed — история с сервера (/system/disks/io-history), забирается ОДИН раз при открытии раздела и сразу
 // заполняет график целиком; дальше live-опрос просто дописывает новые точки поверх неё.
@@ -127,7 +127,7 @@ const PILL_CLASS: Record<PillLevel, string> = {
   unknown: 'bg-muted text-muted-foreground border-border',
 }
 
-function Pill({ level, icon: Icon, title, children }: { level: PillLevel; icon: LucideIcon; title?: string; children: ReactNode }) {
+export function Pill({ level, icon: Icon, title, children }: { level: PillLevel; icon: LucideIcon; title?: string; children: ReactNode }) {
   return (
     <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium', PILL_CLASS[level])} title={title}>
       <Icon className='size-3 shrink-0' />
@@ -138,7 +138,7 @@ function Pill({ level, icon: Icon, title, children }: { level: PillLevel; icon: 
 
 // Пт.10 + уточнение пользователя: «спит» — это НЕ «здоров», а «свежих данных нет, и мы намеренно не будим диск».
 // Красим и подписываем честно: спящий диск — серый (unknown), а не зелёный.
-function diskHealth(d: DiskInfo): { level: PillLevel; icon: LucideIcon; label: string; title: string } {
+export function diskHealth(d: DiskInfo): { level: PillLevel; icon: LucideIcon; label: string; title: string } {
   if (d.state === 'missing') return { level: 'danger', icon: CircleAlert, label: 'Отвалился', title: 'Диск из fstab не подключён' }
   if (d.state === 'stale') return { level: 'danger', icon: CircleAlert, label: 'Не отвечает', title: 'Точка смонтирована, но диск не отвечает (ошибки I/O)' }
   const s = d.smart
@@ -168,7 +168,7 @@ function checkedAgoShort(ts: number) {
 }
 
 // Пт.3: голый «0 Б/с» неинформативен — ниже порога шума показываем серое «Простой», выше — крупно и цветом потока
-const IO_IDLE_THRESHOLD = 1024 // Б/с
+export const IO_IDLE_THRESHOLD = 1024 // Б/с
 
 // Пт.2.2: плашка — одновременно и показатель, и легенда графика (та же заливка цветом сверху, что и линия),
 // и переключатель — клик скрывает/показывает соответствующую линию на графике (стандарт для мониторинга).
