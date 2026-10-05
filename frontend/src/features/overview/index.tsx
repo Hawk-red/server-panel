@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Activity, CircleAlert, CircleCheck, Clock, Cpu, HardDrive, MemoryStick, Network, Thermometer, TriangleAlert, Tv } from 'lucide-react'
+import { Activity, CircleAlert, CircleCheck, Clock, Cpu, HardDrive, MemoryStick, Network, Thermometer, TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { BackupItem, InternetStatus } from '@/features/infra-types'
 import { meQuery } from '@/lib/auth'
@@ -14,7 +14,6 @@ import { StatTile } from '@/components/stat-tile'
 import { Value } from '@/components/value'
 import { formatUptimeScales } from '@/lib/format'
 import { StatusBadge } from '@/components/status-badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DeadlinesCard } from './deadlines-card'
 import { ProblemSheet } from './problem-sheet'
@@ -375,13 +374,6 @@ export function Overview() {
       title='Обзор'
       description='Состояние сервера Mac Mini'
       layoutPage='overview'
-      actions={
-        <Button variant='outline' asChild>
-          <Link to='/tv'>
-            <Tv /> Режим ТВ
-          </Link>
-        </Button>
-      }
     >
       <SortableBlocks grid blocks={blocks} className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6' />
       <ProblemSheet problem={openProblem} onClose={() => setOpenProblem(null)} />

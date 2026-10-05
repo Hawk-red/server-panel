@@ -135,3 +135,75 @@
     height: 0;
   }
 }
+
+/* ===== Телефонный вид (html[data-view='phone'], см. lib/view-mode.ts) =====
+   Правила вне @layer: они сильнее утилит Tailwind и точечно перекрывают отступы и размеры компонентов. */
+html[data-view='phone'] {
+  font-size: 15px;
+}
+html[data-view='phone'] main {
+  padding: 0.75rem 1rem 1rem; /* по бокам 1rem: на нём держатся полосы с -mx-4 */
+}
+html[data-view='phone'] header[class*='h-16'] {
+  height: 3.5rem;
+  padding-top: env(safe-area-inset-top);
+}
+html[data-view='phone'] main h1 {
+  font-size: 1.375rem;
+}
+/* карточки плотнее */
+html[data-view='phone'] [data-slot='card'] {
+  min-width: 0; /* карточка в сетке не распирает страницу длинным текстом */
+  gap: 0.625rem;
+  padding-block: 0.875rem;
+}
+html[data-view='phone'] [data-slot='card-header'],
+html[data-view='phone'] [data-slot='card-content'],
+html[data-view='phone'] [data-slot='card-footer'] {
+  padding-inline: 0.875rem;
+}
+/* область нажатия не меньше 44 px */
+html[data-view='phone'] [data-slot='button'],
+html[data-view='phone'] [data-slot='tabs-trigger'],
+html[data-view='phone'] [data-slot='select-trigger'],
+html[data-view='phone'] [data-slot='input'],
+html[data-view='phone'] [data-slot='dropdown-menu-item'],
+html[data-view='phone'] [data-slot='select-item'],
+html[data-view='phone'] [data-slot='sidebar-menu-button'] {
+  min-height: 44px;
+}
+html[data-view='phone'] [data-slot='button']:has(> svg:only-child) {
+  min-width: 44px;
+}
+html[data-view='phone'] [data-slot='tabs-list'] {
+  height: auto;
+  min-height: 44px;
+}
+/* диалоги и выпадающие списки — на всю ширину экрана, не обрезаются */
+html[data-view='phone'] [data-slot='dialog-content'],
+html[data-view='phone'] [data-slot='alert-dialog-content'] {
+  width: calc(100vw - 1rem);
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 1rem);
+  overflow-y: auto;
+  padding: 1rem;
+}
+html[data-view='phone'] [data-slot='dropdown-menu-content'],
+html[data-view='phone'] [data-slot='select-content'],
+html[data-view='phone'] [data-slot='popover-content'] {
+  max-width: calc(100vw - 1rem);
+}
+html[data-view='phone'] [data-slot='dialog-footer'],
+html[data-view='phone'] [data-slot='alert-dialog-footer'] {
+  flex-direction: column-reverse;
+}
+html[data-view='phone'] [data-slot='dialog-footer'] > *,
+html[data-view='phone'] [data-slot='alert-dialog-footer'] > * {
+  width: 100%;
+}
+
+/* Выезжающее меню (телефон и планшет в портрете): отступы под вырез и нижнюю полосу жестов */
+[data-sidebar='sidebar'][data-mobile='true'] {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}

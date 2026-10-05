@@ -17,6 +17,9 @@ import { routeTree } from './routeTree.gen'
 // Styles: шрифт Inter (variable, латиница + кириллица) хранится в бандле
 import '@fontsource-variable/inter'
 import './styles/index.css'
+import { initViewMode } from '@/lib/view-mode'
+
+initViewMode()
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -1,10 +1,13 @@
-import { Link, useLocation } from '@tanstack/react-router'
+import { useLocation } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { ArrowUpDown, Check, Tv } from 'lucide-react'
+import { ArrowUpDown, Check, Ellipsis } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Search } from '@/components/search'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useViewMode } from '@/lib/view-mode'
+import { ViewModeItems, ViewModeSwitch } from '@/components/view-mode-switch'
 import { isTvSection } from '@/features/tv/sections'
 import { LayoutEditContext } from './layout-edit'
 import { ThemeSwitch } from '@/components/theme-switch'
@@ -42,7 +45,10 @@ export function Page({ title, description, actions, children, layoutPage }: Page
   const Icon = section?.icon
   // Обзор ставит свою кнопку; у разделов без ТВ-версии кнопка ведёт на общий /tv
   const slug = section?.url ? String(section.url).replace(/^\//, '') : ''
-  const tvLink = !section || slug === '' ? null : isTvSection(slug) ? { to: '/tv/$section' as const, params: { section: slug } } : { to: '/tv' as const, params: {} }
+  // ТВ-версия: у раздела своя (/tv/<раздел>), у остальных — общий /tv; у Обзора — /tv
+  const tvLink: { to: string; params?: Record<string, string> } = slug !== '' && isTvSection(slug) ? { to: '/tv/$section', params: { section: slug } } : { to: '/tv' }
+  const { view } = useViewMode()
+  const phone = view === 'phone'
   return (
     <>
       <Header fixed>
@@ -63,17 +69,34 @@ export function Page({ title, description, actions, children, layoutPage }: Page
           </div>
           <div className='flex flex-wrap items-center gap-2'>
             {actions}
-            {layoutPage && (
-              <Button variant={editing ? 'default' : 'outline'} size='sm' onClick={() => setEditing(!editing)} aria-pressed={editing}>
-                {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
-              </Button>
-            )}
-            {tvLink && (
-              <Button variant='outline' size='sm' asChild>
-                <Link to={tvLink.to} params={tvLink.params as never}>
-                  <Tv /> Режим ТВ
-                </Link>
-              </Button>
+            {phone ? (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='outline' size='icon' aria-label='Ещё'>
+                    <Ellipsis />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  {layoutPage && (
+                    <>
+                      <DropdownMenuItem onClick={() => setEditing(!editing)}>
+                        {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <ViewModeItems tvLink={tvLink} />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <>
+                {layoutPage && (
+                  <Button variant={editing ? 'default' : 'outline'} size='sm' onClick={() => setEditing(!editing)} aria-pressed={editing}>
+                    {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
+                  </Button>
+                )}
+                <ViewModeSwitch tvLink={tvLink} />
+              </>
             )}
           </div>
         </div>
