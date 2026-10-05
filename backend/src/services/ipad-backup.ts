@@ -4,6 +4,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { config } from '../config.js'
+import { killGroup, trackChild } from '../exec.js'
 import { maskSecrets } from '../mask.js'
 
 const HOST = 'hawk@macbook-pro-ha.local'
@@ -68,7 +69,8 @@ export function startIpadBackup(): IpadJob {
   ]
   const startedAt = Date.now()
   job = { status: 'running', startedAt, finishedAt: null, exitCode: null, message: 'Скрипт запущен на MacBook. Прогресс смотрите там (уведомления и лог), здесь — результат.', tail: [] }
-  const proc = spawn('ssh', args, { stdio: ['ignore', 'ignore', 'pipe'] })
+  const proc = spawn('ssh', args, { stdio: ['ignore', 'ignore', 'pipe'], detached: true })
+  trackChild(proc)
   child = proc
   const errLines: string[] = []
   let buf = ''
@@ -79,7 +81,7 @@ export function startIpadBackup(): IpadJob {
     for (const p of parts) if (p.trim()) errLines.push(maskSecrets(p.trim()).slice(0, 300))
     if (errLines.length > TAIL_LINES) errLines.splice(0, errLines.length - TAIL_LINES)
   })
-  const timer = setTimeout(() => proc.kill('SIGTERM'), MAX_RUN_MS)
+  const timer = setTimeout(() => killGroup(proc, 'SIGTERM'), MAX_RUN_MS)
   proc.on('error', (e) => {
     clearTimeout(timer)
     child = null

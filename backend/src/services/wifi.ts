@@ -114,14 +114,11 @@ export async function setRadio(on: boolean) {
 
 // Подключение к новой сети: пароль уходит в stdin утилиты, не в командную строку
 export async function connectNew(ssid: string, psk: string) {
-  const { execFile } = await import('node:child_process')
-  return new Promise<string>((resolve, reject) => {
-    const child = execFile('/usr/bin/sudo', ['-n', UTIL, 'connect-new'], { timeout: 90_000 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr.trim() || 'не удалось подключиться'))
-      else resolve(stdout.trim())
-    })
-    child.stdin?.end(`${ssid}\n${psk}\n`)
-  })
+  try {
+    return (await sudo([UTIL, 'connect-new'], { timeoutMs: 90_000, input: `${ssid}\n${psk}\n` })).trim()
+  } catch (e) {
+    throw new Error((e as { stderr?: string }).stderr?.trim() || 'не удалось подключиться')
+  }
 }
 
 export async function connectSaved(uuid: string) {

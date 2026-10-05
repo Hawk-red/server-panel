@@ -27,6 +27,7 @@ import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
 import { startUpdates } from './services/updates.js'
+import { killAllChildren } from './exec.js'
 import { externalPolicy } from './externalPolicy.js'
 import { externalEnabled, totpEnabled } from './security.js'
 import { securityRoutes } from './routes/security.js'
@@ -147,6 +148,7 @@ cleanupAuth()
 async function shutdown(signal: string) {
   app.log.info({ signal }, 'остановка')
   clearInterval(cleanupTimer)
+  killAllChildren('SIGTERM') // дочерние процессы (du, smartctl, nmap…) не остаются сиротами
   stopCollector()
   stopDiskIoCollector()
   await app.close()
