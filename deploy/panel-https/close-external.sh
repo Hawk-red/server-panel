@@ -18,5 +18,6 @@ if ! nginx -t; then
 fi
 systemctl reload nginx
 echo "Готово: nginx снова отвечает 403 всем, кроме 192.168.31.0/24, 10.10.10.0/24 и 127.0.0.1."
-curl -sk -o /dev/null -w "проверка с сервера: HTTP %{http_code} (ожидается 200 — запрос с 127.0.0.1)\n" --resolve panel.pulsdev.net:443:127.0.0.1 https://panel.pulsdev.net/
+curl -sk -o /dev/null -w "проверка с сервера, порт 443:  HTTP %{http_code} (ожидается 200 — запрос с 127.0.0.1)\n" --resolve panel.pulsdev.net:443:127.0.0.1 https://panel.pulsdev.net/
+ss -ltn | grep -q ":9443 " && curl -sk -o /dev/null -w "проверка с сервера, порт 9443: HTTP %{http_code}\n" --resolve panel.pulsdev.net:9443:127.0.0.1 https://panel.pulsdev.net:9443/
 echo "Рекомендуется также выключить «Доступ из интернета» в разделе «Безопасность» панели (завершит внешние сессии)."

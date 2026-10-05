@@ -49,7 +49,12 @@ if ! systemctl reload nginx; then
   exit 1
 fi
 echo "   nginx перезагружен: хост открыт (лимиты включены)"
-curl -sk -o /dev/null -w "   проверка с сервера: HTTP %{http_code}\n" --resolve panel.pulsdev.net:443:127.0.0.1 https://panel.pulsdev.net/
+curl -sk -o /dev/null -w "   проверка с сервера, порт 443:  HTTP %{http_code}\n" --resolve panel.pulsdev.net:443:127.0.0.1 https://panel.pulsdev.net/
+if ss -ltn | grep -q ":9443 "; then
+  curl -sk -o /dev/null -w "   проверка с сервера, порт 9443: HTTP %{http_code}\n" --resolve panel.pulsdev.net:9443:127.0.0.1 https://panel.pulsdev.net:9443/
+else
+  echo "   ВНИМАНИЕ: порт 9443 не слушается — проверьте $SITE (listen 9443 ssl http2)" >&2
+fi
 echo
-echo "Дальше: «Безопасность» → «Доступ из интернета» → включить. Проверить с телефона (мобильный интернет): https://panel.pulsdev.net:9443"
+echo "Дальше: «Безопасность» → «Доступ из интернета» → включить. Один адрес для дома и мира: https://panel.pulsdev.net:9443 (дома — через AdGuard на 192.168.31.112:9443, снаружи — роутер 9443 → 443). Проверить с телефона по мобильному интернету."
 echo "Закрыть обратно: sudo $DIR/close-external.sh   (и/или выключить выключатель в «Безопасности»)"

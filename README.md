@@ -123,7 +123,7 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
 
 ## HTTPS: https://panel.pulsdev.net
 
-Панель за nginx (`deploy/panel-https/`): виртуальный хост `panel.pulsdev.net` на 443 → `127.0.0.1:7575`, **доступ только из 192.168.31.0/24, 10.10.10.0/24 и 127.0.0.1** (`allow/deny` на уровне server; через проброс 9443 из интернета — 403). Имя резолвится в LAN записью DNS-rewrite в AdGuard (`deploy/exchange/adguard-rewrite.py --domain panel.pulsdev.net`). Сертификат отдельный, DNS-01 тем же хуком, что у api.pulsdev.net; общий deploy-hook перечитывает nginx после продления.
+Панель за nginx (`deploy/panel-https/`): виртуальный хост `panel.pulsdev.net` на 443 и 9443 (один адрес `https://panel.pulsdev.net:9443` для дома и мира) → `127.0.0.1:7575`, **доступ только из 192.168.31.0/24, 10.10.10.0/24 и 127.0.0.1** (`allow/deny` на уровне server; через проброс 9443 из интернета — 403). Имя резолвится в LAN записью DNS-rewrite в AdGuard (`deploy/exchange/adguard-rewrite.py --domain panel.pulsdev.net`). Сертификат отдельный, DNS-01 тем же хуком, что у api.pulsdev.net; общий deploy-hook перечитывает nginx после продления.
 
 Установка: `sudo deploy/panel-https/install.sh`, проверка: `deploy/panel-https/verify.sh`. Откат: `sudo rm /etc/nginx/sites-enabled/panel.pulsdev.net && sudo nginx -t && sudo systemctl reload nginx` (панель продолжит работать по `http://192.168.31.112:7575`).
 

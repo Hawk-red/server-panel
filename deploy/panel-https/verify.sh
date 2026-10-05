@@ -4,6 +4,9 @@ H=panel.pulsdev.net
 echo "== 1. Имя резолвится на сервере"; getent hosts $H || echo "НЕ резолвится (нужна запись в AdGuard / у регистратора)"
 echo "== 2. HTTPS через --resolve на 127.0.0.1 (ожидается 200)"
 curl -sI --resolve $H:443:127.0.0.1 https://$H/ | head -1
+echo "== 2б. HTTPS на порту 9443 (дом и мир, один адрес)"
+curl -sI --resolve $H:9443:127.0.0.1 https://$H:9443/ | head -1
+echo "   чужое имя на 9443 отвергается (ожидается ошибка TLS):"; curl -sk -o /dev/null -w "   %{http_code}\n" --resolve api.pulsdev.net:9443:127.0.0.1 https://api.pulsdev.net:9443/ 2>&1 | tail -1
 echo "== 3. Заголовки"; curl -sI --resolve $H:443:127.0.0.1 https://$H/ | grep -iE "strict-transport|x-content-type|referrer"
 echo "== 4. Подмена X-Forwarded-For не обходит allow (с 127.0.0.1 доступ разрешён, а заголовок игнорируется)"
 curl -s -o /dev/null -w "   запрос с поддельным XFF: %{http_code}\n" --resolve $H:443:127.0.0.1 -H "X-Forwarded-For: 8.8.8.8" https://$H/

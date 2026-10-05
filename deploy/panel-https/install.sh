@@ -47,6 +47,7 @@ if ! nginx -t; then
 fi
 systemctl reload nginx
 echo "   nginx перезагружен"
+ss -ltn | grep -q ":9443 " && echo "   порт 9443 слушается (https://panel.pulsdev.net:9443)" || echo "   ВНИМАНИЕ: порт 9443 не слушается"
 
 echo "== 4. Проверка продления (dry-run для всех сертификатов)"
 certbot renew --dry-run
