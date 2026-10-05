@@ -17,7 +17,7 @@ import { certificate } from './services/sites.js'
 import { getSetting, setSetting } from './settings.js'
 import type { DiskInfo } from './system/disks.js'
 
-export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload'
+export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload' | 'torrents'
 
 export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   unit: { title: 'Служба упала (и снова поднялась)', urgent: 'падение — всегда, даже в тихие часы' },
@@ -30,6 +30,7 @@ export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   backup: { title: 'Резервная копия устарела', urgent: '' },
   deadline: { title: 'Срок домена или своей даты близко (за 30, 14, 7, 3 и 1 день)', urgent: '' },
   upload: { title: 'Гость загрузил файл в обменник (имя, размер, IP)', urgent: '' },
+  torrents: { title: 'Торренты на паузу или возобновлены защитой диска', urgent: 'пауза — всегда, даже в тихие часы' },
 }
 
 export type NotifySettings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
@@ -38,7 +39,7 @@ const DEFAULTS: NotifySettings = {
   chatId: null,
   enabled: true,
   quiet: { from: '23:00', to: '08:00' },
-  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true },
+  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true, torrents: true },
 }
 
 export const getNotifySettings = (): NotifySettings => {
@@ -176,6 +177,16 @@ function newDeviceText(e: ServerEvent) {
     .join('\n')
 }
 
+type GuardDetails = { freeGb: number; thresholdGb: number; path: string }
+function guardPausedText(e: ServerEvent) {
+  const d = e.details as GuardDetails | undefined
+  return `⏸ Торренты поставлены на паузу (защита диска): свободно ${d?.freeGb ?? '?'} ГБ на ${esc(d?.path ?? '—')}, порог ${d?.thresholdGb ?? '?'} ГБ`
+}
+function guardResumedText(e: ServerEvent) {
+  const d = e.details as GuardDetails | undefined
+  return `▶ Торренты возобновлены: место освободилось, свободно ${d?.freeGb ?? '?'} ГБ на ${esc(d?.path ?? '—')}`
+}
+
 function onServerEvent(e: ServerEvent) {
   if (e.kind === 'unit.failed' && rule('unit')) void send(`🔴 <b>Служба упала:</b> ${esc(e.target ?? '')}`, true)
   else if (e.kind === 'unit.recovered' && rule('unit')) void send(`🟢 Служба снова работает: ${esc(e.target ?? '')}`, false)
@@ -185,6 +196,9 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'internet.outage' && rule('internet') && ((e.details as { sec?: number } | undefined)?.sec ?? 0) >= OUTAGE_NOTIFY_SEC) void send(`🌐 ${esc(e.text)}`, false)
   else if (e.kind === 'exchange.upload' && rule('upload')) void send(`📥 ${esc(e.text)}`, false)
   else if (e.kind === 'internet.ip' && rule('internet')) void send(`🌐 ${esc(e.text)}`, false)
+  // Защита диска (torrent-space-guard): пауза — срочно, возобновление — обычное
+  else if (e.kind === 'torrents.paused' && rule('torrents')) void send(guardPausedText(e), true)
+  else if (e.kind === 'torrents.resumed' && rule('torrents')) void send(guardResumedText(e), false)
 }
 
 // Диск: mount + модель/метка + тип носителя, занято/свободно в ГБ (не только проценты)

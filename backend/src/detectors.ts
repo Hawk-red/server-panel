@@ -8,6 +8,7 @@ import { percentLevel } from './levels.js'
 import { listContainers } from './services/docker.js'
 import { lastSync } from './services/sites.js'
 import { failedUnits } from './system/units.js'
+import { getSetting, setSetting } from './settings.js'
 
 let log: FastifyBaseLogger | undefined
 const state = {
@@ -107,8 +108,71 @@ async function sync() {
   else emitEvent({ kind: 'sync.error', level: 'warning', text: `Ночной синк jetsetter завершён с предупреждениями (${s.errors.length})`, details: { errors: s.errors.slice(-5) } })
 }
 
+// torrent-space-guard.sh пишет строку в этот лог только при переходе: пауза или возобновление торрентов.
+// Читаем по приращению, позицию храним в settings — после перезапуска панель не шлёт старые строки.
+const GUARD_LOG = '/var/log/torrent-move.log'
+const GUARD_POS_KEY = 'detectors.guardLogPos'
+const GUARD_PAUSE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) LOW SPACE \((\d+)G < (\d+)G\) on (\S+) - torrents paused$/
+const GUARD_RESUME = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) SPACE OK \((\d+)G >= (\d+)G\) on (\S+) - torrents resumed$/
+
+function guardLine(line: string) {
+  const p = line.match(GUARD_PAUSE)
+  if (p) {
+    const [, when, free, min, path] = p
+    emitEvent({
+      kind: 'torrents.paused',
+      level: 'warning',
+      text: `Торренты поставлены на паузу (защита диска): свободно ${free} ГБ на ${path}, порог ${min} ГБ`,
+      target: path,
+      details: { freeGb: Number(free), thresholdGb: Number(min), path },
+      ts: Date.parse(when.replace(' ', 'T')),
+    })
+    return
+  }
+  const r = line.match(GUARD_RESUME)
+  if (r) {
+    const [, when, free, min, path] = r
+    emitEvent({
+      kind: 'torrents.resumed',
+      level: 'info',
+      text: `Торренты возобновлены: место освободилось, свободно ${free} ГБ на ${path}`,
+      target: path,
+      details: { freeGb: Number(free), thresholdGb: Number(min), path },
+      ts: Date.parse(when.replace(' ', 'T')),
+    })
+  }
+}
+
+async function guardLog() {
+  const st = await stat(GUARD_LOG).catch(() => null)
+  if (!st) return
+  const saved = getSetting<{ ino: number; pos: number } | null>(GUARD_POS_KEY, null)
+  // Первый запуск или новый файл (ротация): только запоминаем конец, историю не пересылаем
+  if (!saved || saved.ino !== st.ino) {
+    setSetting(GUARD_POS_KEY, { ino: st.ino, pos: st.size })
+    return
+  }
+  // Усечённый файл читаем с начала
+  const from = st.size < saved.pos ? 0 : saved.pos
+  if (st.size === from) return
+  const fh = await open(GUARD_LOG, 'r')
+  try {
+    const len = Math.min(st.size - from, 1024 * 1024)
+    const buf = Buffer.alloc(len)
+    await fh.read(buf, 0, len, from)
+    // Берём только полные строки: хвост без перевода строки дочитаем в следующий раз
+    const end = buf.lastIndexOf(0x0a)
+    if (end < 0) return
+    const chunk = buf.subarray(0, end).toString('utf8')
+    for (const line of chunk.split('\n')) guardLine(line.trim())
+    setSetting(GUARD_POS_KEY, { ino: st.ino, pos: from + end + 1 })
+  } finally {
+    await fh.close()
+  }
+}
+
 async function tick() {
-  for (const [name, fn] of Object.entries({ units, disks, containers, fail2ban, sync })) {
+  for (const [name, fn] of Object.entries({ units, disks, containers, fail2ban, sync, guardLog })) {
     try {
       await fn()
     } catch (e) {
