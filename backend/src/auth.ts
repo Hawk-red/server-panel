@@ -104,8 +104,8 @@ export async function authRoutes(app: FastifyInstance) {
           path: '/',
           httpOnly: true,
           sameSite: 'strict',
-          // Панель работает по HTTP внутри LAN/VPN, поэтому без Secure
-          secure: false,
+          // Secure — когда запрос пришёл по HTTPS (через nginx, X-Forwarded-Proto); старый вход по http:// в LAN продолжает работать
+          secure: req.protocol === 'https',
           expires: new Date(expiresAt),
         })
         .send({ ok: true })
@@ -118,7 +118,7 @@ export async function authRoutes(app: FastifyInstance) {
       q.deleteSession.run(session.idHash)
       audit({ ip: req.clientIp, user: USER, action: 'auth.logout', result: 'ok' })
     }
-    return reply.clearCookie(SESSION_COOKIE, { path: '/' }).send({ ok: true })
+    return reply.clearCookie(SESSION_COOKIE, { path: '/', secure: req.protocol === 'https' }).send({ ok: true })
   })
 
   app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => ({

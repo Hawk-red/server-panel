@@ -43,8 +43,9 @@ const app = Fastify({
   },
   // Без строки лога на каждый запрос — журнал systemd остаётся чистым
   logController: new LogController({ disableRequestLogging: true }),
-  // Прокси перед панелью нет: IP берём только из сокета
-  trustProxy: false,
+  // Перед панелью может стоять nginx на этом же сервере (https://panel.pulsdev.net → 127.0.0.1:7575): заголовкам
+  // X-Forwarded-* верим только от него, то есть от соединений с 127.0.0.1. Из LAN и VPN напрямую заголовки игнорируются.
+  trustProxy: '127.0.0.1',
   bodyLimit: 64 * 1024,
 })
 
@@ -52,7 +53,8 @@ app.decorateRequest('clientIp', '')
 
 // Второй рубеж после ufw: только LAN, WireGuard и localhost
 app.addHook('onRequest', async (req, reply) => {
-  req.clientIp = normalizeIp(req.socket.remoteAddress)
+  // req.ip = адрес соединения, а если оно от доверенного nginx — настоящий адрес клиента из X-Forwarded-For
+  req.clientIp = normalizeIp(req.ip)
   if (!isAllowed(req.clientIp, config.allowedNets)) {
     req.log.warn({ ip: req.clientIp, url: req.url }, 'запрос из запрещённой сети отклонён')
     return reply.code(403).type('text/plain; charset=utf-8').send('Доступ только из локальной сети и VPN')
