@@ -8,7 +8,7 @@ import type { Part, SitesData, UnitInfo } from '@/lib/types'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
-import { webUrl } from '@/components/service-card'
+import { HomeLink } from '@/components/home-link'
 import { ServiceIcon } from '@/components/service-icon'
 import { StatusBadge, unitStatus } from '@/components/status-badge'
 import { UnitControls } from '@/components/unit-controls'
@@ -165,14 +165,14 @@ export function Sites() {
             <div className='space-y-2'>
               <div className='flex flex-wrap gap-2'>
                 <Button size='sm' variant='web' asChild>
-                  <a href={webUrl(80)} target='_blank' rel='noreferrer'>
+                  <HomeLink service='mirror'>
                     <Globe /> Открыть сайт
-                  </a>
+                  </HomeLink>
                 </Button>
                 <Button size='sm' variant='outline' asChild>
-                  <a href={webUrl(80, '/wp-admin/')} target='_blank' rel='noreferrer'>
+                  <HomeLink service='mirror' path='/wp-admin/'>
                     <Globe /> Админка WordPress (/wp-admin)
-                  </a>
+                  </HomeLink>
                 </Button>
               </div>
               <UnitControls

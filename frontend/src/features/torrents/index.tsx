@@ -13,7 +13,7 @@ import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { MetricChart, RANGE_LABELS } from '@/components/metric-chart'
 import { NoData } from '@/components/no-data'
-import { containerStatus, ServiceCard, webUrl } from '@/components/service-card'
+import { containerStatus, ServiceCard } from '@/components/service-card'
 import { StatTile } from '@/components/stat-tile'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -78,7 +78,7 @@ export function Torrents() {
           status={containerStatus(data?.container)}
           version={s?.version ?? data?.container.data?.version}
           ports={[8090, 6881]}
-          url={webUrl(8090)}
+          service='qbittorrent'
           container={data?.container}
           invalidate={['torrents']}
           monitorId='qbittorrent'

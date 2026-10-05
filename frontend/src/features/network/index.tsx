@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { HomeLink } from '@/components/home-link'
 import { DeviceSheet } from './device-sheet'
 import { displayName, TYPE_GROUPS, TYPES, webHref } from './device-meta'
 
@@ -103,15 +104,13 @@ function DeviceCard({ d, scanning, busy, onOpen, onScan, dragDisabled }: { d: De
                 <div className='flex flex-wrap gap-1'>
                   {d.ports.map((p) =>
                     p.web ? (
-                      <a
+                      <HomeLink
                         key={p.port}
                         href={webHref(d, p)}
-                        target='_blank'
-                        rel='noreferrer'
                         className='inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] text-address hover:bg-muted'
                       >
                         {p.port} {p.service} <ExternalLink className='size-3' />
-                      </a>
+                      </HomeLink>
                     ) : (
                       <span key={p.port} className='rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-address'>
                         {p.port} {p.service}
@@ -134,9 +133,9 @@ function DeviceCard({ d, scanning, busy, onOpen, onScan, dragDisabled }: { d: De
             </Button>
             {web && (
               <Button size='sm' variant='ghost' asChild>
-                <a href={webHref(d, web)} target='_blank' rel='noreferrer'>
+                <HomeLink href={webHref(d, web)}>
                   <ExternalLink /> Веб :{web.port}
-                </a>
+                </HomeLink>
               </Button>
             )}
           </div>

@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { webUrl } from '@/components/service-card'
+import { HomeLink } from '@/components/home-link'
 
 type AptJobView = {
   id: string
@@ -314,9 +314,9 @@ export function Updates() {
           value={`${dockerUpdates}/${dockerChecked || docker.length}`}
           sub={
             dockerUpdates ? (
-              <a href={webUrl(9000)} target='_blank' rel='noopener noreferrer' className='inline-flex items-center gap-1 text-info underline underline-offset-2'>
+              <HomeLink service='portainer' className='inline-flex items-center gap-1 text-info underline underline-offset-2'>
                 обновить в Portainer <ExternalLink className='size-3' />
-              </a>
+              </HomeLink>
             ) : (
               'все актуальны'
             )
@@ -432,9 +432,9 @@ export function Updates() {
             ))}
             <p className='pt-1 text-[11px] text-muted-foreground'>
               Образы обновляются в{' '}
-              <a href={webUrl(9000)} target='_blank' rel='noopener noreferrer' className='text-info underline underline-offset-2'>
+              <HomeLink service='portainer' className='text-info underline underline-offset-2'>
                 Portainer
-              </a>{' '}
+              </HomeLink>{' '}
               или командой docker pull с пересозданием контейнера. Панель их не трогает.
             </p>
           </CardContent>

@@ -123,7 +123,7 @@ export type Container = {
   memLimit: number | null
   protected: boolean
   warning?: string
-  web: { port: number; path?: string } | null
+  web: { service: string } | null
 }
 
 export type DockerData = {

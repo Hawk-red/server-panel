@@ -12,18 +12,26 @@ import { StatusBadge } from '@/components/status-badge'
 import { UptimeStrip } from '@/components/uptime-bars'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
+import { HomeLink } from '@/components/home-link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-function LinkRow({ label, url, hint }: { label: string; url: string; hint: string }) {
+// homeOnly: адрес работает только из дома / по WireGuard — снаружи ссылка неактивна; service — адрес берётся из реестра сервера
+function LinkRow({ label, url, hint, homeOnly, service }: { label: string; url: string; hint: string; homeOnly?: boolean; service?: string }) {
   const [done, setDone] = useState(false)
   return (
     <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5'>
       <div className='min-w-0'>
         <div className='text-sm font-medium'>{label}</div>
         <div className='text-xs text-muted-foreground'>{hint}</div>
-        <a href={url} target='_blank' rel='noreferrer' className='font-mono text-xs break-all text-address hover:underline'>
-          {url}
-        </a>
+        {homeOnly || service ? (
+          <HomeLink service={service} href={url} className='font-mono text-xs break-all text-address hover:underline'>
+            {url}
+          </HomeLink>
+        ) : (
+          <a href={url} target='_blank' rel='noreferrer' className='font-mono text-xs break-all text-address hover:underline'>
+            {url}
+          </a>
+        )}
       </div>
       <div className='flex shrink-0 gap-1'>
         <Button
@@ -39,9 +47,15 @@ function LinkRow({ label, url, hint }: { label: string; url: string; hint: strin
           {done ? <Check /> : <Copy />} {done ? 'Скопировано' : 'Копировать'}
         </Button>
         <Button size='sm' variant='outline' asChild>
-          <a href={url} target='_blank' rel='noreferrer'>
-            <Globe /> Открыть в браузере
-          </a>
+          {homeOnly || service ? (
+            <HomeLink service={service} href={url}>
+              <Globe /> Открыть в браузере
+            </HomeLink>
+          ) : (
+            <a href={url} target='_blank' rel='noreferrer'>
+              <Globe /> Открыть в браузере
+            </a>
+          )}
         </Button>
       </div>
     </div>
@@ -76,8 +90,8 @@ export function ExchangeCard() {
             <UptimeStrip monitor={monitor} />
             <div className='divide-y'>
               <LinkRow label='Снаружи (для гостей)' url={data.urls.external} hint='порт 9443 на роутере → 443 сервера' />
-              <LinkRow label='Из дома' url={data.urls.home} hint='нужна запись в AdGuard: api.pulsdev.net → 192.168.31.112' />
-              <LinkRow label='Админка (пользователи, папки, права)' url={data.urls.admin} hint='только из домашней сети и VPN' />
+              <LinkRow label='Из дома' url={data.urls.home} homeOnly hint='нужна запись в AdGuard: api.pulsdev.net → 192.168.31.112' />
+              <LinkRow label='Админка (пользователи, папки, права)' url={data.urls.admin} service='sftpgo_admin' hint='только из домашней сети и VPN' />
             </div>
 
             <div className='space-y-2'>

@@ -30,6 +30,7 @@ import { startUpdates } from './services/updates.js'
 import { killAllChildren } from './exec.js'
 import { externalPolicy } from './externalPolicy.js'
 import { externalEnabled, totpEnabled } from './security.js'
+import { linksRoutes } from './routes/links.js'
 import { securityRoutes } from './routes/security.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
@@ -92,6 +93,7 @@ app.addHook('onSend', async (_req, reply) => {
 await app.register(fastifyCookie)
 await app.register(authRoutes)
 await app.register(securityRoutes)
+await app.register(linksRoutes)
 await app.register(systemRoutes)
 await app.register(serviceRoutes)
 await app.register(siteRoutes)

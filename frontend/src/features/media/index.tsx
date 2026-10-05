@@ -6,7 +6,8 @@ import type { MediaData } from '@/lib/types'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
-import { containerStatus, ServiceCard, webUrl } from '@/components/service-card'
+import { HomeLink } from '@/components/home-link'
+import { containerStatus, ServiceCard } from '@/components/service-card'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,7 +33,7 @@ export function Media() {
           status={containerStatus(jf?.container)}
           version={jf?.info.data?.version ?? jf?.container.data?.version}
           ports={[8096]}
-          url={webUrl(8096, '/web/')}
+          service='jellyfin'
           container={jf?.container}
           invalidate={['media']}
           monitorId='jellyfin'
@@ -81,7 +82,7 @@ export function Media() {
           status={containerStatus(data?.minimserver.container)}
           version={data?.minimserver.container.data?.version}
           ports={[9790, 9791]}
-          url={webUrl(9790)}
+          service='minimserver'
           container={data?.minimserver.container}
           invalidate={['media']}
           monitorId='minimserver'
@@ -98,7 +99,7 @@ export function Media() {
           status={containerStatus(data?.bubbleupnpserver.container)}
           version={data?.bubbleupnpserver.container.data?.version}
           ports={[58050, 58051]}
-          url={webUrl(58050)}
+          service='bubbleupnp'
           container={data?.bubbleupnpserver.container}
           invalidate={['media']}
           monitorId='bubbleupnpserver'
@@ -130,14 +131,14 @@ export function Media() {
               <dd>{mz?.data?.source ?? <NoData />}</dd>
               <dt className='text-muted-foreground'>Веб-интерфейс</dt>
               <dd>
-                <span className='font-mono text-address'>192.168.31.94:80</span>
+                <span className='font-mono text-address'>{mz?.data ? `${mz.data.host}:${mz.data.webPort}` : <NoData />}</span>
               </dd>
             </dl>
             <Button size='sm' variant='web' asChild>
               {/* Настоящий веб-интерфейс — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP */}
-              <a href='http://192.168.31.94/' target='_blank' rel='noreferrer'>
+              <HomeLink service='marantz'>
                 <Globe /> Открыть веб-интерфейс
-              </a>
+              </HomeLink>
             </Button>
             <p className='text-xs text-muted-foreground'>Веб-интерфейс ресивера открывается только из домашней сети.</p>
           </CardContent>

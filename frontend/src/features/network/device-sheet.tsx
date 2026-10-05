@@ -9,6 +9,7 @@ import type { Device, DeviceType } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { Value } from '@/components/value'
+import { HomeLink } from '@/components/home-link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -93,9 +94,9 @@ export function DeviceSheet({ device, scanning, onClose }: Props) {
               {web.length > 0 && (
                 <div className='flex flex-wrap items-center gap-2 pt-2'>
                   <Button size='sm' asChild>
-                    <a href={webHref(d, web[0])} target='_blank' rel='noreferrer'>
+                    <HomeLink href={webHref(d, web[0])}>
                       <ExternalLink /> Открыть веб-интерфейс
-                    </a>
+                    </HomeLink>
                   </Button>
                   <span className='font-mono text-xs text-address'>:{web[0].port}</span>
                   {web.length > 1 && <span className='text-xs text-muted-foreground'>ещё {web.length - 1} веб-порт(а) — в списке ниже</span>}
@@ -144,15 +145,13 @@ export function DeviceSheet({ device, scanning, onClose }: Props) {
                     {d.ports.length === 0 && <span className='text-muted-foreground'>открытых портов нет</span>}
                     {d.ports.map((p) =>
                       p.web ? (
-                        <a
+                        <HomeLink
                           key={p.port}
                           href={webHref(d, p)}
-                          target='_blank'
-                          rel='noreferrer'
                           className='inline-flex items-center gap-1 rounded border px-2 py-1 font-mono text-xs text-address hover:bg-muted'
                         >
                           {p.port} {p.service} <ExternalLink className='size-3' />
-                        </a>
+                        </HomeLink>
                       ) : (
                         <span key={p.port} className='rounded bg-muted px-2 py-1 font-mono text-xs text-address'>
                           {p.port} {p.service}

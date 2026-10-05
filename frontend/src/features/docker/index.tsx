@@ -11,7 +11,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
-import { webUrl } from '@/components/service-card'
+import { HomeLink } from '@/components/home-link'
 import { StatTile } from '@/components/stat-tile'
 import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
@@ -197,15 +197,14 @@ export function Docker() {
                       <TableRow key={c.id}>
                         <TableCell className='max-w-[10rem] sm:max-w-[16rem]'>
                           {portainer && portainerEp.endpointId ? (
-                            <a
-                              href={webUrl(9000, `/#!/${portainerEp.endpointId}/docker/containers/${c.id}`)}
-                              target='_blank'
-                              rel='noreferrer'
+                            <HomeLink
+                              service='portainer'
+                              path={`/#!/${portainerEp.endpointId}/docker/containers/${c.id}`}
                               className='flex items-center gap-1 truncate font-medium hover:underline'
                               title='Открыть контейнер в Portainer'
                             >
                               {c.name} <ExternalLink className='size-3 shrink-0 text-muted-foreground' />
-                            </a>
+                            </HomeLink>
                           ) : (
                             <div className='truncate font-medium'>{c.name}</div>
                           )}
@@ -234,9 +233,9 @@ export function Docker() {
                           <div className='flex justify-end gap-1'>
                             {c.web && c.state === 'running' && (
                               <Button size='icon' variant='ghost' className='text-info hover:text-info' title='Открыть веб-интерфейс сервиса' aria-label='Открыть веб-интерфейс' asChild>
-                                <a href={webUrl(c.web.port, c.web.path)} target='_blank' rel='noreferrer'>
+                                <HomeLink service={c.web.service}>
                                   <Globe />
-                                </a>
+                                </HomeLink>
                               </Button>
                             )}
                             {!c.protected && (
@@ -295,9 +294,9 @@ export function Docker() {
       actions={
         portainer && (
           <Button asChild variant='web'>
-            <a href={webUrl(9000)} target='_blank' rel='noreferrer'>
+            <HomeLink service='portainer'>
               <Globe /> Открыть Portainer
-            </a>
+            </HomeLink>
           </Button>
         )
       }

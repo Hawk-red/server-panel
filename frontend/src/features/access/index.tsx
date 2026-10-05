@@ -18,6 +18,8 @@ import { formatDateTime } from '@/lib/format'
 import type { AccessData, SshKey } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { HomeLink } from '@/components/home-link'
+import { useLinks } from '@/lib/links'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -685,7 +687,9 @@ function BlockingCard({
 
 function RemoteCard({ data, part }: { data?: AccessData; part: 'rdp' | 'wg' }) {
   const r = data?.remote.data
-  const host = window.location.hostname
+  // Адрес сервера в LAN приходит с сервера (не из адреса страницы); снаружи его нет — ссылки неактивны
+  const links = useLinks()
+  const host = links.lanHost
   const wg = data?.wg.data
   return (
     <>
@@ -714,9 +718,9 @@ function RemoteCard({ data, part }: { data?: AccessData; part: 'rdp' | 'wg' }) {
                   </div>
                   <div className='flex flex-wrap gap-2'>
                     <Button size='sm' asChild>
-                      <a href={`rdp://full%20address=s:${host}:3389`}>
-                        <ExternalLink /> rdp://{host}
-                      </a>
+                      <HomeLink newTab={false} href={host ? `rdp://full%20address=s:${host}:3389` : undefined}>
+                        <ExternalLink /> rdp://{host ?? 'сервер'}
+                      </HomeLink>
                     </Button>
                     <UnitControls
                       unit='xrdp.service'
@@ -737,9 +741,9 @@ function RemoteCard({ data, part }: { data?: AccessData; part: 'rdp' | 'wg' }) {
                   </div>
                   {r.vnc.listening ? (
                     <Button size='sm' asChild>
-                      <a href={`vnc://${host}:5900`}>
-                        <ExternalLink /> vnc://{host}
-                      </a>
+                      <HomeLink newTab={false} href={host ? `vnc://${host}:5900` : undefined}>
+                        <ExternalLink /> vnc://{host ?? 'сервер'}
+                      </HomeLink>
                     </Button>
                   ) : (
                     <p className='text-xs text-muted-foreground'>

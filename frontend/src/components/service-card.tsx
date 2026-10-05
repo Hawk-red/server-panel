@@ -9,17 +9,13 @@ import { api } from '@/lib/api'
 import type { Container, Part } from '@/lib/types'
 import { useMonitor } from '@/lib/uptime'
 import { ConfirmDialog } from './confirm-dialog'
+import { HomeLink } from './home-link'
 import { NoData } from './no-data'
 import { ServiceIcon } from './service-icon'
 import { StatusBadge, type Status } from './status-badge'
 import { UptimeStrip } from './uptime-bars'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-
-// Ссылка на веб-интерфейс — по тому же адресу, с которого открыта панель (LAN или VPN)
-export function webUrl(port: number, path = '/') {
-  return `${window.location.protocol}//${window.location.hostname}:${port}${path}`
-}
 
 type Action = 'start' | 'stop' | 'restart'
 const LABEL: Record<Action, string> = { start: 'Запустить', stop: 'Остановить', restart: 'Перезапустить' }
@@ -38,7 +34,8 @@ type ServiceCardProps = {
   statusLabel?: string
   version?: string | null
   ports?: number[]
-  url?: string | null
+  /** id службы из реестра ссылок (lib/links.ts): кнопка «Открыть веб-интерфейс» */
+  service?: string | null
   uptimeSec?: number | null
   container?: Part<Container>
   invalidate?: string[]
@@ -56,7 +53,7 @@ export function ServiceCard({
   statusLabel,
   version,
   ports,
-  url,
+  service,
   uptimeSec,
   container,
   invalidate = [],
@@ -101,11 +98,11 @@ export function ServiceCard({
         {monitorId && <UptimeStrip monitor={monitor} />}
         {children}
         <div className='flex flex-wrap gap-2'>
-          {url && (
+          {service && (
             <Button size='sm' variant='web' asChild>
-              <a href={url} target='_blank' rel='noreferrer'>
+              <HomeLink service={service}>
                 <Globe /> Открыть веб-интерфейс
-              </a>
+              </HomeLink>
             </Button>
           )}
           {c && !c.protected && (

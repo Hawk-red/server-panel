@@ -12,7 +12,7 @@ import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { MetricChart, RANGE_LABELS } from '@/components/metric-chart'
 import { NoData } from '@/components/no-data'
-import { containerStatus, ServiceCard, webUrl } from '@/components/service-card'
+import { containerStatus, ServiceCard } from '@/components/service-card'
 import { StatTile } from '@/components/stat-tile'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
@@ -91,7 +91,7 @@ export function Adguard() {
           status={containerStatus(data?.container)}
           version={st?.version ?? data?.container.data?.version}
           ports={[53, 3000]}
-          url={webUrl(3000)}
+          service='adguard'
           container={data?.container}
           invalidate={['adguard']}
           monitorId='adguardhome'
