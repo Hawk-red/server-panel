@@ -105,3 +105,10 @@ if (!rootElement.innerHTML) {
     </StrictMode>
   )
 }
+
+// Service worker (устанавливаемое приложение, офлайн-заглушка). Только в собранной версии; данные он не кеширует
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => undefined)
+  })
+}
