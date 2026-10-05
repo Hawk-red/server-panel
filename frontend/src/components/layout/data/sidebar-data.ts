@@ -1,4 +1,5 @@
 import {
+  Bluetooth,
   BellRing,
   Bot,
   Container,
@@ -44,6 +45,7 @@ export const sidebarData: SidebarData = {
       title: 'Доступ и сеть',
       items: [
         { title: 'Интернет', url: '/internet', icon: Wifi, color: 'text-info' },
+        { title: 'Беспроводные', url: '/wireless', icon: Bluetooth, color: 'text-info' },
         { title: 'SSH и доступ', url: '/access', icon: KeyRound, color: 'text-brand' },
         { title: 'Сеть и устройства', url: '/network', icon: Network, color: 'text-indigo' },
         { title: 'Журнал действий', url: '/audit', icon: ScrollText, color: 'text-muted-foreground' },

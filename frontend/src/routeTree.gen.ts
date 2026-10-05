@@ -34,6 +34,7 @@ import { Route as AuthenticatedSitesIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedSystemIndexRouteImport } from './routes/_authenticated/system/index'
 import { Route as AuthenticatedTelegramIndexRouteImport } from './routes/_authenticated/telegram/index'
 import { Route as AuthenticatedTorrentsIndexRouteImport } from './routes/_authenticated/torrents/index'
+import { Route as AuthenticatedWirelessIndexRouteImport } from './routes/_authenticated/wireless/index'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -170,6 +171,12 @@ const AuthenticatedTorrentsIndexRoute =
     path: '/torrents/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedWirelessIndexRoute =
+  AuthenticatedWirelessIndexRouteImport.update({
+    id: '/wireless/',
+    path: '/wireless/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByFullPath {
   '/system/': typeof AuthenticatedSystemIndexRoute
   '/telegram/': typeof AuthenticatedTelegramIndexRoute
   '/torrents/': typeof AuthenticatedTorrentsIndexRoute
+  '/wireless/': typeof AuthenticatedWirelessIndexRoute
 }
 export interface FileRoutesByTo {
   '/tv': typeof TvRoute
@@ -222,6 +230,7 @@ export interface FileRoutesByTo {
   '/system': typeof AuthenticatedSystemIndexRoute
   '/telegram': typeof AuthenticatedTelegramIndexRoute
   '/torrents': typeof AuthenticatedTorrentsIndexRoute
+  '/wireless': typeof AuthenticatedWirelessIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -250,6 +259,7 @@ export interface FileRoutesById {
   '/_authenticated/system/': typeof AuthenticatedSystemIndexRoute
   '/_authenticated/telegram/': typeof AuthenticatedTelegramIndexRoute
   '/_authenticated/torrents/': typeof AuthenticatedTorrentsIndexRoute
+  '/_authenticated/wireless/': typeof AuthenticatedWirelessIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -278,6 +288,7 @@ export interface FileRouteTypes {
     | '/system/'
     | '/telegram/'
     | '/torrents/'
+    | '/wireless/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/tv'
@@ -304,6 +315,7 @@ export interface FileRouteTypes {
     | '/system'
     | '/telegram'
     | '/torrents'
+    | '/wireless'
   id:
     | '__root__'
     | '/_authenticated'
@@ -331,6 +343,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system/'
     | '/_authenticated/telegram/'
     | '/_authenticated/torrents/'
+    | '/_authenticated/wireless/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -522,6 +535,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTorrentsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/wireless/': {
+      id: '/_authenticated/wireless/'
+      path: '/wireless'
+      fullPath: '/wireless/'
+      preLoaderRoute: typeof AuthenticatedWirelessIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -542,6 +562,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemIndexRoute: typeof AuthenticatedSystemIndexRoute
   AuthenticatedTelegramIndexRoute: typeof AuthenticatedTelegramIndexRoute
   AuthenticatedTorrentsIndexRoute: typeof AuthenticatedTorrentsIndexRoute
+  AuthenticatedWirelessIndexRoute: typeof AuthenticatedWirelessIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -561,6 +582,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemIndexRoute: AuthenticatedSystemIndexRoute,
   AuthenticatedTelegramIndexRoute: AuthenticatedTelegramIndexRoute,
   AuthenticatedTorrentsIndexRoute: AuthenticatedTorrentsIndexRoute,
+  AuthenticatedWirelessIndexRoute: AuthenticatedWirelessIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

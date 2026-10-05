@@ -61,7 +61,10 @@ Cmnd_Alias SP_ADGUARD = /usr/bin/stat -c %s /var/lib/docker/volumes/adguardhome_
 Cmnd_Alias SP_MOUNT = /usr/bin/mount /mnt/hdd1tb, /usr/bin/mount /mnt/uploads1, /usr/bin/mount /mnt/uploads2, \
     /usr/bin/umount -l /mnt/hdd1tb, /usr/bin/umount -l /mnt/uploads1, /usr/bin/umount -l /mnt/uploads2
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT
+# Bluetooth из раздела «Беспроводные»: только точные команды bluetoothctl
+Cmnd_Alias SP_BT = /usr/bin/bluetoothctl power on, /usr/bin/bluetoothctl power off, /usr/bin/bluetoothctl --timeout 20 scan on
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT
 
 # Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)
