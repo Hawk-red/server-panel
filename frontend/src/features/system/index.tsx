@@ -4,7 +4,6 @@ import { Page } from '@/components/layout/page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Autostart } from './autostart'
 import { Cron } from './cron'
-import { Disks } from './disks'
 import { Logs } from './logs'
 import { Services } from './services'
 import { Updates } from './updates'
@@ -12,12 +11,11 @@ import { Updates } from './updates'
 // Графики (recharts) — отдельным чанком, грузятся только на вкладке «Ресурсы»
 const Resources = lazy(() => import('./resources').then((m) => ({ default: m.Resources })))
 
-export const SYSTEM_TABS = ['resources', 'disks', 'cron', 'autostart', 'services', 'logs', 'updates'] as const
+export const SYSTEM_TABS = ['resources', 'cron', 'autostart', 'services', 'logs', 'updates'] as const
 export type SystemTab = (typeof SYSTEM_TABS)[number]
 
 const LABELS: Record<SystemTab, string> = {
   resources: 'Ресурсы',
-  disks: 'Диски',
   cron: 'Cron',
   autostart: 'Автозагрузка',
   services: 'Службы',
@@ -28,7 +26,7 @@ const LABELS: Record<SystemTab, string> = {
 export function System({ tab, source }: { tab: SystemTab; source?: string }) {
   const navigate = useNavigate({ from: '/system/' })
   return (
-    <Page title='Система' description='CPU, память, температура, диски, расписания, службы и логи' layoutPage={tab === 'resources' ? 'system' : tab === 'disks' ? 'system-disks' : undefined}>
+    <Page title='Система' description='CPU, память, температура, расписания, службы и логи' layoutPage={tab === 'resources' ? 'system' : undefined}>
       <Tabs value={tab} onValueChange={(v) => navigate({ search: { tab: v as SystemTab } })}>
         <div className='-mx-4 overflow-x-auto px-4 pb-1'>
           <TabsList>
@@ -44,7 +42,6 @@ export function System({ tab, source }: { tab: SystemTab; source?: string }) {
               <Resources />
             </Suspense>
           )}</TabsContent>
-        <TabsContent value='disks'>{tab === 'disks' && <Disks />}</TabsContent>
         <TabsContent value='cron'>{tab === 'cron' && <Cron />}</TabsContent>
         <TabsContent value='autostart'>{tab === 'autostart' && <Autostart />}</TabsContent>
         <TabsContent value='services'>{tab === 'services' && <Services />}</TabsContent>

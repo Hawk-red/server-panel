@@ -3,6 +3,7 @@ import {
   BellRing,
   Bot,
   Container,
+  HardDrive,
   Cpu,
   DatabaseBackup,
   Download,
@@ -25,6 +26,7 @@ export const sidebarData: SidebarData = {
       items: [
         { title: 'Обзор', url: '/', icon: LayoutDashboard, color: 'text-brand' },
         { title: 'Система', url: '/system', icon: Cpu, color: 'text-info' },
+        { title: 'Диски', url: '/disks', icon: HardDrive, color: 'text-volume' },
         { title: 'Бэкапы', url: '/backups', icon: DatabaseBackup, color: 'text-volume' },
         { title: 'Уведомления', url: '/notifications', icon: BellRing, color: 'text-brand' },
       ],

@@ -26,6 +26,7 @@ import { NoData } from '@/components/no-data'
 import { type Block, blockId, SortableBlocks } from '@/components/sortable-blocks'
 import { Meter } from '@/components/meter'
 import { Value } from '@/components/value'
+import { Page } from '@/components/layout/page'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -563,6 +564,15 @@ function DiskCard({ d, rate, hist }: DiskCardProps) {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// Отдельный раздел «Диски» в главном меню: страница с шапкой, карточки перетаскиваются (layout «system-disks»)
+export function DisksPage() {
+  return (
+    <Page title='Диски' description='Состояние дисков, скорость I/O, заполнение и монтирование съёмных дисков' layoutPage='system-disks'>
+      <Disks />
+    </Page>
   )
 }
 

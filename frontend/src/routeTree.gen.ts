@@ -24,6 +24,7 @@ import { Route as AuthenticatedAdguardIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedAiIndexRouteImport } from './routes/_authenticated/ai/index'
 import { Route as AuthenticatedAuditIndexRouteImport } from './routes/_authenticated/audit/index'
 import { Route as AuthenticatedBackupsIndexRouteImport } from './routes/_authenticated/backups/index'
+import { Route as AuthenticatedDisksIndexRouteImport } from './routes/_authenticated/disks/index'
 import { Route as AuthenticatedDockerIndexRouteImport } from './routes/_authenticated/docker/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedInternetIndexRouteImport } from './routes/_authenticated/internet/index'
@@ -113,6 +114,11 @@ const AuthenticatedBackupsIndexRoute =
     path: '/backups/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDisksIndexRoute = AuthenticatedDisksIndexRouteImport.update({
+  id: '/disks/',
+  path: '/disks/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDockerIndexRoute =
   AuthenticatedDockerIndexRouteImport.update({
     id: '/docker/',
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/ai/': typeof AuthenticatedAiIndexRoute
   '/audit/': typeof AuthenticatedAuditIndexRoute
   '/backups/': typeof AuthenticatedBackupsIndexRoute
+  '/disks/': typeof AuthenticatedDisksIndexRoute
   '/docker/': typeof AuthenticatedDockerIndexRoute
   '/internet/': typeof AuthenticatedInternetIndexRoute
   '/media/': typeof AuthenticatedMediaIndexRoute
@@ -221,6 +228,7 @@ export interface FileRoutesByTo {
   '/ai': typeof AuthenticatedAiIndexRoute
   '/audit': typeof AuthenticatedAuditIndexRoute
   '/backups': typeof AuthenticatedBackupsIndexRoute
+  '/disks': typeof AuthenticatedDisksIndexRoute
   '/docker': typeof AuthenticatedDockerIndexRoute
   '/internet': typeof AuthenticatedInternetIndexRoute
   '/media': typeof AuthenticatedMediaIndexRoute
@@ -250,6 +258,7 @@ export interface FileRoutesById {
   '/_authenticated/ai/': typeof AuthenticatedAiIndexRoute
   '/_authenticated/audit/': typeof AuthenticatedAuditIndexRoute
   '/_authenticated/backups/': typeof AuthenticatedBackupsIndexRoute
+  '/_authenticated/disks/': typeof AuthenticatedDisksIndexRoute
   '/_authenticated/docker/': typeof AuthenticatedDockerIndexRoute
   '/_authenticated/internet/': typeof AuthenticatedInternetIndexRoute
   '/_authenticated/media/': typeof AuthenticatedMediaIndexRoute
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
     | '/ai/'
     | '/audit/'
     | '/backups/'
+    | '/disks/'
     | '/docker/'
     | '/internet/'
     | '/media/'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/ai'
     | '/audit'
     | '/backups'
+    | '/disks'
     | '/docker'
     | '/internet'
     | '/media'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
     | '/_authenticated/ai/'
     | '/_authenticated/audit/'
     | '/_authenticated/backups/'
+    | '/_authenticated/disks/'
     | '/_authenticated/docker/'
     | '/_authenticated/internet/'
     | '/_authenticated/media/'
@@ -465,6 +477,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBackupsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/disks/': {
+      id: '/_authenticated/disks/'
+      path: '/disks'
+      fullPath: '/disks/'
+      preLoaderRoute: typeof AuthenticatedDisksIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/docker/': {
       id: '/_authenticated/docker/'
       path: '/docker'
@@ -553,6 +572,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAiIndexRoute: typeof AuthenticatedAiIndexRoute
   AuthenticatedAuditIndexRoute: typeof AuthenticatedAuditIndexRoute
   AuthenticatedBackupsIndexRoute: typeof AuthenticatedBackupsIndexRoute
+  AuthenticatedDisksIndexRoute: typeof AuthenticatedDisksIndexRoute
   AuthenticatedDockerIndexRoute: typeof AuthenticatedDockerIndexRoute
   AuthenticatedInternetIndexRoute: typeof AuthenticatedInternetIndexRoute
   AuthenticatedMediaIndexRoute: typeof AuthenticatedMediaIndexRoute
@@ -573,6 +593,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAiIndexRoute: AuthenticatedAiIndexRoute,
   AuthenticatedAuditIndexRoute: AuthenticatedAuditIndexRoute,
   AuthenticatedBackupsIndexRoute: AuthenticatedBackupsIndexRoute,
+  AuthenticatedDisksIndexRoute: AuthenticatedDisksIndexRoute,
   AuthenticatedDockerIndexRoute: AuthenticatedDockerIndexRoute,
   AuthenticatedInternetIndexRoute: AuthenticatedInternetIndexRoute,
   AuthenticatedMediaIndexRoute: AuthenticatedMediaIndexRoute,
