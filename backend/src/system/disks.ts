@@ -24,7 +24,8 @@ export type DiskInfo = {
   free: number | null
   percent: number | null
   inFstab: boolean
-  state: 'mounted' | 'missing' | 'unmounted'
+  // stale — точка смонтирована, но диск не отвечает (ошибки I/O): чтение статистики не удалось
+  state: 'mounted' | 'stale' | 'missing' | 'unmounted'
   smart: Smart | null
 }
 
@@ -142,7 +143,7 @@ export async function listDisks(): Promise<DiskInfo[]> {
         free: usage?.free ?? null,
         percent: usage?.percent ?? null,
         inFstab: Boolean(fsEntry),
-        state: p.mountpoint ? 'mounted' : 'unmounted',
+        state: p.mountpoint ? (usage ? 'mounted' : 'stale') : 'unmounted',
         smart: cachedSmart(disk.path),
       })
     }

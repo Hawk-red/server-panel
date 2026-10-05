@@ -21,7 +21,7 @@ export type DiskInfo = {
   free: number | null
   percent: number | null
   inFstab: boolean
-  state: 'mounted' | 'missing' | 'unmounted'
+  state: 'mounted' | 'stale' | 'missing' | 'unmounted'
   smart: Smart | null
 }
 

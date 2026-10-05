@@ -7,6 +7,7 @@ import { summary as torrentSummary } from '../services/qbittorrent.js'
 import { listSeriesNames, querySeries, RANGES, type Range } from '../collector/store.js'
 import { listCron } from '../system/cron.js'
 import { listDisks, refreshAllSmart } from '../system/disks.js'
+import { MOUNTABLE, runMountAction, type MountAction } from '../system/mounts.js'
 import { getDiskIoHistory, getDiskIoLatest } from '../system/disk-io.js'
 import { listSources, readLog, type LogLevel } from '../system/logs.js'
 import { run } from '../exec.js'
@@ -223,6 +224,38 @@ export async function systemRoutes(app: FastifyInstance) {
     audit({ ip: req.clientIp, user: 'admin', action: 'disks.smart-refresh', result: 'ok' })
     return listDisks()
   })
+
+  // Монтирование съёмного диска: mount — отвалился/не смонтирован; remount — зависшее монтирование
+  app.post<{ Body: { mount: string; action: MountAction } }>(
+    '/api/system/disks/mount',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['mount', 'action'],
+          properties: { mount: { type: 'string', enum: [...MOUNTABLE] }, action: { type: 'string', enum: ['mount', 'remount'] } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { mount, action } = req.body
+      const disk = (await listDisks()).find((d) => d.mount === mount)
+      const allowed = action === 'remount' ? disk?.state === 'stale' : disk?.state === 'missing' || disk?.state === 'unmounted'
+      if (!allowed) {
+        const msg = action === 'remount' ? 'зависшее монтирование не найдено' : `диск уже смонтирован (состояние: ${disk?.state ?? 'нет в списке'})`
+        return reply.code(409).send({ message: msg })
+      }
+      try {
+        await runMountAction(mount, action)
+        audit({ ip: req.clientIp, user: 'admin', action: `disks.${action}`, target: mount, result: 'ok' })
+        return { ok: true }
+      } catch (e) {
+        const message = (e as Error).message
+        audit({ ip: req.clientIp, user: 'admin', action: `disks.${action}`, target: mount, result: 'error', details: { message } })
+        return reply.code(500).send({ message })
+      }
+    }
+  )
 
   app.get('/api/system/services', async () => listServices())
   app.post<{ Params: { unit: string; action: string } }>('/api/system/services/:unit/:action', async (req, reply) => {

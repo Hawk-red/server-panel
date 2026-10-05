@@ -6,6 +6,7 @@ import {
   CircleAlert,
   CircleCheck,
   CircleX,
+  Plug,
   Clock,
   type LucideIcon,
   Moon,
@@ -15,6 +16,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { AxiosError } from 'axios'
 import { api } from '@/lib/api'
 import { formatBytes, formatRelative } from '@/lib/format'
 import { percentLevel, tempLevel } from '@/lib/levels'
@@ -25,6 +27,7 @@ import { type Block, blockId, SortableBlocks } from '@/components/sortable-block
 import { Meter } from '@/components/meter'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 // Опрос и точки на графике — оба раз в IO_POLL_MS (1.5 с), чтобы цифры были живыми. Пустой график при
@@ -136,6 +139,7 @@ function Pill({ level, icon: Icon, title, children }: { level: PillLevel; icon: 
 // Красим и подписываем честно: спящий диск — серый (unknown), а не зелёный.
 function diskHealth(d: DiskInfo): { level: PillLevel; icon: LucideIcon; label: string; title: string } {
   if (d.state === 'missing') return { level: 'danger', icon: CircleAlert, label: 'Отвалился', title: 'Диск из fstab не подключён' }
+  if (d.state === 'stale') return { level: 'danger', icon: CircleAlert, label: 'Не отвечает', title: 'Точка смонтирована, но диск не отвечает (ошибки I/O)' }
   const s = d.smart
   if (!s) return { level: 'unknown', icon: ShieldQuestion, label: 'Нет данных', title: 'SMART ещё не опрашивался' }
   if (s.status === 'failing') return { level: 'danger', icon: CircleAlert, label: 'Критично', title: 'SMART: диск неисправен' }
@@ -406,6 +410,60 @@ function DiskTechGridV2({ d }: { d: DiskInfo }) {
   )
 }
 
+// Кнопка монтирования: отвалившийся/не смонтированный диск — «Примонтировать»;
+// зависшее монтирование (диск не отвечает) — «Отцепить и примонтировать». Точки — только из белого списка на сервере.
+const MOUNTABLE_MOUNTS = ['/mnt/hdd1tb', '/mnt/uploads1', '/mnt/uploads2']
+function MountBar({ d }: { d: DiskInfo }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const remount = d.state === 'stale'
+  const mountable = d.mount != null && MOUNTABLE_MOUNTS.includes(d.mount)
+  const mutation = useMutation({
+    mutationFn: async () => (await api.post('/system/disks/mount', { mount: d.mount, action: remount ? 'remount' : 'mount' })).data,
+    onSuccess: () => {
+      toast.success(`${d.mount}: ${remount ? 'переподключено' : 'смонтировано'}`)
+      setOpen(false)
+      qc.invalidateQueries({ queryKey: ['disks'] })
+    },
+    onError: (e) => {
+      toast.error(`${d.mount}: ${(e instanceof AxiosError && e.response?.data?.message) || 'не удалось смонтировать'}`)
+      setOpen(false)
+      qc.invalidateQueries({ queryKey: ['disks'] })
+    },
+  })
+  if (d.state === 'mounted' || !mountable) return null
+  return (
+    <div className='rounded-md border border-danger/40 bg-danger/5 p-2.5 text-sm'>
+      <p className='mb-2 text-xs text-muted-foreground'>
+        {remount
+          ? 'Диск числится смонтированным, но не отвечает. Сначала отцепить зависшее монтирование, затем смонтировать заново.'
+          : d.state === 'missing'
+            ? 'Диск из fstab не найден в системе. Если он подключён, попробуйте смонтировать.'
+            : 'Диск найден, но не смонтирован.'}
+      </p>
+      <Button size='sm' variant={remount ? 'destructive' : 'outline'} onClick={() => setOpen(true)}>
+        <Plug /> {remount ? 'Отцепить и примонтировать' : 'Примонтировать'}
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={(o) => !o && !mutation.isPending && setOpen(false)}
+        title={`${remount ? 'Переподключить' : 'Примонтировать'} ${d.mount}?`}
+        desc={
+          remount ? (
+            <p>Монтирование {d.mount} будет отцеплено ленивым umount (процессы, которые держат его открытым, продолжат работать со старой копией), затем смонтировано заново по записи fstab.</p>
+          ) : (
+            <p>Монтирование по записи fstab ({d.mount}). Если диск не подключён, команда завершится ошибкой.</p>
+          )
+        }
+        confirmText={remount ? 'Переподключить' : 'Примонтировать'}
+        destructive={remount}
+        isLoading={mutation.isPending}
+        handleConfirm={() => mutation.mutate()}
+      />
+    </div>
+  )
+}
+
 type DiskCardProps = { d: DiskInfo; rate?: DiskIoRate; hist?: { read: number[]; write: number[] } }
 
 // Единый вид карточки диска: крупная цифра объёма, индикатор здоровья (честно отличает «спит» от «ок» —
@@ -432,7 +490,11 @@ function DiskCard({ d, rate, hist }: DiskCardProps) {
           <Pill level={health.level} icon={health.icon} title={health.title}>
             {health.label}
           </Pill>
-          {d.state === 'missing' ? (
+          {d.state === 'stale' ? (
+            <Pill level='danger' icon={CircleX}>
+              зависло
+            </Pill>
+          ) : d.state === 'missing' ? (
             <Pill level='danger' icon={CircleX}>
               отвалился
             </Pill>
@@ -448,6 +510,7 @@ function DiskCard({ d, rate, hist }: DiskCardProps) {
         </div>
       </CardHeader>
       <CardContent className='space-y-2.5 px-4'>
+        <MountBar d={d} />
         {/* Блок «Состояние»: крупная цифра без подписи (и так читается как занятое), процент нейтральным
             цветом рядом (не зелёным — зелёный занят статусом монтирования/здоровья), ниже бара — одна мелкая
             серая строка со свободным местом */}

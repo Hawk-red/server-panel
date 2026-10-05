@@ -57,7 +57,11 @@ Cmnd_Alias SP_UNITS = /usr/bin/systemctl start nginx.service, \
 # Этап 3: размер журнала запросов AdGuard (файл в volume Docker, только root)
 Cmnd_Alias SP_ADGUARD = /usr/bin/stat -c %s /var/lib/docker/volumes/adguardhome_work/_data/data/querylog.json
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD
+# Монтирование съёмных дисков из раздела «Диски»: только точные команды (без шаблонов)
+Cmnd_Alias SP_MOUNT = /usr/bin/mount /mnt/hdd1tb, /usr/bin/mount /mnt/uploads1, /usr/bin/mount /mnt/uploads2, \
+    /usr/bin/umount -l /mnt/hdd1tb, /usr/bin/umount -l /mnt/uploads1, /usr/bin/umount -l /mnt/uploads2
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT
 
 # Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)
