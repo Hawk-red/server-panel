@@ -1,5 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import { CircleAlert, CircleCheck, CircleHelp, Clock, Database, HardDrive, TriangleAlert } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AxiosError } from 'axios'
+import { CircleAlert, CircleCheck, CircleHelp, Clock, Database, HardDrive, RefreshCw, Smartphone, TriangleAlert } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import type { BackupItem } from '@/features/infra-types'
@@ -8,6 +11,9 @@ import { type Block, blockId, SortableBlocks } from '@/components/sortable-block
 import { NoData } from '@/components/no-data'
 import { Value } from '@/components/value'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { StatusBadge } from '@/components/status-badge'
 
 function ageText(sec: number | null) {
   if (sec == null) return '—'
@@ -45,6 +51,109 @@ const SYNC_STATUS = {
   warnings: { text: 'с предупреждениями', cls: 'text-warn-foreground' },
   'running-or-failed': { text: 'не завершён или упал', cls: 'text-danger-foreground' },
 } as const
+
+type IpadJob = {
+  status: 'idle' | 'running' | 'ok' | 'retry' | 'error'
+  startedAt: number | null
+  finishedAt: number | null
+  exitCode: number | null
+  message: string
+  tail: string[]
+}
+
+// Запуск бэкапа iPad по кнопке: скрипт на MacBook по SSH. Статус опрашивается, пока идёт бэкап.
+// «Повторим позже» (iPad спит / не в Wi-Fi) — не ошибка, показываем нейтрально.
+function IpadRunner() {
+  const qc = useQueryClient()
+  const [confirm, setConfirm] = useState(false)
+  const job = useQuery({
+    queryKey: ['ipad-job'],
+    queryFn: async () => (await api.get<IpadJob>('/backups/ipad/job')).data,
+    refetchInterval: (q) => (q.state.data?.status === 'running' ? 3000 : false),
+  })
+  const j = job.data
+  const running = j?.status === 'running'
+  // Пока идёт бэкап — показываем «прошло N мин»; тикаем раз в секунду
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [running])
+  // Когда бэкап закончился — обновляем карточку бэкапов (новая дата последней копии)
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    if (running) wasRunning.current = true
+    else if (wasRunning.current) {
+      wasRunning.current = false
+      qc.invalidateQueries({ queryKey: ['backups'] })
+    }
+  }, [running, qc])
+
+  const start = useMutation({
+    mutationFn: async () => (await api.post<IpadJob>('/backups/ipad/run', {})).data,
+    onSuccess: () => {
+      setConfirm(false)
+      qc.invalidateQueries({ queryKey: ['ipad-job'] })
+    },
+    onError: (e) => {
+      setConfirm(false)
+      const msg = (e instanceof AxiosError && e.response?.data?.message) || 'не удалось запустить'
+      toast.error(msg)
+    },
+  })
+
+  const elapsedMin = j?.startedAt ? Math.max(0, Math.floor((now - j.startedAt) / 60_000)) : 0
+  return (
+    <div className='space-y-2 border-t pt-3'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div className='text-sm font-medium'>Запуск</div>
+        <Button size='sm' variant='outline' disabled={running || start.isPending} onClick={() => setConfirm(true)}>
+          <Smartphone /> Запустить бэкап iPad
+        </Button>
+      </div>
+      {j && (
+        <div className='space-y-1 text-sm'>
+          {j.status === 'idle' && <span className='text-muted-foreground'>{j.message}</span>}
+          {j.status === 'running' && (
+            <div className='flex items-center gap-2'>
+              <RefreshCw className='size-4 animate-spin text-info' aria-hidden='true' />
+              <span>
+                Бэкап идёт{elapsedMin > 0 ? `: ${elapsedMin} мин` : ''}
+              </span>
+            </div>
+          )}
+          {j.status === 'ok' && <StatusBadge status='ok' label='готово' />}
+          {j.status === 'retry' && (
+            <div className='flex items-start gap-2 text-muted-foreground'>
+              <Clock className='mt-0.5 size-4 shrink-0' aria-hidden='true' />
+              <span className='font-medium text-foreground'>Ждёт iPad — повторит позже</span>
+            </div>
+          )}
+          {j.status === 'error' && <StatusBadge status='error' label={j.exitCode != null ? `сбой (код ${j.exitCode})` : 'сбой'} />}
+          {j.status !== 'idle' && j.status !== 'running' && j.message && <p className='text-xs text-muted-foreground'>{j.message}</p>}
+          {j.status === 'running' && <p className='text-xs text-muted-foreground'>{j.message}</p>}
+          {j.finishedAt && j.status !== 'running' && <p className='text-xs text-muted-foreground'>завершён {formatDateTime(j.finishedAt)}</p>}
+          {j.status === 'error' && j.tail.length > 0 && (
+            <details className='text-xs'>
+              <summary className='cursor-pointer text-muted-foreground'>Вывод ssh</summary>
+              <pre className='mt-1 max-h-40 overflow-auto rounded bg-muted p-2 whitespace-pre-wrap'>{j.tail.join('\n')}</pre>
+            </details>
+          )}
+        </div>
+      )}
+      <ConfirmDialog
+        open={confirm}
+        onOpenChange={(o) => !o && !start.isPending && setConfirm(false)}
+        title='Запустить бэкап iPad?'
+        desc='Скрипт на MacBook запустится сейчас и сделает копию, даже если сегодня она уже была. iPad должен быть в Wi-Fi и разблокирован; если попросит код, введите его на iPad. Бэкап может идти до 2 часов.'
+        confirmText='Запустить'
+        isLoading={start.isPending}
+        handleConfirm={() => start.mutate()}
+      />
+    </div>
+  )
+}
 
 function BackupCard({ b }: { b: BackupItem }) {
   const sync = b.extra?.sync
@@ -123,6 +232,7 @@ function BackupCard({ b }: { b: BackupItem }) {
             )}
           </>
         )}
+        {b.id === 'ipad' && <IpadRunner />}
       </CardContent>
     </Card>
   )

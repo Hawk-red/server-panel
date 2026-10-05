@@ -5,6 +5,7 @@ import { requireAuth } from '../auth.js'
 import { errText } from '../mask.js'
 import * as adguard from '../services/adguard.js'
 import { backupsOverview } from '../services/backups.js'
+import { ipadJobState, startIpadBackup } from '../services/ipad-backup.js'
 import { getDeadlineConfig, listDeadlines, refreshDomains, saveDeadlineConfig, type DeadlineConfig } from '../services/deadlines.js'
 import * as docker from '../services/docker.js'
 import { exchangeState } from '../services/exchange.js'
@@ -89,6 +90,25 @@ export async function infraRoutes(app: FastifyInstance) {
   app.get('/api/exchange', async () => exchangeState())
 
   app.get('/api/backups', async () => ({ items: await backupsOverview() }))
+
+  // Бэкап iPad по кнопке: запуск скрипта на MacBook по SSH; состояние опрашивает страница
+  app.get('/api/backups/ipad/job', async () => ipadJobState())
+  app.post('/api/backups/ipad/run', async (req, reply) => {
+    try {
+      startIpadBackup()
+    } catch (e) {
+      return reply.code((e as { statusCode?: number }).statusCode ?? 400).send({ message: (e as Error).message })
+    }
+    audit({ ...who(req), action: 'backups.ipad.run', target: 'macbook', result: 'ok' })
+    // Итог пишем в журнал отдельной записью, когда ssh завершится
+    const watch = setInterval(() => {
+      const j = ipadJobState()
+      if (j.status === 'running') return
+      clearInterval(watch)
+      audit({ ...who(req), action: 'backups.ipad.result', target: 'macbook', details: { exitCode: j.exitCode, status: j.status }, result: j.status === 'error' ? 'error' : 'ok' })
+    }, 2000)
+    return reply.code(202).send(ipadJobState())
+  })
 
   app.get('/api/deadlines', async () => ({ items: await listDeadlines(), config: getDeadlineConfig() }))
   app.put<{ Body: DeadlineConfig }>(
