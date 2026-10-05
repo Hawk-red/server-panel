@@ -27,7 +27,8 @@ import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
 import { startUpdates } from './services/updates.js'
-import { externalEnabled } from './security.js'
+import { externalPolicy } from './externalPolicy.js'
+import { externalEnabled, totpEnabled } from './security.js'
 import { securityRoutes } from './routes/security.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
@@ -59,14 +60,17 @@ app.decorateRequest('clientIp', '')
 app.addHook('onRequest', async (req, reply) => {
   req.clientIp = normalizeIp(req.ip)
   const viaProxy = normalizeIp(req.socket.remoteAddress) === '127.0.0.1'
-  const deny = () => {
+  const deny = (text = 'Доступ только из локальной сети и VPN') => {
     req.log.warn({ ip: req.clientIp, url: req.url }, 'запрос из запрещённой сети отклонён')
-    return reply.code(403).type('text/plain; charset=utf-8').send('Доступ только из локальной сети и VPN')
+    return reply.code(403).type('text/plain; charset=utf-8').send(text)
   }
   if (viaProxy && !isInternal(req)) {
-    if (!externalEnabled()) return deny()
+    if (!externalEnabled()) return deny(totpEnabled() ? undefined : 'Сначала включите двухфакторный вход из домашней сети')
   } else if (!isAllowed(req.clientIp, config.allowedNets)) return deny()
 })
+
+// Что разрешено снаружи и проверка Origin у запросов с изменениями
+app.addHook('onRequest', externalPolicy)
 
 // Страховка: ни один JSON-ответ API не уходит с токеном внутри (текст ошибки, журнал и т.п.)
 app.addHook('onSend', async (req, _reply, payload) => {

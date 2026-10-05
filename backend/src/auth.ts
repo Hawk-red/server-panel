@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { audit } from './audit.js'
 import { config } from './config.js'
 import { db } from './db.js'
+import { notifySecurity } from './notifier.js'
 import { isInternal, networkOf } from './net.js'
 import { consumeSecondFactor, peekSecondFactor, totpEnabled } from './security.js'
 
@@ -26,7 +27,11 @@ const q = {
   touchSession: db.prepare(`UPDATE sessions SET last_seen = ?, ip = ? WHERE id_hash = ?`),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE id_hash = ?`),
   countFailures: db.prepare(`SELECT COUNT(*) AS n, MIN(ts) AS first FROM login_failures WHERE ip = ? AND ts > ?`),
-  addFailure: db.prepare(`INSERT INTO login_failures (ip, ts) VALUES (?, ?)`),
+  addFailure: db.prepare(`INSERT INTO login_failures (ip, ts, ext) VALUES (?, ?, ?)`),
+  countExtFailures: db.prepare(`SELECT COUNT(*) AS n FROM login_failures WHERE ext = 1 AND ts > ?`),
+  getBlock: db.prepare(`SELECT until, level, updated_at FROM ip_blocks WHERE ip = ?`),
+  setBlock: db.prepare(`INSERT INTO ip_blocks (ip, until, level, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(ip) DO UPDATE SET until = excluded.until, level = excluded.level, updated_at = excluded.updated_at`),
+  cleanupBlocks: db.prepare(`DELETE FROM ip_blocks WHERE updated_at <= ?`),
   clearFailures: db.prepare(`DELETE FROM login_failures WHERE ip = ?`),
   cleanup: db.prepare(`DELETE FROM sessions WHERE expires_at <= ?`),
   cleanupFailures: db.prepare(`DELETE FROM login_failures WHERE ts <= ?`),
@@ -61,7 +66,38 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
 export function cleanupAuth() {
   q.cleanup.run(Date.now())
   q.cleanupFailures.run(Date.now() - config.loginWindowMin * 60 * 1000)
+  q.cleanupBlocks.run(Date.now() - 7 * DAY)
   q.cleanupAudit.run(Date.now() - 365 * DAY) // журнал действий хранится год
+}
+
+
+// ---- Защита от подбора (только внешние адреса; внутренних блокировки не касаются) ----
+const BLOCK_MINUTES = [15, 60, 360, 1440] // 15 мин → 1 ч → 6 ч → 24 ч (потолок)
+const EXTERNAL_GLOBAL_FAILURES = 30 // неудач за окно со всех внешних адресов вместе → внешние входы закрываются до конца окна
+const NOTIFY_BLOCK_EVERY = 10 * 60 * 1000
+const lastBlockNotice = new Map<string, number>()
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const failDelay = () => sleep(300 + Math.random() * 500) // небольшая задержка после неудачи
+
+const fmtMsk = (ts: number) => new Date(ts).toLocaleString('ru-RU')
+
+function activeBlock(ip: string): { until: number } | null {
+  const b = q.getBlock.get(ip) as { until: number } | undefined
+  return b && b.until > Date.now() ? b : null
+}
+
+// Блокировка внешнего IP; повторные блокировки (в пределах 7 суток) растут
+function blockIp(ip: string) {
+  const prev = q.getBlock.get(ip) as { level: number; updated_at: number } | undefined
+  const level = prev && prev.updated_at > Date.now() - 7 * DAY ? Math.min(prev.level + 1, BLOCK_MINUTES.length - 1) : 0
+  const until = Date.now() + BLOCK_MINUTES[level] * 60_000
+  q.setBlock.run(ip, until, level, Date.now())
+  q.clearFailures.run(ip)
+  audit({ ip, action: 'auth.block', result: 'denied', details: { where: 'external', minutes: BLOCK_MINUTES[level], level } })
+  if (Date.now() - (lastBlockNotice.get(ip) ?? 0) > NOTIFY_BLOCK_EVERY) {
+    lastBlockNotice.set(ip, Date.now())
+    void notifySecurity(`🚫 Панель: заблокирован IP ${ip} на ${BLOCK_MINUTES[level]} мин (подбор пароля или кода). ${fmtMsk(Date.now())}`)
+  }
 }
 
 const GENERIC_FAIL = 'Неверный пароль или код'
@@ -115,6 +151,19 @@ export async function authRoutes(app: FastifyInstance) {
       if (!config.passwordHash) {
         return reply.code(503).send({ message: 'Пароль панели не задан (npm run set-password)' })
       }
+      if (external) {
+        const blk = activeBlock(ip)
+        if (blk) {
+          const waitMin = Math.max(1, Math.ceil((blk.until - Date.now()) / 60000))
+          audit({ ip, action: 'auth.login', result: 'denied', details: { reason: 'blocked', where } })
+          return reply.code(429).header('Retry-After', String(waitMin * 60)).send({ message: `Слишком много попыток. Повторите через ${waitMin} мин.` })
+        }
+        const { n: total } = q.countExtFailures.get(windowStart) as { n: number }
+        if (total >= EXTERNAL_GLOBAL_FAILURES) {
+          audit({ ip, action: 'auth.login', result: 'denied', details: { reason: 'external-global-limit', where } })
+          return reply.code(429).header('Retry-After', '900').send({ message: 'Слишком много неудачных попыток входа снаружи. Повторите позже.' })
+        }
+      }
       // Снаружи — никогда только по паролю: без включённой 2FA внешний вход закрыт
       if (external && !totpEnabled()) {
         audit({ ip, action: 'auth.login', result: 'denied', details: { reason: 'no-2fa', where } })
@@ -125,14 +174,17 @@ export async function authRoutes(app: FastifyInstance) {
       const passOk = await verify(config.passwordHash, String(req.body.password)).catch(() => false)
       const factor = external ? peekSecondFactor(String(req.body.code ?? '')) : null
       if (!passOk || (external && !factor)) {
-        q.addFailure.run(ip, Date.now())
+        q.addFailure.run(ip, Date.now(), external ? 1 : 0)
         audit({ ip, action: 'auth.login', result: 'denied', details: { reason: external ? 'bad-credentials' : 'bad-password', where } })
+        if (external && (q.countFailures.get(ip, windowStart) as { n: number }).n >= config.loginMaxFailures) blockIp(ip)
+        await failDelay()
         return reply.code(401).send({ message: external ? GENERIC_FAIL : 'Неверный пароль' })
       }
       // Код гасится только после верного пароля; параллельный повтор того же кода не пройдёт
       if (external && !consumeSecondFactor(factor!)) {
-        q.addFailure.run(ip, Date.now())
+        q.addFailure.run(ip, Date.now(), 1)
         audit({ ip, action: 'auth.login', result: 'denied', details: { reason: 'code-reused', where } })
+        await failDelay()
         return reply.code(401).send({ message: GENERIC_FAIL })
       }
 
@@ -143,6 +195,7 @@ export async function authRoutes(app: FastifyInstance) {
       const expiresAt = now + (external ? config.externalSessionHours * 60 * 60 * 1000 : config.sessionDays * DAY)
       q.insertSession.run(sha256(token), now, expiresAt, now, ip, String(req.headers['user-agent'] ?? '').slice(0, 300), where, external ? 1 : 0)
       audit({ ip, user: USER, action: 'auth.login', result: 'ok', details: { where, factor: factor?.kind ?? null } })
+      if (external) void notifySecurity(`🔐 Вход в панель из интернета: IP ${ip}, ${fmtMsk(now)}`)
       return reply
         .setCookie(SESSION_COOKIE, token, {
           path: '/',
@@ -186,7 +239,8 @@ export async function confirmPanelPassword(ip: string, password: string): Promis
   if (!config.passwordHash) return { ok: false, status: 503, message: 'Пароль панели не задан' }
   const ok = await verify(config.passwordHash, password).catch(() => false)
   if (!ok) {
-    q.addFailure.run(ip, Date.now())
+    q.addFailure.run(ip, Date.now(), 0)
+    await failDelay()
     return { ok: false, status: 401, message: 'Неверный пароль' }
   }
   q.clearFailures.run(ip)

@@ -115,6 +115,9 @@ function remember(entry: Sent) {
   setSetting('notify.sent', list.slice(0, 50))
 }
 
+// Сообщение о безопасности (внешний вход, блокировка IP) уходит сразу, минуя тихие часы
+export const notifySecurity = (text: string) => send(text, true)
+
 async function send(text: string, urgent: boolean) {
   const s = getNotifySettings()
   if (!s.enabled || !s.chatId || !config.notifyToken) return

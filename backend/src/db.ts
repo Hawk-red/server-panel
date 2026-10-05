@@ -107,6 +107,16 @@ const migrations: string[] = [
   ALTER TABLE sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'internal';
   ALTER TABLE sessions ADD COLUMN second_factor INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  -- Защита от подбора снаружи: неудачи с пометкой «внешний» и блокировки IP с ростом срока
+  ALTER TABLE login_failures ADD COLUMN ext INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE ip_blocks (
+    ip         TEXT PRIMARY KEY,
+    until      INTEGER NOT NULL,
+    level      INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number
