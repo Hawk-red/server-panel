@@ -35,7 +35,7 @@ function PathRow({ label, f }: { label: string; f: FileInfo }) {
       <dt className='text-muted-foreground'>{label}</dt>
       <dd className='min-w-0'>
         <Value kind='address' value={f.path} className='break-all' />
-        <span className='ms-2 text-xs text-muted-foreground'>
+        <span className='kv-note ms-2 text-xs text-muted-foreground'>
           {f.missing ? 'нет файла' : !f.access ? 'нет доступа' : f.mtime ? <>изменён <Value kind='ago' value={f.mtime} /></> : null}
         </span>
       </dd>
@@ -300,25 +300,26 @@ function BotCard({ b, alertDays, onAlertDays }: { b: BotInfo; alertDays: number;
   const panelLabel = !pa ? '' : !pa.tokenSet ? 'нет токена' : pa.tokenConflict ? 'токен занят' : !tg?.username ? 'нет связи' : !pa.chatSet ? 'нет чата' : !pa.enabled ? 'отправка выключена' : 'в норме'
   return (
     <Card className='gap-3'>
-      <CardHeader className='flex flex-row items-start gap-3'>
-        <ServiceIcon slug='telegram' className='size-10 shrink-0' />
-        <div className='min-w-0 flex-1'>
-          <CardTitle className='text-base'>{b.title}</CardTitle>
-          <p className='text-xs text-muted-foreground'>{b.description}</p>
+      {/* Классы bot-*: на телефоне (index.css) шапка перестраивается — иконка, название и статус в одну строку, бейдж и описание под ними */}
+      <CardHeader className='bot-head flex flex-row items-start gap-3'>
+        <ServiceIcon slug='telegram' className='bot-icon size-10 shrink-0' />
+        <div className='bot-titles min-w-0 flex-1'>
+          <CardTitle className='bot-title text-base'>{b.title}</CardTitle>
+          <p className='bot-desc text-xs text-muted-foreground'>{b.description}</p>
         </div>
         {embedded ? (
-          <div className='flex flex-col items-end gap-1'>
-            <StatusBadge status={panelStatus} label={panelLabel} />
-            <Badge variant='outline'>встроенный модуль панели</Badge>
+          <div className='bot-right flex flex-col items-end gap-1'>
+            <StatusBadge status={panelStatus} label={panelLabel} className='bot-status' />
+            <Badge variant='outline' className='bot-embedded'>встроенный модуль панели</Badge>
           </div>
         ) : svc ? (
-          <StatusBadge status={unitStatus(svc.active)} label={svc.active === 'active' ? undefined : svc.active} />
+          <StatusBadge status={unitStatus(svc.active)} label={svc.active === 'active' ? undefined : svc.active} className='bot-status' />
         ) : (
           <NoData />
         )}
       </CardHeader>
       <CardContent className='space-y-4 text-sm'>
-        <div className='flex flex-wrap gap-2'>
+        <div className='bot-links flex flex-wrap gap-2'>
           {tg?.username ? (
             <Button size='sm' asChild>
               <a href={`https://t.me/${tg.username}`} target='_blank' rel='noreferrer'>

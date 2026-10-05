@@ -211,3 +211,77 @@ html[data-view='phone'] [data-slot='dialog-header'],
 html[data-view='phone'] [data-slot='alert-dialog-header'] {
   text-align: start;
 }
+
+/* ===== Телефон: пары «подпись — значение» (<dl> с двумя колонками grid-cols-[auto_1fr]) =====
+   Общее правило для всех страниц (Telegram, Docker/службы-карточки, SSH и доступ, сеть, диски, Git, журнал…):
+   подпись мелко сверху, значение под ней на всю ширину, длинные пути и команды переносятся (по слэшам и словам). */
+html[data-view='phone'] dl[class*='grid-cols-[auto_1fr]'] {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 0;
+}
+html[data-view='phone'] dl[class*='grid-cols-[auto_1fr]'] > dt {
+  margin-top: 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+html[data-view='phone'] dl[class*='grid-cols-[auto_1fr]'] > dt:first-child {
+  margin-top: 0;
+}
+html[data-view='phone'] dl[class*='grid-cols-[auto_1fr]'] > dd {
+  min-width: 0;
+  margin-top: 0.1rem;
+  overflow-wrap: anywhere;
+}
+html[data-view='phone'] dl[class*='grid-cols-[auto_1fr]'] .font-mono,
+html[data-view='phone'] dl[class*='grid-cols-[auto_1fr]'] code {
+  font-size: 0.8125em;
+}
+html[data-view='phone'] dl[class*='grid-cols-[auto_1fr]'] .break-all {
+  word-break: normal; /* вместо break-all: переносить по слэшам и словам, а посреди слова — только если иначе не влезает */
+  overflow-wrap: anywhere;
+}
+/* пометка «изменён N минут назад» — отдельной мелкой строкой под значением */
+html[data-view='phone'] .kv-note {
+  display: block;
+  margin-inline-start: 0;
+}
+
+/* ===== Телефон: карточка Telegram-бота ===== */
+html[data-view='phone'] .bot-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0;
+}
+html[data-view='phone'] .bot-titles,
+html[data-view='phone'] .bot-right {
+  display: contents;
+}
+html[data-view='phone'] .bot-icon {
+  grid-area: 1 / 1;
+}
+html[data-view='phone'] .bot-title {
+  grid-area: 1 / 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+html[data-view='phone'] .bot-status {
+  grid-area: 1 / 3;
+  justify-self: end;
+  white-space: nowrap;
+}
+html[data-view='phone'] .bot-embedded {
+  grid-area: 2 / 1 / 3 / -1;
+  justify-self: start;
+  margin-top: 0.5rem;
+}
+html[data-view='phone'] .bot-desc {
+  grid-area: 3 / 1 / 4 / -1;
+  margin-top: 0.5rem;
+}
+/* кнопка «@имя_бота» и ссылки — на всю ширину карточки */
+html[data-view='phone'] .bot-links > * {
+  flex: 1 1 100%;
+  justify-content: center;
+}
