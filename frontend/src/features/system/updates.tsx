@@ -176,10 +176,12 @@ export function UpdatesPage() {
 
 export function Updates() {
   const qc = useQueryClient()
+  // Во время установки список обновляется раз в минуту, иначе — раз в 5 минут
+  const [installing, setInstalling] = useState(false)
   const { data, isError } = useQuery({
     queryKey: ['system-updates'],
     queryFn: async () => (await api.get<UpdatesSnapshot>('/system/updates')).data,
-    refetchInterval: 5 * 60_000,
+    refetchInterval: installing ? 60_000 : 5 * 60_000,
   })
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -198,6 +200,8 @@ export function Updates() {
   const names = new Set(allNames)
   // Выбор держим только для пакетов, которые ещё в списке обновлений
   const pickedNow = [...selected].filter((n) => names.has(n))
+  // Пакеты, которые apt уже настроил (строки «Setting up …» в журнале): их помечаем как готовые
+  const doneNames = new Set(lines.flatMap((l) => { const m = l.match(/^Setting up (\S+)/); return m ? [m[1].replace(/:.*$/, '')] : [] }))
 
   // Опрос журнала задачи: новые строки дописываются, пока статус running. При открытии страницы
   // показывается последняя задача, если она была.
@@ -213,8 +217,14 @@ export function Updates() {
           setLines((prev) => [...prev, ...r.lines])
           offsetRef.current = r.offset
         }
-        if (r.status === 'running') timer = setTimeout(tick, 1500)
-        else qc.invalidateQueries({ queryKey: ['system-updates'] })
+        if (r.status === 'running') {
+          setInstalling(true) // страница открыта во время установки — тоже обновляем список почаще
+          timer = setTimeout(tick, 1500)
+        }
+        else {
+          setInstalling(false)
+          qc.invalidateQueries({ queryKey: ['system-updates'] })
+        }
       } catch (e) {
         // 404 — задач ещё не было: это нормально, ничего не показываем
         if (stopped || (e instanceof AxiosError && e.response?.status === 404)) return
@@ -239,6 +249,7 @@ export function Updates() {
       setNow(Date.now())
       setJob({ id: 'pending', mode: vars.mode, packages: vars.packages, status: 'running', exitCode: null, startedAt: Date.now(), finishedAt: null, lines: [], offset: 0, truncated: false })
       setJobKey((k) => k + 1)
+      setInstalling(true)
       setTimeout(() => jobRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
       toast.success('Установка запущена')
     },
@@ -327,7 +338,7 @@ export function Updates() {
             <CardTitle className='flex items-center gap-2 text-sm font-medium'>
               <PackageCheck className='size-4 text-ok' /> apt-пакеты
             </CardTitle>
-            <span className='text-xs text-muted-foreground'>{apt?.error ? 'ошибка проверки' : apt?.checkedAt ? `проверено ${formatRelative(apt.checkedAt)}` : 'проверяется…'}</span>
+            <span className='text-xs text-muted-foreground'>{installing ? `установлено ${doneNames.size} из ${allNames.length}` : apt?.error ? 'ошибка проверки' : apt?.checkedAt ? `проверено ${formatRelative(apt.checkedAt)}` : 'проверяется…'}</span>
           </CardHeader>
           <CardContent className='space-y-3'>
             {apt?.error && <NoData reason={apt.error} />}
@@ -357,12 +368,14 @@ export function Updates() {
                 <ul className='divide-y rounded-lg border'>
                   {apt!.packages.map((p) => {
                     const on = selected.has(p.name)
+                    const done = doneNames.has(p.name)
                     return (
-                      <li key={p.name} className={cn('flex items-start gap-3 px-3 py-2.5', on && 'bg-primary/5')}>
+                      <li key={p.name} className={cn('flex items-start gap-3 px-3 py-2.5', on && 'bg-primary/5', done && 'opacity-50')}>
                         <Checkbox className='mt-1' checked={on} onCheckedChange={() => toggle(p.name)} aria-label={`выбрать ${p.name}`} disabled={running} />
                         <div className={cn('min-w-0 flex-1', !running && 'cursor-pointer')} onClick={() => !running && toggle(p.name)}>
                           <div className='flex flex-wrap items-center gap-2'>
-                            <span className='font-medium break-all'>{p.name}</span>
+                            <span className={cn('font-medium break-all', done && 'line-through')}>{p.name}</span>
+                            {done && <Badge variant='outline' className='text-[10px] text-ok-foreground'>установлен</Badge>}
                             {p.security && (
                               <Badge variant='destructive' className='text-[10px]'>
                                 security

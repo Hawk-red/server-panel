@@ -128,3 +128,22 @@ export async function authRoutes(app: FastifyInstance) {
     expiresAt: new Date(req.session!.expiresAt).toISOString(),
   }))
 }
+
+// Повторная проверка пароля перед опасным действием (например, перезагрузка). Использует тот же лимит
+// неудачных попыток, что и вход: перебор пароля здесь так же ограничен.
+export async function confirmPanelPassword(ip: string, password: string): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  const windowStart = Date.now() - config.loginWindowMin * 60 * 1000
+  const { n, first } = q.countFailures.get(ip, windowStart) as { n: number; first: number | null }
+  if (n >= config.loginMaxFailures) {
+    const waitMin = Math.max(1, Math.ceil(((first ?? Date.now()) + config.loginWindowMin * 60 * 1000 - Date.now()) / 60000))
+    return { ok: false, status: 429, message: `Слишком много попыток. Повторите через ${waitMin} мин.` }
+  }
+  if (!config.passwordHash) return { ok: false, status: 503, message: 'Пароль панели не задан' }
+  const ok = await verify(config.passwordHash, password).catch(() => false)
+  if (!ok) {
+    q.addFailure.run(ip, Date.now())
+    return { ok: false, status: 401, message: 'Неверный пароль' }
+  }
+  q.clearFailures.run(ip)
+  return { ok: true }
+}

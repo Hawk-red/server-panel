@@ -72,7 +72,10 @@ Cmnd_Alias SP_WIFI = /usr/local/sbin/server-panel-wifi radio on, /usr/local/sbin
 # Обновления apt из раздела «Обновления»: только два фиксированных сценария узкой утилиты
 Cmnd_Alias SP_APT = /usr/local/sbin/server-panel-apt upgrade-selected, /usr/local/sbin/server-panel-apt upgrade-all
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI, SP_APT
+# Перезагрузка сервера из панели: одна точная команда (после повторного ввода пароля панели)
+Cmnd_Alias SP_REBOOT = /usr/sbin/reboot
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI, SP_APT, SP_REBOOT
 
 # Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)

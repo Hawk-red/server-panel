@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { audit } from '../audit.js'
+import { confirmPanelPassword } from '../auth.js'
+import { spawn } from 'node:child_process'
 import { requireAuth } from '../auth.js'
 import { getSnapshot, SAMPLE_INTERVAL } from '../collector/index.js'
 import { listDevices, summary as networkSummary } from '../network/scanner.js'
@@ -214,6 +216,31 @@ export async function systemRoutes(app: FastifyInstance) {
     return querySeries(names, range)
   })
   app.get('/api/metrics/names', async () => listSeriesNames())
+
+  // Перезагрузка сервера: только по повторному вводу пароля панели; одна точная команда через sudo
+  app.post<{ Body: { password: string } }>(
+    '/api/system/reboot',
+    {
+      schema: {
+        body: { type: 'object', required: ['password'], properties: { password: { type: 'string', minLength: 1, maxLength: 512 } } },
+      },
+    },
+    async (req, reply) => {
+      const check = await confirmPanelPassword(req.clientIp, req.body.password)
+      if (!check.ok) {
+        audit({ ip: req.clientIp, user: 'admin', action: 'system.reboot', result: 'denied', details: { reason: check.status === 401 ? 'bad-password' : 'rate-limit' } })
+        return reply.code(check.status).send({ message: check.message })
+      }
+      audit({ ip: req.clientIp, user: 'admin', action: 'system.reboot', result: 'ok', details: { note: 'перезагрузка запущена' } })
+      // Ответ уходит клиенту до перезагрузки: команда стартует с небольшой задержкой
+      setTimeout(() => {
+        const child = spawn('/usr/bin/sudo', ['-n', '/usr/sbin/reboot'], { stdio: 'ignore', detached: true })
+        child.on('error', () => undefined)
+        child.unref()
+      }, 2000)
+      return reply.code(202).send({ ok: true, in: 2 })
+    }
+  )
 
   app.get('/api/system/updates', async () => listUpdates())
 

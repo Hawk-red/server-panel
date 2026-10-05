@@ -25,16 +25,17 @@ function barLabel(bar: UptimeBar, granularity: 'hour' | 'day'): string {
   return `${range}: ${STATUS_LABEL[bar.status]}${pct}`
 }
 
-type UptimeBarsProps = { bars: UptimeBar[]; granularity: 'hour' | 'day'; className?: string }
+type UptimeBarsProps = { bars: UptimeBar[]; granularity: 'hour' | 'day'; className?: string; quiet?: boolean }
 
 // Ряд полосок-баров с подсказкой по каждому интервалу
-export function UptimeBars({ bars, granularity, className }: UptimeBarsProps) {
+// quiet: «всё хорошо» не зелёным, а приглушённым — яркими остаются только сбои
+export function UptimeBars({ bars, granularity, className, quiet }: UptimeBarsProps) {
   return (
     <div className={cn('flex items-stretch gap-0.5', className)}>
       {bars.map((b) => (
         <Tooltip key={b.ts}>
           <TooltipTrigger asChild>
-            <div className={cn('flex-1 rounded-[2px]', BAR_COLOR[b.status])} />
+            <div className={cn('flex-1 rounded-[2px]', quiet && b.status === 'up' ? 'bg-muted-foreground/25' : BAR_COLOR[b.status])} />
           </TooltipTrigger>
           <TooltipContent>{barLabel(b, granularity)}</TooltipContent>
         </Tooltip>
