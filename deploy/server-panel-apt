@@ -1,0 +1,37 @@
+#!/bin/bash
+# server-panel-apt — узкая root-утилита для раздела «Обновления».
+# Вызывается панелью только через sudo с двумя фиксированными сценариями (deploy/sudoers-server-panel).
+#
+#   upgrade-selected  — читает имена пакетов из stdin (по одному в строке) и обновляет ТОЛЬКО уже
+#                       установленные: apt-get install --only-upgrade. Новых пакетов это не ставит.
+#   upgrade-all       — apt-get dist-upgrade (все доступные обновления уже установленных пакетов).
+#
+# Всё неинтерактивно: DEBIAN_FRONTEND=noninteractive, конфиги пакетов не спрашиваются (confdef/confold).
+set -euo pipefail
+
+die() { echo "$*" >&2; exit 2; }
+
+export DEBIAN_FRONTEND=noninteractive
+APT=/usr/bin/apt-get
+OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+
+cmd="${1:-}"
+[ $# -eq 1 ] || die "нужен ровно один сценарий"
+
+case "$cmd" in
+  upgrade-selected)
+    mapfile -t pkgs < <(cat)
+    [ "${#pkgs[@]}" -ge 1 ] && [ "${#pkgs[@]}" -le 300 ] || die "от 1 до 300 пакетов"
+    for p in "${pkgs[@]}"; do
+      # Имя пакета Debian: строчные буквы, цифры, + . -; без пробелов, слэшей и опций
+      [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || die "недопустимое имя пакета: $p"
+    done
+    exec "$APT" install --only-upgrade "${OPTS[@]}" "${pkgs[@]}"
+    ;;
+  upgrade-all)
+    exec "$APT" dist-upgrade "${OPTS[@]}"
+    ;;
+  *)
+    die "неизвестный сценарий"
+    ;;
+esac

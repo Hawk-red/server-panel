@@ -35,6 +35,7 @@ import { Route as AuthenticatedSitesIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedSystemIndexRouteImport } from './routes/_authenticated/system/index'
 import { Route as AuthenticatedTelegramIndexRouteImport } from './routes/_authenticated/telegram/index'
 import { Route as AuthenticatedTorrentsIndexRouteImport } from './routes/_authenticated/torrents/index'
+import { Route as AuthenticatedUpdatesIndexRouteImport } from './routes/_authenticated/updates/index'
 import { Route as AuthenticatedWirelessIndexRouteImport } from './routes/_authenticated/wireless/index'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -177,6 +178,12 @@ const AuthenticatedTorrentsIndexRoute =
     path: '/torrents/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedUpdatesIndexRoute =
+  AuthenticatedUpdatesIndexRouteImport.update({
+    id: '/updates/',
+    path: '/updates/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedWirelessIndexRoute =
   AuthenticatedWirelessIndexRouteImport.update({
     id: '/wireless/',
@@ -210,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/system/': typeof AuthenticatedSystemIndexRoute
   '/telegram/': typeof AuthenticatedTelegramIndexRoute
   '/torrents/': typeof AuthenticatedTorrentsIndexRoute
+  '/updates/': typeof AuthenticatedUpdatesIndexRoute
   '/wireless/': typeof AuthenticatedWirelessIndexRoute
 }
 export interface FileRoutesByTo {
@@ -238,6 +246,7 @@ export interface FileRoutesByTo {
   '/system': typeof AuthenticatedSystemIndexRoute
   '/telegram': typeof AuthenticatedTelegramIndexRoute
   '/torrents': typeof AuthenticatedTorrentsIndexRoute
+  '/updates': typeof AuthenticatedUpdatesIndexRoute
   '/wireless': typeof AuthenticatedWirelessIndexRoute
 }
 export interface FileRoutesById {
@@ -268,6 +277,7 @@ export interface FileRoutesById {
   '/_authenticated/system/': typeof AuthenticatedSystemIndexRoute
   '/_authenticated/telegram/': typeof AuthenticatedTelegramIndexRoute
   '/_authenticated/torrents/': typeof AuthenticatedTorrentsIndexRoute
+  '/_authenticated/updates/': typeof AuthenticatedUpdatesIndexRoute
   '/_authenticated/wireless/': typeof AuthenticatedWirelessIndexRoute
 }
 export interface FileRouteTypes {
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
     | '/system/'
     | '/telegram/'
     | '/torrents/'
+    | '/updates/'
     | '/wireless/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -326,6 +337,7 @@ export interface FileRouteTypes {
     | '/system'
     | '/telegram'
     | '/torrents'
+    | '/updates'
     | '/wireless'
   id:
     | '__root__'
@@ -355,6 +367,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system/'
     | '/_authenticated/telegram/'
     | '/_authenticated/torrents/'
+    | '/_authenticated/updates/'
     | '/_authenticated/wireless/'
   fileRoutesById: FileRoutesById
 }
@@ -554,6 +567,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTorrentsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/updates/': {
+      id: '/_authenticated/updates/'
+      path: '/updates'
+      fullPath: '/updates/'
+      preLoaderRoute: typeof AuthenticatedUpdatesIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/wireless/': {
       id: '/_authenticated/wireless/'
       path: '/wireless'
@@ -582,6 +602,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemIndexRoute: typeof AuthenticatedSystemIndexRoute
   AuthenticatedTelegramIndexRoute: typeof AuthenticatedTelegramIndexRoute
   AuthenticatedTorrentsIndexRoute: typeof AuthenticatedTorrentsIndexRoute
+  AuthenticatedUpdatesIndexRoute: typeof AuthenticatedUpdatesIndexRoute
   AuthenticatedWirelessIndexRoute: typeof AuthenticatedWirelessIndexRoute
 }
 
@@ -603,6 +624,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemIndexRoute: AuthenticatedSystemIndexRoute,
   AuthenticatedTelegramIndexRoute: AuthenticatedTelegramIndexRoute,
   AuthenticatedTorrentsIndexRoute: AuthenticatedTorrentsIndexRoute,
+  AuthenticatedUpdatesIndexRoute: AuthenticatedUpdatesIndexRoute,
   AuthenticatedWirelessIndexRoute: AuthenticatedWirelessIndexRoute,
 }
 

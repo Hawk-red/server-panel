@@ -6,12 +6,11 @@ import { Autostart } from './autostart'
 import { Cron } from './cron'
 import { Logs } from './logs'
 import { Services } from './services'
-import { Updates } from './updates'
 
 // Графики (recharts) — отдельным чанком, грузятся только на вкладке «Ресурсы»
 const Resources = lazy(() => import('./resources').then((m) => ({ default: m.Resources })))
 
-export const SYSTEM_TABS = ['resources', 'cron', 'autostart', 'services', 'logs', 'updates'] as const
+export const SYSTEM_TABS = ['resources', 'cron', 'autostart', 'services', 'logs'] as const
 export type SystemTab = (typeof SYSTEM_TABS)[number]
 
 const LABELS: Record<SystemTab, string> = {
@@ -20,7 +19,6 @@ const LABELS: Record<SystemTab, string> = {
   autostart: 'Автозагрузка',
   services: 'Службы',
   logs: 'Логи',
-  updates: 'Обновления',
 }
 
 export function System({ tab, source }: { tab: SystemTab; source?: string }) {
@@ -46,7 +44,6 @@ export function System({ tab, source }: { tab: SystemTab; source?: string }) {
         <TabsContent value='autostart'>{tab === 'autostart' && <Autostart />}</TabsContent>
         <TabsContent value='services'>{tab === 'services' && <Services />}</TabsContent>
         <TabsContent value='logs'>{tab === 'logs' && <Logs source={source} />}</TabsContent>
-        <TabsContent value='updates'>{tab === 'updates' && <Updates />}</TabsContent>
       </Tabs>
     </Page>
   )

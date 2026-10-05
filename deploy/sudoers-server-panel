@@ -69,7 +69,10 @@ Cmnd_Alias SP_WIFI = /usr/local/sbin/server-panel-wifi radio on, /usr/local/sbin
     /usr/local/sbin/server-panel-wifi connect-saved *, /usr/local/sbin/server-panel-wifi connect-new, \
     /usr/local/sbin/server-panel-wifi forget *, /usr/local/sbin/server-panel-wifi disconnect
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI
+# Обновления apt из раздела «Обновления»: только два фиксированных сценария узкой утилиты
+Cmnd_Alias SP_APT = /usr/local/sbin/server-panel-apt upgrade-selected, /usr/local/sbin/server-panel-apt upgrade-all
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI, SP_APT
 
 # Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)

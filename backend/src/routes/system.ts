@@ -14,7 +14,8 @@ import { run } from '../exec.js'
 import { staleBackups, backupsOverview } from '../services/backups.js'
 import { listDeadlines } from '../services/deadlines.js'
 import { fmtDur, internetStatus, lastPing } from '../services/internet.js'
-import { listUpdates } from '../services/updates.js'
+import { listUpdates, upgradableNames } from '../services/updates.js'
+import { getAptJob, jobSlice, startAptJob } from '../services/aptJob.js'
 import { ACTIONS, CONTROLLABLE, controlUnit, failedUnits, listAutostart, listServices, type UnitAction } from '../system/units.js'
 
 // Сводка проблем для главной: только то, что реально требует внимания.
@@ -68,9 +69,9 @@ async function collectProblems(): Promise<Problem[]> {
   }
   const upd = await listUpdates().catch(() => null)
   if (upd?.apt.rebootRequired.required)
-    problems.push({ level: 'warning', text: 'Требуется перезагрузка — обновлено ядро или системная библиотека', kind: 'update', ref: 'reboot', link: '/system?tab=updates' })
+    problems.push({ level: 'warning', text: 'Требуется перезагрузка — обновлено ядро или системная библиотека', kind: 'update', ref: 'reboot', link: '/updates' })
   if (upd && upd.apt.securityCount > 0)
-    problems.push({ level: 'warning', text: `Доступно ${upd.apt.securityCount} обновлени${upd.apt.securityCount === 1 ? 'е' : 'й'} безопасности`, kind: 'update', ref: 'security', link: '/system?tab=updates' })
+    problems.push({ level: 'warning', text: `Доступно ${upd.apt.securityCount} обновлени${upd.apt.securityCount === 1 ? 'е' : 'й'} безопасности`, kind: 'update', ref: 'security', link: '/updates' })
   return problems
 }
 
@@ -215,6 +216,59 @@ export async function systemRoutes(app: FastifyInstance) {
   app.get('/api/metrics/names', async () => listSeriesNames())
 
   app.get('/api/system/updates', async () => listUpdates())
+
+  // Установка обновлений apt: только уже установленные пакеты из текущего списка (--only-upgrade) или dist-upgrade
+  app.post<{ Body: { mode: 'selected' | 'all'; packages?: string[] } }>(
+    '/api/system/updates/apt/upgrade',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['mode'],
+          properties: {
+            mode: { type: 'string', enum: ['selected', 'all'] },
+            packages: { type: 'array', maxItems: 300, items: { type: 'string', pattern: '^[a-z0-9][a-z0-9+.-]+$', maxLength: 100 } },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { mode } = req.body
+      let packages: string[] = []
+      if (mode === 'selected') {
+        packages = [...new Set(req.body.packages ?? [])]
+        if (packages.length === 0) return reply.code(400).send({ message: 'не выбрано ни одного пакета' })
+        const allowed = upgradableNames()
+        const unknown = packages.filter((p) => !allowed.has(p))
+        if (unknown.length) return reply.code(409).send({ message: `пакеты уже не в списке обновлений (обновите список): ${unknown.join(', ')}` })
+      }
+      try {
+        const job = startAptJob(mode, packages, req.clientIp)
+        return { id: job.id, mode, packages, startedAt: job.startedAt }
+      } catch (e) {
+        return reply.code(409).send({ message: (e as Error).message })
+      }
+    }
+  )
+
+  app.get<{ Querystring: { offset?: string } }>('/api/system/updates/apt/job', async (req, reply) => {
+    const job = getAptJob()
+    if (!job) return reply.code(404).send({ message: 'задач пока не было' })
+    const offset = Math.max(0, Number(req.query.offset ?? 0) || 0)
+    const { lines, total, truncated } = jobSlice(job, offset)
+    return {
+      id: job.id,
+      mode: job.mode,
+      packages: job.packages,
+      status: job.status,
+      exitCode: job.exitCode,
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+      lines,
+      offset: total,
+      truncated,
+    }
+  })
 
   app.get('/api/system/disks', async () => listDisks())
   app.get('/api/system/disks/io', async () => getDiskIoLatest())

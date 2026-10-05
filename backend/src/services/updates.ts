@@ -262,6 +262,12 @@ async function refreshDocker(): Promise<void> {
   }
 }
 
+// Имена пакетов, которые apt сейчас показывает как обновляемые (из кеша симуляции): проверка «можно ли обновлять»
+export function upgradableNames(): Set<string> {
+  const c = getSetting<AptCache | null>(APT_KEY, null)
+  return new Set((c?.packages ?? []).map((p) => p.name))
+}
+
 function getDockerStatus(): DockerImageStatus[] {
   const cache = getSetting<Record<string, DockerImageStatus>>(DOCKER_KEY, {})
   return Object.entries(DOCKER_TARGETS).map(
