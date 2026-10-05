@@ -31,7 +31,32 @@ export function Cron() {
           <TriangleAlert className='size-4' /> {e}
         </p>
       ))}
-      <div className='overflow-x-auto rounded-md border'>
+      {/* Телефон: карточки вместо таблицы (таблица шире экрана) */}
+      <ul className='space-y-2 sm:hidden'>
+        {(data?.jobs ?? []).map((j, i) => (
+          <li key={`${j.source}-${i}`} className='space-y-1 rounded-md border p-3 text-sm'>
+            <div className='flex items-start justify-between gap-2'>
+              <div className='min-w-0'>
+                <div className='font-medium'>
+                  {j.kind === 'timer' ? <Badge variant='secondary' className='me-1.5'>таймер</Badge> : null}
+                  {j.kind === 'timer' ? j.schedule : j.human}
+                </div>
+                {j.kind === 'cron' && j.human !== j.schedule && <code className='text-xs text-muted-foreground'>{j.schedule}</code>}
+              </div>
+              <Result job={j} />
+            </div>
+            <div className='flex flex-wrap gap-x-3 text-xs text-muted-foreground'>
+              <span>
+                дальше:{' '}
+                {j.next ? <span className='tabular-nums text-foreground'>{formatDateTime(j.next)}</span> : j.schedule === '@reboot' ? 'при загрузке' : '—'}
+              </span>
+              {j.lastRun && <span>был: <span className='tabular-nums'>{formatDateTime(j.lastRun)}</span></span>}
+            </div>
+            <code className='line-clamp-3 block text-xs break-all text-muted-foreground'>{j.command}</code>
+          </li>
+        ))}
+      </ul>
+      <div className='hidden overflow-x-auto rounded-md border sm:block'>
         <Table>
           <TableHeader>
             <TableRow>
