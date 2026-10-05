@@ -83,7 +83,11 @@ Cmnd_Alias SP_GIT = /usr/local/sbin/server-panel-git revert *, \
     /usr/local/sbin/server-panel-git restore *, \
     /usr/local/sbin/server-panel-git revert-last *
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI, SP_APT, SP_REBOOT, SP_PANEL, SP_GIT
+# Блокировки fail2ban из раздела «Безопасность»: две точные команды без подстановок (IP для unbanip передаётся через stdin,
+# проверяется внутри утилиты); только jail panel-auth
+Cmnd_Alias SP_F2B = /usr/local/sbin/server-panel-f2b status, /usr/local/sbin/server-panel-f2b unbanip
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI, SP_APT, SP_REBOOT, SP_PANEL, SP_GIT, SP_F2B
 
 # Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)

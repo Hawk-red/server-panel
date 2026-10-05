@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { Copy, Globe, KeyRound, ShieldCheck, Smartphone } from 'lucide-react'
+import { Ban, Copy, Globe, KeyRound, ShieldCheck, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
+import { isValidIp } from '@/lib/ip'
 import { formatDateTime } from '@/lib/format'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
@@ -24,6 +25,16 @@ type SecurityState = {
   sessions: Session[]
 }
 type Setup = { secret: string; otpauth: string; qr: string }
+
+type PanelBlock = { ip: string; until: number; level: number; failures: number }
+type F2bBan = { ip: string; bannedAt: number; unbanAt: number }
+type BlocksState = { panel: PanelBlock[]; fail2ban: { items: F2bBan[]; error: string | null } }
+type UnblockResult = { ip: string; unblocked: boolean; message: string }
+
+const left = (until: number) => {
+  const m = Math.max(0, Math.round((until - Date.now()) / 60_000))
+  return m < 1 ? 'меньше минуты' : m < 90 ? `${m} мин` : m < 48 * 60 ? `${Math.round(m / 60)} ч` : `${Math.round(m / 1440)} сут`
+}
 
 const errMsg = (e: unknown) => (e instanceof AxiosError && e.response?.data?.message) || 'не удалось выполнить'
 
@@ -337,6 +348,125 @@ function SessionsCard({ s, onChanged }: { s: SecurityState; onChanged: () => voi
   )
 }
 
+function BlockRow({ ip, until, note, busy, onUnblock }: { ip: string; until: number; note?: string; busy: boolean; onUnblock: (ip: string) => void }) {
+  return (
+    <li className='flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm'>
+      <div className='min-w-0'>
+        <div className='font-mono break-all'>{ip}</div>
+        <div className='text-xs text-muted-foreground'>
+          до {formatDateTime(until)} · осталось {left(until)}
+          {note ? ` · ${note}` : ''}
+        </div>
+      </div>
+      <Button size='sm' variant='outline' disabled={busy} onClick={() => onUnblock(ip)}>
+        Снять
+      </Button>
+    </li>
+  )
+}
+
+function BlocksCard() {
+  const qc = useQueryClient()
+  const [ip, setIp] = useState('')
+  const [result, setResult] = useState<UnblockResult | null>(null)
+  const { data, isError } = useQuery({
+    queryKey: ['security-blocks'],
+    queryFn: async () => (await api.get<BlocksState>('/security/blocks')).data,
+    refetchInterval: 15_000,
+  })
+  const unblock = useMutation({
+    mutationFn: async (addr: string) => (await api.post<UnblockResult>('/security/blocks/unblock', { ip: addr })).data,
+    onSuccess: (r) => {
+      setResult(r)
+      toast[r.unblocked ? 'success' : 'info'](`${r.ip}: ${r.message}`)
+      if (r.unblocked) setIp('')
+      qc.invalidateQueries({ queryKey: ['security-blocks'] })
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  })
+  const trimmed = ip.trim()
+  const valid = isValidIp(trimmed)
+  const invalid = trimmed !== '' && !valid
+  const total = (data?.panel.length ?? 0) + (data?.fail2ban.items.length ?? 0)
+  return (
+    <Card className='gap-3'>
+      <CardHeader className='flex flex-row items-center justify-between gap-2'>
+        <CardTitle className='flex items-center gap-2 text-base'>
+          <Ban className='size-4 text-danger-foreground' aria-hidden /> Блокировки
+        </CardTitle>
+        <StatusBadge status={total > 0 ? 'warning' : 'ok'} label={total > 0 ? `заблокировано: ${total}` : 'нет'} />
+      </CardHeader>
+      <CardContent className='space-y-4 text-sm'>
+        <form
+          className='space-y-1.5'
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (valid) unblock.mutate(trimmed)
+          }}
+        >
+          <Label htmlFor='unblock-ip'>IP-адрес</Label>
+          <div className='flex flex-wrap gap-2'>
+            <Input
+              id='unblock-ip'
+              className='min-w-0 flex-1 font-mono'
+              inputMode='text'
+              autoComplete='off'
+              spellCheck={false}
+              placeholder='203.0.113.5 или 2001:db8::1'
+              value={ip}
+              maxLength={45}
+              aria-invalid={invalid}
+              onChange={(e) => {
+                setIp(e.target.value)
+                setResult(null)
+              }}
+            />
+            <Button type='submit' disabled={!valid || unblock.isPending}>
+              Разблокировать
+            </Button>
+          </div>
+          {invalid && <p className='text-xs text-danger-foreground'>Нужен корректный IPv4 или IPv6 без пробелов и лишних символов.</p>}
+          {result && <p className='text-xs text-muted-foreground'>{result.ip}: {result.message}</p>}
+          <p className='text-xs text-muted-foreground'>Снимает блок и в fail2ban, и в панели и обнуляет счётчик неудачных входов этого адреса.</p>
+        </form>
+
+        {isError && <NoData reason='не удалось получить список блокировок' />}
+        {data && (
+          <>
+            <div>
+              <div className='mb-1 text-xs font-medium text-muted-foreground'>fail2ban (jail panel-auth)</div>
+              {data.fail2ban.error ? (
+                <NoData reason={data.fail2ban.error} />
+              ) : data.fail2ban.items.length === 0 ? (
+                <p className='text-muted-foreground'>никто не забанен</p>
+              ) : (
+                <ul className='divide-y'>
+                  {data.fail2ban.items.map((b) => (
+                    <BlockRow key={b.ip} ip={b.ip} until={b.unbanAt} busy={unblock.isPending} onUnblock={(a) => unblock.mutate(a)} />
+                  ))}
+                </ul>
+              )}
+              {data.fail2ban.error && <p className='mt-1 text-xs text-muted-foreground'>{data.fail2ban.error}</p>}
+            </div>
+            <div>
+              <div className='mb-1 text-xs font-medium text-muted-foreground'>Панель (подбор пароля и кода)</div>
+              {data.panel.length === 0 ? (
+                <p className='text-muted-foreground'>блокировок нет</p>
+              ) : (
+                <ul className='divide-y'>
+                  {data.panel.map((b) => (
+                    <BlockRow key={b.ip} ip={b.ip} until={b.until} note={`уровень ${b.level + 1}${b.failures ? `, неудач за 15 мин: ${b.failures}` : ''}`} busy={unblock.isPending} onUnblock={(a) => unblock.mutate(a)} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function Security() {
   const qc = useQueryClient()
   const { data, isError } = useQuery({
@@ -352,9 +482,8 @@ export function Security() {
         <div className='grid items-start gap-4 xl:grid-cols-2'>
           <TotpCard s={data} onChanged={refresh} />
           <ExternalCard s={data} onChanged={refresh} />
-          <div className='xl:col-span-2'>
-            <SessionsCard s={data} onChanged={refresh} />
-          </div>
+          <BlocksCard />
+          <SessionsCard s={data} onChanged={refresh} />
         </div>
       )}
     </Page>

@@ -2,7 +2,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { audit } from '../audit.js'
 import { confirmPanelPassword, endSessionById, endSessions, listSessions, requireAuth, SESSION_COOKIE } from '../auth.js'
-import { isInternal } from '../net.js'
+import { isInternal, parseIpStrict } from '../net.js'
+import { blocksOverview, unblock } from '../services/blocks.js'
 import * as sec from '../security.js'
 
 const who = (req: FastifyRequest) => ({ ip: req.clientIp, user: 'admin' })
@@ -97,4 +98,19 @@ export async function securityRoutes(app: FastifyInstance) {
     audit({ ...who(req), action: 'security.session-end', target: req.params.id.slice(0, 8), result: ok ? 'ok' : 'error' })
     return ok ? { ok: true } : reply.code(404).send({ message: 'сессия не найдена или это текущая' })
   })
+
+  // Блокировки (fail2ban и самой панели). Чтение закрыто снаружи политикой (/api/security), запись — только изнутри
+  app.get('/api/security/blocks', async () => blocksOverview())
+
+  app.post<{ Body: { ip: string } }>(
+    '/api/security/blocks/unblock',
+    { schema: { body: { type: 'object', required: ['ip'], additionalProperties: false, properties: { ip: { type: 'string', maxLength: 45 } } } } },
+    async (req, reply) => {
+      const ip = parseIpStrict(req.body.ip)
+      if (!ip) return reply.code(400).send({ message: 'Введите корректный IPv4 или IPv6 адрес без пробелов и лишних символов' })
+      const r = await unblock(ip)
+      audit({ ...who(req), action: 'security.unblock', target: ip, details: { where: 'internal', panel: r.panel, fail2ban: r.fail2ban, error: r.f2bError }, result: r.f2bError && !r.unblocked ? 'error' : 'ok' })
+      return { ip, ...r, message: r.unblocked ? 'Разблокирован' : r.f2bError ? `Адрес не был заблокирован в панели. ${r.f2bError}` : 'Адрес не был заблокирован' }
+    }
+  )
 }

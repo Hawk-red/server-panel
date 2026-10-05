@@ -1,3 +1,5 @@
+import { isIP } from 'node:net'
+
 // IPv4-проверка клиента: '::ffff:1.2.3.4' → '1.2.3.4', '::1' → '127.0.0.1'
 export function normalizeIp(ip: string | undefined): string {
   if (!ip) return ''
@@ -29,6 +31,16 @@ export function inCidr(ip: string, cidr: string): boolean {
 
 export function isAllowed(ip: string, nets: string[]): boolean {
   return nets.some((cidr) => inCidr(ip, cidr))
+}
+
+// Строгая проверка IP-адреса из пользовательского ввода: только корректный IPv4 или IPv6 (без пробелов, зон %eth0, портов, масок
+// и прочих символов). Возвращает нормализованный адрес или null.
+export function parseIpStrict(input: unknown): string | null {
+  if (typeof input !== 'string' || input.length < 2 || input.length > 45) return null
+  if (!/^[0-9A-Fa-f:.]+$/.test(input)) return null
+  const v = isIP(input)
+  if (v === 0) return null
+  return v === 6 ? input.toLowerCase() : input
 }
 
 export type NetworkKind = 'lan' | 'vpn' | 'local'

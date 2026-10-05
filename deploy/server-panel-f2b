@@ -1,0 +1,44 @@
+#!/bin/bash
+# server-panel-f2b — узкая root-утилита для раздела «Безопасность»: блокировки fail2ban (только jail panel-auth).
+# Вызывается панелью только через sudo с двумя фиксированными командами (deploy/sudoers-server-panel, SP_F2B):
+#
+#   status    — список забаненных адресов jail panel-auth с временем бана (get panel-auth banip --with-time)
+#   unbanip   — снять бан с адреса; адрес читается из stdin (одна строка), а не из аргументов: так sudoers разрешает
+#               точную команду без подстановок, а адрес не виден в `ps`. Проверяется регулярным выражением и ipaddress.
+#
+# Никаких других jail, команд и аргументов. Результат unbanip на stdout: «unbanned» или «not-banned».
+# Установка: sudo deploy/install-f2b-helper.sh (копирует в /usr/local/sbin, root:root 755).
+set -euo pipefail
+
+JAIL=panel-auth
+F2B=/usr/bin/fail2ban-client
+PY=/usr/bin/python3
+
+die() { echo "$*" >&2; exit 2; }
+
+[ $# -eq 1 ] || die "нужна ровно одна команда: status или unbanip"
+
+case "$1" in
+  status)
+    exec "$F2B" get "$JAIL" banip --with-time
+    ;;
+  unbanip)
+    # не больше 100 байт; одна строка без пробелов
+    data=$(head -c 100) || true
+    ip=${data%$'\n'}
+    [[ "$ip" =~ ^[0-9A-Fa-f:.]{2,45}$ ]] || die "некорректный IP-адрес"
+    norm=$("$PY" -c 'import ipaddress,sys; print(ipaddress.ip_address(sys.argv[1]))' "$ip" 2>/dev/null) || die "некорректный IP-адрес"
+    rc=0
+    out=$("$F2B" set "$JAIL" unbanip --report-absent "$norm" 2>&1) || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      echo unbanned
+    elif grep -qi "not banned\|absent" <<<"$out"; then
+      echo not-banned
+    else
+      die "fail2ban: ${out:0:200}"
+    fi
+    ;;
+  *)
+    die "неизвестная команда"
+    ;;
+esac

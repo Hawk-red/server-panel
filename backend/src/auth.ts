@@ -32,6 +32,9 @@ const q = {
   getBlock: db.prepare(`SELECT until, level, updated_at FROM ip_blocks WHERE ip = ?`),
   setBlock: db.prepare(`INSERT INTO ip_blocks (ip, until, level, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(ip) DO UPDATE SET until = excluded.until, level = excluded.level, updated_at = excluded.updated_at`),
   cleanupBlocks: db.prepare(`DELETE FROM ip_blocks WHERE updated_at <= ?`),
+  listBlocks: db.prepare(`SELECT ip, until, level, updated_at FROM ip_blocks WHERE until > ? ORDER BY until DESC`),
+  deleteBlock: db.prepare(`DELETE FROM ip_blocks WHERE ip = ?`),
+  failuresByIp: db.prepare(`SELECT ip, COUNT(*) AS n FROM login_failures WHERE ts > ? GROUP BY ip`),
   clearFailures: db.prepare(`DELETE FROM login_failures WHERE ip = ?`),
   cleanup: db.prepare(`DELETE FROM sessions WHERE expires_at <= ?`),
   cleanupFailures: db.prepare(`DELETE FROM login_failures WHERE ts <= ?`),
@@ -101,6 +104,20 @@ function blockIp(ip: string) {
 }
 
 const GENERIC_FAIL = 'Неверный пароль или код'
+
+// Блокировки от подбора (раздел «Безопасность»): активные блоки панели и число неудач по адресам за окно
+export function listPanelBlocks() {
+  const rows = q.listBlocks.all(Date.now()) as { ip: string; until: number; level: number; updated_at: number }[]
+  const fails = new Map((q.failuresByIp.all(Date.now() - config.loginWindowMin * 60 * 1000) as { ip: string; n: number }[]).map((r) => [r.ip, r.n]))
+  return rows.map((r) => ({ ip: r.ip, until: r.until, level: r.level, failures: fails.get(r.ip) ?? 0 }))
+}
+
+// Снять блок панели и обнулить счётчик неудач адреса; true — блок или неудачи были
+export function clearIpBlock(ip: string): boolean {
+  const blocked = q.deleteBlock.run(ip).changes > 0
+  const failed = q.clearFailures.run(ip).changes > 0
+  return blocked || failed
+}
 
 export type SessionInfo = { id: string; source: 'internal' | 'external'; ip: string; userAgent: string | null; createdAt: number; lastSeen: number; expiresAt: number; secondFactor: boolean; current: boolean }
 
