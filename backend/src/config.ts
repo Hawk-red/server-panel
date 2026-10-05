@@ -56,6 +56,7 @@ export const config = {
   // Бот уведомлений (этап 10.1); chat_id и правила — в настройках панели
   notifyToken: env.NOTIFY_BOT_TOKEN ?? '',
   sessionDays: 30,
+  externalSessionHours: 12, // сессия, созданная из интернета: короче и без продления
   loginMaxFailures: 5,
   loginWindowMin: 15,
 }

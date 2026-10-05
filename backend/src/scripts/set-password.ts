@@ -5,6 +5,7 @@ import { Writable } from 'node:stream'
 import readline from 'node:readline/promises'
 import { hash } from '@node-rs/argon2'
 import { ENV_FILE } from '../config.js'
+import { db } from '../db.js'
 
 let muted = false
 const output = new Writable({
@@ -43,4 +44,7 @@ if (idx >= 0) lines[idx] = `PANEL_PASSWORD_HASH=${passwordHash}`
 else lines.push(`PANEL_PASSWORD_HASH=${passwordHash}`)
 writeFileSync(ENV_FILE, lines.filter((l, i) => l !== '' || i < lines.length - 1).join('\n') + '\n', { mode: 0o600 })
 chmodSync(ENV_FILE, 0o600)
+// Смена пароля завершает все сессии (в том числе внешние)
+const ended = db.prepare('DELETE FROM sessions').run().changes
+console.log(`Завершено сессий: ${ended}`)
 console.log(`Готово: хэш записан в ${ENV_FILE}. Перезапустите службу: sudo systemctl restart server-panel`)

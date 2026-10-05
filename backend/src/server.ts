@@ -11,7 +11,7 @@ import { config } from './config.js'
 import { db } from './db.js'
 import { hasSecret, maskSecrets } from './mask.js'
 import { scrubAuditSecrets } from './audit.js'
-import { isAllowed, normalizeIp } from './net.js'
+import { isAllowed, isInternal, normalizeIp } from './net.js'
 import { serviceRoutes } from './routes/services.js'
 import { aiRoutes } from './routes/ai.js'
 import { wirelessRoutes } from './routes/wireless.js'
@@ -27,6 +27,8 @@ import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
 import { startUpdates } from './services/updates.js'
+import { externalEnabled } from './security.js'
+import { securityRoutes } from './routes/security.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
 import { uptimeRoutes } from './routes/uptime.js'
@@ -51,14 +53,19 @@ const app = Fastify({
 
 app.decorateRequest('clientIp', '')
 
-// Второй рубеж после ufw: только LAN, WireGuard и localhost
+// Второй рубеж после ufw и nginx. Внутренние клиенты (LAN, WireGuard, localhost) — как раньше. Внешний клиент (адрес из
+// X-Forwarded-For от доверенного локального nginx) допускается только если доступ из интернета включён в «Безопасности»
+// (а он включается лишь при работающей 2FA); дальше действуют отдельные ограничения (см. externalPolicy).
 app.addHook('onRequest', async (req, reply) => {
-  // req.ip = адрес соединения, а если оно от доверенного nginx — настоящий адрес клиента из X-Forwarded-For
   req.clientIp = normalizeIp(req.ip)
-  if (!isAllowed(req.clientIp, config.allowedNets)) {
+  const viaProxy = normalizeIp(req.socket.remoteAddress) === '127.0.0.1'
+  const deny = () => {
     req.log.warn({ ip: req.clientIp, url: req.url }, 'запрос из запрещённой сети отклонён')
     return reply.code(403).type('text/plain; charset=utf-8').send('Доступ только из локальной сети и VPN')
   }
+  if (viaProxy && !isInternal(req)) {
+    if (!externalEnabled()) return deny()
+  } else if (!isAllowed(req.clientIp, config.allowedNets)) return deny()
 })
 
 // Страховка: ни один JSON-ответ API не уходит с токеном внутри (текст ошибки, журнал и т.п.)
@@ -79,6 +86,7 @@ app.addHook('onSend', async (_req, reply) => {
 
 await app.register(fastifyCookie)
 await app.register(authRoutes)
+await app.register(securityRoutes)
 await app.register(systemRoutes)
 await app.register(serviceRoutes)
 await app.register(siteRoutes)

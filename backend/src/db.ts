@@ -102,6 +102,11 @@ const migrations: string[] = [
   );
   CREATE INDEX docker_image_updates_detected_at ON docker_image_updates (detected_at);
   `,
+  `
+  -- Доступ из интернета: откуда создана сессия (internal | external) и был ли второй фактор
+  ALTER TABLE sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'internal';
+  ALTER TABLE sessions ADD COLUMN second_factor INTEGER NOT NULL DEFAULT 0;
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number

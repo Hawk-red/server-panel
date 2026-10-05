@@ -16,8 +16,10 @@
     "@fastify/cookie": "^11.1.2",
     "@fastify/static": "^10.1.5",
     "@node-rs/argon2": "^2.2.1",
+    "@types/qrcode": "^1.5.6",
     "better-sqlite3": "^12.11.1",
-    "fastify": "^5.12.5"
+    "fastify": "^5.12.5",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

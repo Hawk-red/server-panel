@@ -38,3 +38,9 @@ export function networkOf(ip: string): NetworkKind {
   if (inCidr(ip, '127.0.0.0/8')) return 'local'
   return 'lan'
 }
+
+// «Внутренний» клиент: домашняя сеть, WireGuard или сам сервер. Остальные — «внешние» (из интернета через nginx).
+// Единственное место, где это решается: везде в панели используется isInternal(req), адрес — req.ip (trustProxy только для 127.0.0.1).
+export const INTERNAL_NETS = ['192.168.31.0/24', '10.10.10.0/24', '127.0.0.1/32']
+export const isInternalIp = (ip: string) => isAllowed(normalizeIp(ip), INTERNAL_NETS)
+export const isInternal = (req: { ip: string }) => isInternalIp(req.ip)
