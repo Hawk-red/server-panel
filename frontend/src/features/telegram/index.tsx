@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { Link } from '@tanstack/react-router'
@@ -43,8 +43,20 @@ function PathRow({ label, f }: { label: string; f: FileInfo }) {
   )
 }
 
-function AlertBlock({ a }: { a: AlertAnalytics }) {
-  const total = a.alertsPerDay.reduce((x, d) => x + d.count, 0)
+// Фильтр периода статистики Air Alert. phrase — для «за …» в заголовке
+const ALERT_PERIOD_OPTIONS = [
+  { days: 7, label: 'Неделя', phrase: 'неделю' },
+  { days: 30, label: 'Месяц', phrase: 'месяц' },
+  { days: 90, label: '3 месяца', phrase: '3 месяца' },
+  { days: 180, label: '6 месяцев', phrase: '6 месяцев' },
+  { days: 365, label: 'Год', phrase: 'год' },
+] as const
+
+function AlertBlock({ a, days, onDays }: { a: AlertAnalytics; days: number; onDays: (d: number) => void }) {
+  const phrase = ALERT_PERIOD_OPTIONS.find((o) => o.days === days)?.phrase ?? `${days} дн.`
+  // Логи хранятся ограниченно: если записей не хватает на весь период, честно пишем, с какой даты есть данные
+  const coverage = a.period.coverageFrom
+  const shortCoverage = coverage != null && !a.period.covered
   return (
     <div className='space-y-4'>
       <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
@@ -64,11 +76,23 @@ function AlertBlock({ a }: { a: AlertAnalytics }) {
           )}
         </dd>
       </dl>
-      <div>
-        <div className='mb-1 text-sm font-medium'>
-          Тревоги по дням (30 дней): <Value kind='count' value={total} />
+      <div className='space-y-2'>
+        <div role='group' aria-label='Период статистики' className='flex flex-wrap gap-1.5'>
+          {ALERT_PERIOD_OPTIONS.map((o) => (
+            <Button key={o.days} size='sm' variant={o.days === days ? 'default' : 'outline'} aria-pressed={o.days === days} onClick={() => onDays(o.days)}>
+              {o.label}
+            </Button>
+          ))}
         </div>
-        <Bars data={a.alertsPerDay} label='тревог' color='var(--info)' />
+        <div className='text-sm'>
+          Тревог за {phrase}: <Value kind='count' value={a.total} /> · дней с тревогами: <Value kind='count' value={a.daysWithAlerts} />
+        </div>
+        <Bars data={a.alertsSeries} bucket={a.period.bucket} label='тревог' color='var(--info)' />
+        {shortCoverage && (
+          <p className='text-xs text-muted-foreground'>
+            В логах бота данные только с {new Date(coverage).toLocaleDateString('ru-RU')}: более ранние тревоги не учтены (логи ротируются).
+          </p>
+        )}
       </div>
       <div>
         <div className='mb-1 text-sm font-medium'>Последние 10 тревог</div>
@@ -267,13 +291,13 @@ function PanelControls({ a }: { a: PanelNotifierAnalytics | null }) {
   )
 }
 
-function BotCard({ b }: { b: BotInfo }) {
+function BotCard({ b, alertDays, onAlertDays }: { b: BotInfo; alertDays: number; onAlertDays: (d: number) => void }) {
   const svc = b.service.data
   const tg = b.telegram.data
   const pa = b.kind === 'panel-notifier' ? ((b.analytics.data as PanelNotifierAnalytics | null) ?? null) : null
   const embedded = Boolean(b.embedded)
   const panelStatus = !pa ? 'unknown' : !pa.tokenSet || pa.tokenConflict || !tg?.username ? 'error' : !pa.chatSet || !pa.enabled ? 'warning' : 'ok'
-  const panelLabel = !pa ? '' : !pa.tokenSet ? 'нет токена' : pa.tokenConflict ? 'токен занят' : !tg?.username ? 'нет связи' : !pa.chatSet ? 'нет чата' : !pa.enabled ? 'отправка выключена' : 'работает'
+  const panelLabel = !pa ? '' : !pa.tokenSet ? 'нет токена' : pa.tokenConflict ? 'токен занят' : !tg?.username ? 'нет связи' : !pa.chatSet ? 'нет чата' : !pa.enabled ? 'отправка выключена' : 'в норме'
   return (
     <Card className='gap-3'>
       <CardHeader className='flex flex-row items-start gap-3'>
@@ -288,7 +312,7 @@ function BotCard({ b }: { b: BotInfo }) {
             <Badge variant='outline'>встроенный модуль панели</Badge>
           </div>
         ) : svc ? (
-          <StatusBadge status={unitStatus(svc.active)} label={svc.active === 'active' ? 'работает' : svc.active} />
+          <StatusBadge status={unitStatus(svc.active)} label={svc.active === 'active' ? undefined : svc.active} />
         ) : (
           <NoData />
         )}
@@ -349,7 +373,7 @@ function BotCard({ b }: { b: BotInfo }) {
         {b.analytics.error ? (
           <NoData reason={b.analytics.error} />
         ) : b.kind === 'alert-monitor' && b.analytics.data ? (
-          <AlertBlock a={b.analytics.data as AlertAnalytics} />
+          <AlertBlock a={b.analytics.data as AlertAnalytics} days={alertDays} onDays={onAlertDays} />
         ) : b.kind === 'lead-api' && b.analytics.data ? (
           <LeadBlock a={b.analytics.data as LeadAnalytics} />
         ) : pa ? (
@@ -381,10 +405,13 @@ function BotCard({ b }: { b: BotInfo }) {
 }
 
 export function Telegram() {
+  // Период статистики Air Alert — общий для карточек раздела; по умолчанию месяц
+  const [alertDays, setAlertDays] = useState(30)
   const { data, isError } = useQuery({
-    queryKey: ['bots'],
-    queryFn: async () => (await api.get<BotInfo[]>('/bots')).data,
+    queryKey: ['bots', alertDays],
+    queryFn: async () => (await api.get<BotInfo[]>('/bots', { params: { alertDays } })).data,
     refetchInterval: 30_000,
+    placeholderData: (prev) => prev,
   })
   return (
     <Page title='Telegram-боты' description='Боты из реестра backend/bots.json — добавить бота = добавить запись' layoutPage='telegram'>
@@ -392,7 +419,7 @@ export function Telegram() {
       <SortableBlocks
         grid
         className='grid items-start gap-4 xl:grid-cols-2'
-        blocks={(data ?? []).map((b): Block => ({ id: blockId('bot', b.id), title: b.title, node: <BotCard b={b} /> }))}
+        blocks={(data ?? []).map((b): Block => ({ id: blockId('bot', b.id), title: b.title, node: <BotCard b={b} alertDays={alertDays} onAlertDays={setAlertDays} /> }))}
       />
     </Page>
   )

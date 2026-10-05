@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../auth.js'
 import * as sites from '../services/sites.js'
 import * as tg from '../services/telegram.js'
-import { botsOverview } from '../services/bots.js'
+import { ALERT_PERIODS, botsOverview } from '../services/bots.js'
 import { panelBot } from '../services/panel-bot.js'
 
 type Part<T> = { data: T; error: null } | { data: null; error: string }
@@ -38,7 +38,12 @@ export async function siteRoutes(app: FastifyInstance) {
   app.get('/api/sites/jetsetter/files', async () => part(() => sites.recentFiles(3)))
 
   // Раздел «Telegram-боты» v2: реестр backend/bots.json
-  app.get('/api/bots', async () => [...(await botsOverview()), await panelBot()])
+  // alertDays — период статистики Air Alert (белый список, иначе 30 дней)
+  app.get<{ Querystring: { alertDays?: string } }>('/api/bots', async (req) => {
+    const days = Number(req.query.alertDays)
+    const period = ALERT_PERIODS.find((p) => p === days) ?? 30
+    return [...(await botsOverview(period)), await panelBot()]
+  })
 
   app.get('/api/telegram', async () => {
     const [units, alert, lead] = await Promise.all([

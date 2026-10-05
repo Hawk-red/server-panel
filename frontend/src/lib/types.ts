@@ -357,7 +357,12 @@ export type AlertAnalytics = {
   channel: string | null
   subscribers: number
   keywords: { key: string; title: string; words: string[] }[]
-  alertsPerDay: { day: string; count: number }[]
+  /** период фильтра: bucket — как группируются столбики; coverageFrom — самая ранняя запись в логах (логи ротируются) */
+  period: { days: number; bucket: 'day' | 'week'; coverageFrom: number | null; covered: boolean }
+  alertsSeries: { day: string; count: number }[]
+  /** тревог за выбранный период и сколько разных дней с тревогами */
+  total: number
+  daysWithAlerts: number
   lastAlerts: { ts: number; reason: string; text: string }[]
   delivery: { avgSec: number; maxSec: number; messages: number } | null
 }

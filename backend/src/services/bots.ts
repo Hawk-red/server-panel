@@ -131,11 +131,13 @@ const lineTs = (l: string) => {
 }
 
 // Построчное чтение без загрузки файла целиком в память
+// Ошибка открытия (нет файла, нет прав) — просто конец чтения: readline сам ошибку не глотает, без обработчика она роняет процесс
 async function eachLine(file: string, fn: (line: string) => void) {
   await new Promise<void>((resolve) => {
     const stream = createReadStream(file, { encoding: 'utf8' })
     stream.on('error', () => resolve())
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity })
+    rl.on('error', () => resolve())
     rl.on('line', fn)
     rl.on('close', () => resolve())
   })
@@ -153,22 +155,43 @@ function lastDays(n: number, counts: Map<string, number>) {
 }
 
 // ---------- бот тревог ----------
-async function alertAnalytics(bot: BotDef) {
-  return cached(`alert:${bot.id}`, 10 * 60_000, async () => {
+// Периоды фильтра статистики (дни). Больше 90 дней — столбики по неделям, иначе 365 столбиков по дням не читаются.
+export const ALERT_PERIODS = [7, 30, 90, 180, 365] as const
+export type AlertPeriod = (typeof ALERT_PERIODS)[number]
+const DAY_MS = 86_400_000
+
+async function alertAnalytics(bot: BotDef, days: AlertPeriod) {
+  return cached(`alert:${bot.id}:${days}`, 10 * 60_000, async () => {
     const cfg = JSON.parse(await readFile(bot.config!, 'utf8').catch(() => '{}'))
     const subs = JSON.parse(await readFile(path.join(bot.dir!, 'subscribers.json'), 'utf8').catch(() => '[]'))
     const logPath = (bot.log as { path: string }).path
-    const perDay = new Map<string, number>()
+    const now = Date.now()
+    const since = now - days * DAY_MS
+    const bucket: 'day' | 'week' = days > 90 ? 'week' : 'day'
+    const size = bucket === 'week' ? 7 : 1
+    const n = Math.ceil(days / size)
+    const counts = new Array<number>(n).fill(0)
+    const alertDays = new Set<string>()
     const alerts: { ts: number; reason: string; text: string }[] = []
     const lags: number[] = []
-    const dayAgo = Date.now() - 86_400_000
-    for (const f of [`${logPath}.1`, logPath]) {
+    let total = 0
+    // Самая ранняя запись в логах: логи ротируются, поэтому «Год» может быть короче года — честно показываем, с какой даты данные
+    let coverageFrom: number | null = null
+    const dayAgo = now - DAY_MS
+    // Ротированные файлы старше — читаем тоже (их хранит RotatingFileHandler, backupCount)
+    for (const f of [`${logPath}.3`, `${logPath}.2`, `${logPath}.1`, logPath]) {
       await eachLine(f, (l) => {
         const ts = lineTs(l)
         if (!ts) return
+        if (coverageFrom === null || ts < coverageFrom) coverageFrom = ts
         const m = l.match(/\[poll\] СОВПАДЕНИЕ \(([^)]*)\): (.*)$/)
         if (m) {
-          perDay.set(dayKey(ts), (perDay.get(dayKey(ts)) ?? 0) + 1)
+          if (ts >= since && ts <= now) {
+            total++
+            alertDays.add(dayKey(ts))
+            const idx = Math.floor((now - ts) / (size * DAY_MS))
+            if (idx < n) counts[n - 1 - idx]++
+          }
           alerts.push({ ts, reason: m[1], text: m[2].slice(0, 200) })
           if (alerts.length > 10) alerts.shift()
         }
@@ -194,7 +217,12 @@ async function alertAnalytics(bot: BotDef) {
       keywords: Object.entries(lists)
         .filter(([k]) => Array.isArray(cfg[k]))
         .map(([k, title]) => ({ key: k, title, words: cfg[k] as string[] })),
-      alertsPerDay: lastDays(30, perDay),
+      // covered: в логах есть записи с начала периода (иначе показываем, с какой даты данные)
+      period: { days, bucket, coverageFrom, covered: coverageFrom != null && (coverageFrom as number) <= since + DAY_MS },
+      // Столбики от старых к новым: day — дата дня, week — дата начала недельного отрезка
+      alertsSeries: counts.map((count, i) => ({ day: dayKey(now - (n - i) * size * DAY_MS + DAY_MS), count })),
+      total,
+      daysWithAlerts: alertDays.size,
       lastAlerts: alerts.reverse(),
       delivery: lags.length ? { avgSec: Math.round((lags.reduce((a, b) => a + b, 0) / lags.length) * 10) / 10, maxSec: Math.max(...lags), messages: lags.length } : null,
     }
@@ -240,7 +268,7 @@ async function leadAnalytics(bot: BotDef) {
   })
 }
 
-export async function botsOverview() {
+export async function botsOverview(alertDays: AlertPeriod = 30) {
   const registry = await loadRegistry()
   return Promise.all(
     registry.map(async (b) => {
@@ -251,7 +279,7 @@ export async function botsOverview() {
         safe(botUsername(b.token)),
         safe(logProblems(b.log)),
         safe(Promise.all([fileInfo(b.dir), fileInfo(b.entry), fileInfo(b.config), fileInfo(b.log?.type === 'file' ? b.log.path : undefined)])),
-        safe<unknown>(b.kind === 'alert-monitor' ? alertAnalytics(b) : b.kind === 'lead-api' ? leadAnalytics(b) : Promise.resolve(null)),
+        safe<unknown>(b.kind === 'alert-monitor' ? alertAnalytics(b, alertDays) : b.kind === 'lead-api' ? leadAnalytics(b) : Promise.resolve(null)),
       ])
       const [dir, entry, config, logFile] = files.data ?? []
       return {
