@@ -11,11 +11,9 @@ import { StatusBadge } from '@/components/status-badge'
 import { Value } from '@/components/value'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { describeDetails, feedLink, kindLabel, LEVEL } from './feed-meta'
-import { PanelChanges } from './panel-changes'
 
 const DayChart = lazy(() => import('./day-chart').then((m) => ({ default: m.DayChart })))
 const PERIODS: Record<string, number> = { day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_400_000 }
@@ -280,19 +278,8 @@ function Journal() {
 
 export function Audit() {
   return (
-    <Page title='Журнал действий' description='Действия в панели, события сервера и история изменений самой панели'>
-      <Tabs defaultValue='journal'>
-        <TabsList className='mb-4'>
-          <TabsTrigger value='journal'>Журнал</TabsTrigger>
-          <TabsTrigger value='changes'>Изменения панели</TabsTrigger>
-        </TabsList>
-        <TabsContent value='journal'>
-          <Journal />
-        </TabsContent>
-        <TabsContent value='changes'>
-          <PanelChanges />
-        </TabsContent>
-      </Tabs>
+    <Page title='Журнал действий' description='Действия в панели и события сервера. История правок самой панели — в разделе «Git»'>
+      <Journal />
     </Page>
   )
 }

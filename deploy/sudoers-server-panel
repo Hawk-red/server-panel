@@ -78,7 +78,12 @@ Cmnd_Alias SP_REBOOT = /usr/sbin/reboot
 # Перезапуск самой панели («Перезапустить панель» в сайдбаре): одна точная команда, без аргументов
 Cmnd_Alias SP_PANEL = /usr/bin/systemctl restart server-panel.service
 
-panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI, SP_APT, SP_REBOOT, SP_PANEL
+# Git-правки панели (откат и возврат коммита, пересборка, перезапуск): одна root-утилита, аргументы проверяет она
+Cmnd_Alias SP_GIT = /usr/local/sbin/server-panel-git revert *, \
+    /usr/local/sbin/server-panel-git restore *, \
+    /usr/local/sbin/server-panel-git revert-last *
+
+panel ALL=(root) NOPASSWD: SP_SMART, SP_CRONTAB, SP_UNITS, SP_ADGUARD, SP_MOUNT, SP_BT, SP_WIFI, SP_APT, SP_REBOOT, SP_PANEL, SP_GIT
 
 # Этап 4: последние изменённые записи WordPress зеркала — WP-CLI от www-data, одна фиксированная команда
 # (wp-config.php читает только www-data; любые другие аргументы wp запрещены)

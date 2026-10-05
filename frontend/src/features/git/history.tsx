@@ -1,14 +1,34 @@
 import { useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronLeft, ChevronRight, CloudUpload, GitCommitHorizontal, Loader2 } from 'lucide-react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AxiosError } from 'axios'
+import { ChevronDown, ChevronLeft, ChevronRight, CloudUpload, GitCommitHorizontal, Loader2, Undo2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { NoData } from '@/components/no-data'
 import { StatusBadge, type Status } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { GitJobOverlay } from './job-overlay'
 
-type Commit = { hash: string; ts: number; author: string; subject: string; body: string; pushed: boolean }
+type Commit = {
+  hash: string
+  ts: number
+  author: string
+  subject: string
+  body: string
+  pushed: boolean
+  kind: 'commit' | 'revert'
+  /** для revert-коммита — хэш отменяемого коммита */
+  revertOf: string | null
+  /** действует ли изменение коммита сейчас (false — откачен) */
+  active: boolean
+  /** для откаченного коммита — хэш его действующего revert-коммита */
+  revertedBy: string | null
+  /** коммит трогает sudoers или утилиту панели: откат только вручную */
+  protected: boolean
+}
 type CommitFile = { status: string; path: string; from: string | null; added: number | null; deleted: number | null }
 type BackupStatus = {
   remote: string | null
@@ -19,6 +39,7 @@ type BackupStatus = {
 }
 
 const PAGE = 30
+const short = (h: string) => h.slice(0, 7)
 const FILE_STATUS: Record<string, string> = { A: 'добавлен', M: 'изменён', D: 'удалён', R: 'переименован', C: 'скопирован', T: 'тип изменён' }
 const fmt = (ts: number) => new Date(ts).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 
@@ -121,9 +142,35 @@ function Files({ hash }: { hash: string }) {
   )
 }
 
+type Pending = { action: 'revert' | 'restore'; commit: Commit }
+
+// Кнопки отката/возврата одного коммита: откаченный — «Вернуть», действующий — «Откатить». Revert-коммит — только подпись.
+function CommitAction({ c, onAsk }: { c: Commit; onAsk: (p: Pending) => void }) {
+  if (c.kind === 'revert') return null
+  if (c.protected) {
+    return (
+      <Button size='sm' variant='outline' disabled title='Коммит меняет права sudo или утилиту панели: откат делается вручную'>
+        вручную
+      </Button>
+    )
+  }
+  return c.active ? (
+    <Button size='sm' variant='outline' onClick={() => onAsk({ action: 'revert', commit: c })}>
+      <Undo2 /> Откатить
+    </Button>
+  ) : (
+    <Button size='sm' variant='outline' onClick={() => onAsk({ action: 'restore', commit: c })}>
+      Вернуть
+    </Button>
+  )
+}
+
 export function PanelChanges() {
+  const qc = useQueryClient()
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState<string | null>(null)
+  const [pending, setPending] = useState<Pending | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
   const { data, isError } = useQuery({
     queryKey: ['panel-changes', page],
     queryFn: async () => (await api.get<{ total: number; rows: Commit[] }>('/panel-changes', { params: { limit: PAGE, offset: page * PAGE } })).data,
@@ -131,6 +178,22 @@ export function PanelChanges() {
     refetchInterval: 30_000,
   })
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE))
+  const bySubject = new Map((data?.rows ?? []).map((r) => [r.hash, r.subject]))
+
+  const act = useMutation({
+    mutationFn: async (p: Pending) => (await api.post<{ id: string }>(`/panel-changes/${p.action}`, { hash: p.commit.hash })).data,
+    onSuccess: (r) => {
+      setPending(null)
+      setJobId(r.id)
+    },
+    onError: (e) => {
+      setPending(null)
+      toast.error((e instanceof AxiosError && e.response?.data?.message) || 'не удалось выполнить')
+    },
+  })
+
+  const confirmText = pending?.action === 'revert' ? 'Откатить' : 'Вернуть'
+  const verb = pending?.action === 'revert' ? 'Откатить коммит' : 'Вернуть изменения коммита'
 
   return (
     <>
@@ -146,26 +209,41 @@ export function PanelChanges() {
           {data?.rows.map((c) => {
             const isOpen = open === c.hash
             return (
-              <div key={c.hash}>
-                <button
-                  type='button'
-                  onClick={() => setOpen(isOpen ? null : c.hash)}
-                  aria-expanded={isOpen}
-                  className='flex w-full items-start gap-3 px-4 py-2.5 text-start text-sm hover:bg-muted/50 focus-visible:bg-muted/50'
-                >
-                  <GitCommitHorizontal className='mt-0.5 size-4 shrink-0 text-info' aria-hidden />
-                  <div className='min-w-0 flex-1'>
-                    <div className='font-medium break-words'>{c.subject}</div>
-                    <div className='text-xs text-muted-foreground'>
-                      {c.author} · <span className='font-mono text-address'>{c.hash.slice(0, 7)}</span>
+              <div key={c.hash} className={cn(!c.active && c.kind === 'commit' && 'bg-muted/30')}>
+                <div className='flex items-start gap-3 px-4 py-2.5'>
+                  <button
+                    type='button'
+                    onClick={() => setOpen(isOpen ? null : c.hash)}
+                    aria-expanded={isOpen}
+                    className='flex min-w-0 flex-1 items-start gap-3 text-start text-sm focus-visible:outline-none'
+                  >
+                    <GitCommitHorizontal className='mt-0.5 size-4 shrink-0 text-info' aria-hidden />
+                    <div className='min-w-0 flex-1'>
+                      <div className={cn('font-medium break-words', !c.active && c.kind === 'commit' && 'text-muted-foreground line-through')}>{c.subject}</div>
+                      <div className='text-xs text-muted-foreground'>
+                        {c.author} · <span className='font-mono text-address'>{short(c.hash)}</span> · {fmt(c.ts)}
+                      </div>
+                      {c.kind === 'revert' && c.revertOf && (
+                        <div className='mt-0.5 text-xs text-warn-foreground'>
+                          отменяет: «{bySubject.get(c.revertOf) ?? 'коммит вне текущей страницы'}» <span className='font-mono'>{short(c.revertOf)}</span>
+                        </div>
+                      )}
                     </div>
+                  </button>
+                  <div className='flex shrink-0 flex-col items-end gap-1.5'>
+                    <div className='flex flex-wrap justify-end gap-1'>
+                      <StatusBadge status={c.pushed ? 'ok' : 'warning'} label={c.pushed ? 'на GitHub' : 'не отправлен'} className='text-xs' />
+                      {c.kind === 'commit' && !c.active && <StatusBadge status='unknown' label='откачен' className='text-xs' />}
+                      {c.protected && <StatusBadge status='warning' label='вручную' className='text-xs' />}
+                    </div>
+                    <CommitAction c={c} onAsk={setPending} />
                   </div>
-                  <div className='flex shrink-0 flex-col items-end gap-0.5'>
-                    <StatusBadge status={c.pushed ? 'ok' : 'warning'} label={c.pushed ? 'на GitHub' : 'не отправлен'} className='text-xs' />
-                    <span className='text-xs text-time tabular-nums'>{fmt(c.ts)}</span>
-                  </div>
-                  <ChevronDown className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
-                </button>
+                  <ChevronDown
+                    onClick={() => setOpen(isOpen ? null : c.hash)}
+                    className={cn('mt-0.5 size-4 shrink-0 cursor-pointer text-muted-foreground transition-transform', isOpen && 'rotate-180')}
+                    aria-hidden
+                  />
+                </div>
                 {isOpen && (
                   <div className='space-y-2 border-t bg-muted/30 px-4 py-3'>
                     {c.body && <p className='text-sm whitespace-pre-wrap text-muted-foreground'>{c.body}</p>}
@@ -191,6 +269,38 @@ export function PanelChanges() {
           </Button>
         </div>
       </div>
+      {pending && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && !act.isPending && setPending(null)}
+          title={`${verb}?`}
+          desc={
+            <div className='space-y-2 text-sm'>
+              <p>
+                «{pending.commit.subject}» <span className='font-mono text-xs'>{short(pending.commit.hash)}</span>
+              </p>
+              <p>
+                {pending.action === 'revert'
+                  ? 'Будет создан новый коммит, отменяющий изменения. История не переписывается.'
+                  : 'Будет создан новый коммит, отменяющий откат. История не переписывается.'}{' '}
+                Панель пересоберётся и перезапустится, страница вернётся сама.
+              </p>
+            </div>
+          }
+          confirmText={confirmText}
+          isLoading={act.isPending}
+          handleConfirm={() => act.mutate(pending)}
+        />
+      )}
+      {jobId && (
+        <GitJobOverlay
+          jobId={jobId}
+          onClose={() => {
+            setJobId(null)
+            qc.invalidateQueries({ queryKey: ['panel-changes'] })
+          }}
+        />
+      )}
     </>
   )
 }

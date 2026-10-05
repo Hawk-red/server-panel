@@ -27,6 +27,7 @@ import { Route as AuthenticatedBackupsIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedDisksIndexRouteImport } from './routes/_authenticated/disks/index'
 import { Route as AuthenticatedDockerIndexRouteImport } from './routes/_authenticated/docker/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedGitIndexRouteImport } from './routes/_authenticated/git/index'
 import { Route as AuthenticatedInternetIndexRouteImport } from './routes/_authenticated/internet/index'
 import { Route as AuthenticatedMediaIndexRouteImport } from './routes/_authenticated/media/index'
 import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authenticated/network/index'
@@ -132,6 +133,11 @@ const AuthenticatedErrorsErrorRoute =
     path: '/errors/$error',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedGitIndexRoute = AuthenticatedGitIndexRouteImport.update({
+  id: '/git/',
+  path: '/git/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedInternetIndexRoute =
   AuthenticatedInternetIndexRouteImport.update({
     id: '/internet/',
@@ -209,6 +215,7 @@ export interface FileRoutesByFullPath {
   '/backups/': typeof AuthenticatedBackupsIndexRoute
   '/disks/': typeof AuthenticatedDisksIndexRoute
   '/docker/': typeof AuthenticatedDockerIndexRoute
+  '/git/': typeof AuthenticatedGitIndexRoute
   '/internet/': typeof AuthenticatedInternetIndexRoute
   '/media/': typeof AuthenticatedMediaIndexRoute
   '/network/': typeof AuthenticatedNetworkIndexRoute
@@ -238,6 +245,7 @@ export interface FileRoutesByTo {
   '/backups': typeof AuthenticatedBackupsIndexRoute
   '/disks': typeof AuthenticatedDisksIndexRoute
   '/docker': typeof AuthenticatedDockerIndexRoute
+  '/git': typeof AuthenticatedGitIndexRoute
   '/internet': typeof AuthenticatedInternetIndexRoute
   '/media': typeof AuthenticatedMediaIndexRoute
   '/network': typeof AuthenticatedNetworkIndexRoute
@@ -269,6 +277,7 @@ export interface FileRoutesById {
   '/_authenticated/backups/': typeof AuthenticatedBackupsIndexRoute
   '/_authenticated/disks/': typeof AuthenticatedDisksIndexRoute
   '/_authenticated/docker/': typeof AuthenticatedDockerIndexRoute
+  '/_authenticated/git/': typeof AuthenticatedGitIndexRoute
   '/_authenticated/internet/': typeof AuthenticatedInternetIndexRoute
   '/_authenticated/media/': typeof AuthenticatedMediaIndexRoute
   '/_authenticated/network/': typeof AuthenticatedNetworkIndexRoute
@@ -300,6 +309,7 @@ export interface FileRouteTypes {
     | '/backups/'
     | '/disks/'
     | '/docker/'
+    | '/git/'
     | '/internet/'
     | '/media/'
     | '/network/'
@@ -329,6 +339,7 @@ export interface FileRouteTypes {
     | '/backups'
     | '/disks'
     | '/docker'
+    | '/git'
     | '/internet'
     | '/media'
     | '/network'
@@ -359,6 +370,7 @@ export interface FileRouteTypes {
     | '/_authenticated/backups/'
     | '/_authenticated/disks/'
     | '/_authenticated/docker/'
+    | '/_authenticated/git/'
     | '/_authenticated/internet/'
     | '/_authenticated/media/'
     | '/_authenticated/network/'
@@ -511,6 +523,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/git/': {
+      id: '/_authenticated/git/'
+      path: '/git'
+      fullPath: '/git/'
+      preLoaderRoute: typeof AuthenticatedGitIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/internet/': {
       id: '/_authenticated/internet/'
       path: '/internet'
@@ -594,6 +613,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBackupsIndexRoute: typeof AuthenticatedBackupsIndexRoute
   AuthenticatedDisksIndexRoute: typeof AuthenticatedDisksIndexRoute
   AuthenticatedDockerIndexRoute: typeof AuthenticatedDockerIndexRoute
+  AuthenticatedGitIndexRoute: typeof AuthenticatedGitIndexRoute
   AuthenticatedInternetIndexRoute: typeof AuthenticatedInternetIndexRoute
   AuthenticatedMediaIndexRoute: typeof AuthenticatedMediaIndexRoute
   AuthenticatedNetworkIndexRoute: typeof AuthenticatedNetworkIndexRoute
@@ -616,6 +636,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBackupsIndexRoute: AuthenticatedBackupsIndexRoute,
   AuthenticatedDisksIndexRoute: AuthenticatedDisksIndexRoute,
   AuthenticatedDockerIndexRoute: AuthenticatedDockerIndexRoute,
+  AuthenticatedGitIndexRoute: AuthenticatedGitIndexRoute,
   AuthenticatedInternetIndexRoute: AuthenticatedInternetIndexRoute,
   AuthenticatedMediaIndexRoute: AuthenticatedMediaIndexRoute,
   AuthenticatedNetworkIndexRoute: AuthenticatedNetworkIndexRoute,

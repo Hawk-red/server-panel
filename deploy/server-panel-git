@@ -1,0 +1,168 @@
+#!/bin/bash
+# server-panel-git — root-утилита раздела «Git» панели: откат коммита (git revert), возврат (revert самого revert),
+# пересборка (deploy/update.sh) и перезапуск службы server-panel.
+#
+# Установка: install -o root -g root -m 755 deploy/server-panel-git /usr/local/sbin/server-panel-git
+# Вызывается ТОЛЬКО через sudo службы panel (SP_GIT в /etc/sudoers.d/server-panel). Принимает только:
+#   server-panel-git revert <хэш>          откатить коммит
+#   server-panel-git restore <хэш>         вернуть коммит (откатить его revert-коммит), хэш — исходного коммита
+#   server-panel-git revert-last <хэш>     откатить последнюю активную правку; хэш сверяется с текущей
+# Никаких reset, rebase, force: только git revert, история не переписывается.
+# Работа идёт в отдельном transient-юните (systemd-run): перезапуск службы её не убивает.
+set -uo pipefail
+
+REPO=/opt/server-panel
+OWNER=hawk
+DATA=$REPO/data
+JOB_FILE=$DATA/git-job.json
+JOB_LOCK=$DATA/git-job.lock
+PUSH_LOCK=/tmp/git-autopush.lock          # тот же lock, что у автопуша (cron :17)
+SELF=/usr/local/sbin/server-panel-git
+AUDIT_LOG=/var/log/server-panel-git.log
+PROTECTED='^deploy/(sudoers-server-panel|server-panel-git)$'
+
+die() { echo "$*" >&2; exit 1; }
+
+# Состояние истории: какие коммиты активны (revert-коммит отменяет цель; revert-of-revert возвращает её)
+STATE_PY='
+import json, re, sys
+recs = sys.stdin.read().split("\x1e")
+subjects, targets, order = {}, {}, []
+for r in recs:
+    if "\x1f" not in r:
+        continue
+    h, body = r.split("\x1f", 1)
+    h = h.strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", h):
+        continue
+    order.append(h)
+    subj = body.strip().split("\n", 1)[0]
+    subjects[h] = subj
+    m = re.search(r"This reverts commit ([0-9a-f]{40})", body)
+    if subj.startswith("Revert \"") and m:
+        targets[h] = m.group(1)
+children = {}
+for rv, t in targets.items():
+    children.setdefault(t, []).append(rv)
+memo = {}
+def active(x):
+    if x not in memo:
+        memo[x] = True
+        memo[x] = not any(active(z) for z in children.get(x, []))
+    return memo[x]
+print(json.dumps({"order": order, "subjects": subjects, "targets": targets, "active": {h: active(h) for h in order}}))
+'
+
+# Запись статуса задачи для панели (владелец — panel, режим 640)
+save() {
+  python3 - "$JOB_FILE" "$JOB_ID" "$JOB_ACTION" "$JOB_TARGET" "$1" "$2" "$JOBLOG" <<'PY'
+import json, os, pwd, sys, time
+path, jid, action, target, status, msg, logf = sys.argv[1:8]
+try:
+    log = open(logf, encoding="utf-8", errors="replace").read().splitlines()[-25:]
+except OSError:
+    log = []
+data = {"id": jid, "action": action, "target": target, "status": status, "message": msg, "log": log, "ts": int(time.time() * 1000)}
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False)
+p = pwd.getpwnam("panel")
+os.chown(tmp, p.pw_uid, p.pw_gid)
+os.chmod(tmp, 0o640)
+os.replace(tmp, path)
+PY
+}
+
+# git от имени владельца репозитория (hawk): иначе .git недоступен на запись
+G() { setpriv --reuid="$OWNER_UID" --regid="$OWNER_GID" --init-groups env HOME="$OWNER_HOME" git -c safe.directory="$REPO" -C "$REPO" "$@"; }
+
+build() { setpriv --reuid="$OWNER_UID" --regid="$OWNER_GID" --init-groups env HOME="$OWNER_HOME" "$REPO/deploy/update.sh" >>"$JOBLOG" 2>&1; }
+
+fail() { # статус, сообщение
+  save "$1" "$2"
+  echo "$(date '+%F %T') job=$JOB_ID $1: $2" >> "$AUDIT_LOG"
+  [ -s "$JOBLOG" ] && sed 's/^/    /' "$JOBLOG" >> "$AUDIT_LOG"
+  exit 1
+}
+
+# Задача (root, в транзиентном юните): захват lock, проверки, revert, сборка, перезапуск
+run_job() {
+  JOB_ACTION=$1; JOB_TARGET=$2; JOB_ID=$3
+  JOBLOG=/run/server-panel-git-$JOB_ID.log
+  : > "$JOBLOG"
+  exec 8>"$JOB_LOCK"; flock -n 8 || { JOB_ID=$JOB_ID; fail failed "занято: другая задача ещё выполняется"; }
+  exec 9>"$PUSH_LOCK"; flock -n 9 || fail failed "автопуш сейчас отправляет коммиты — повторите через минуту"
+  save running "Проверяю репозиторий"
+  [ "$(G rev-parse --abbrev-ref HEAD)" = main ] || fail failed "репозиторий не на ветке main"
+  [ -z "$(G status --porcelain)" ] || fail failed "в рабочем дереве есть незакоммиченные правки — сначала зафиксируйте их"
+  STATE=$(G log --format='%H%x1f%B%x1e' | python3 -c "$STATE_PY") || fail failed "не удалось прочитать историю"
+
+  case "$JOB_ACTION" in
+    revert)
+      T=$JOB_TARGET
+      [ -z "$(jq -r --arg h "$T" '.targets[$h] // empty' <<<"$STATE")" ] || fail failed "это revert-коммит: вернуть его можно кнопкой у исходного коммита"
+      [ "$(jq -r --arg h "$T" '.active[$h]' <<<"$STATE")" = true ] || fail failed "коммит уже откачен"
+      ORIG=$T ;;
+    restore)
+      C=$JOB_TARGET
+      [ "$(jq -r --arg h "$C" '.active[$h]' <<<"$STATE")" = false ] || fail failed "коммит не откачен, возвращать нечего"
+      T=$(jq -r --arg c "$C" '.targets as $t | .active as $a | [ $t | to_entries[] | select(.value == $c) | .key | select($a[.]) ] | first // empty' <<<"$STATE")
+      [ -n "$T" ] || fail failed "не найден действующий revert-коммит для этого коммита"
+      ORIG=$C ;;
+    revert-last)
+      T=$(jq -r '.order as $o | .targets as $t | .active as $a | first($o[] | select(($t[.] == null) and $a[.])) // empty' <<<"$STATE")
+      [ "$T" = "$JOB_TARGET" ] || fail failed "последняя правка изменилась — обновите страницу и повторите"
+      ORIG=$T ;;
+  esac
+  JOB_TARGET=$ORIG
+  save running "Проверяю коммит"
+
+  G show --name-only --format= "$ORIG" | grep -Eq "$PROTECTED" && \
+    fail failed "коммит меняет права sudo или утилиту панели. Такой откат делается вручную, автоматически он не выполняется"
+
+  save running "Откатываю коммит"
+  if ! G revert --no-edit "$T" >>"$JOBLOG" 2>&1; then
+    G revert --abort >>"$JOBLOG" 2>&1
+    fail conflict "нельзя откатить автоматически: поверх этого коммита есть более новые правки. Дерево не изменено"
+  fi
+
+  save running "Пересобираю панель (1–2 мин)"
+  if ! build; then
+    save running "Сборка не прошла, отменяю откат новым коммитом"
+    if G revert --no-edit HEAD >>"$JOBLOG" 2>&1 && build; then
+      fail failed "сборка не прошла: откат отменён новым коммитом, панель на прежней версии"
+    fi
+    fail failed "сборка не прошла, и отменить откат автоматически не удалось. Нужна проверка на сервере"
+  fi
+
+  save ok "Откат применён. Панель перезапускается, страница вернётся сама"
+  echo "$(date '+%F %T') job=$JOB_ID ok: $JOB_ACTION $ORIG" >> "$AUDIT_LOG"
+  systemctl restart server-panel.service
+}
+
+# Вход от sudo (панель): проверка аргументов, постановка задачи в очередь, выход
+queue() {
+  ACTION=$1; ARG=${2:-}
+  case "$ACTION" in
+    revert|restore|revert-last) ;;
+    *) die "неизвестное действие" ;;
+  esac
+  [[ "$ARG" =~ ^[0-9a-f]{40}$ ]] || die "неверный хэш"
+  exec 8>"$JOB_LOCK" 2>/dev/null || die "нет доступа к файлу блокировки $JOB_LOCK"
+  flock -n 8 || die "уже выполняется другая задача"
+  st=$(jq -r '.status // empty' "$JOB_FILE" 2>/dev/null)
+  case "$st" in queued|running) die "уже выполняется другая задача" ;; esac
+  ID=$(date +%s%N)
+  JOB_ID=$ID JOB_ACTION=$ACTION JOB_TARGET=$ARG JOBLOG=/dev/null save queued "Задача в очереди"
+  systemd-run --quiet --no-block --collect --unit="server-panel-git-$ID" "$SELF" --job "$ACTION" "$ARG" "$ID" || die "не удалось запустить задачу"
+  echo "$ID"
+}
+
+# Владелец репозитория — uid/gid hawk
+OWNER_UID=$(id -u "$OWNER") && OWNER_GID=$(id -g "$OWNER") && OWNER_HOME=$(getent passwd "$OWNER" | cut -d: -f6)
+
+case "${1:-}" in
+  revert|restore|revert-last) queue "$1" "${2:-}" ;;
+  --job) run_job "$2" "$3" "$4" ;;
+  *) die "использование: server-panel-git revert|restore|revert-last <хэш>" ;;
+esac

@@ -10,6 +10,7 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar'
 import { PanelRestartButton, RebootButton } from '@/features/system/reboot'
+import { RevertLastButton } from '@/features/git/revert-last'
 import { AppTitle } from './app-title'
 import { sidebarData } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
@@ -38,6 +39,9 @@ export function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <RebootButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <RevertLastButton />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
