@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Autostart } from './autostart'
 import { Cron } from './cron'
 import { Logs } from './logs'
-import { RebootButton } from './reboot'
 import { Services } from './services'
 
 // Графики (recharts) — отдельным чанком, грузятся только на вкладке «Ресурсы»
@@ -29,7 +28,6 @@ export function System({ tab, source }: { tab: SystemTab; source?: string }) {
       title='Система'
       description='CPU, память, температура, расписания, службы и логи'
       layoutPage={tab === 'resources' ? 'system' : undefined}
-      actions={<RebootButton />}
     >
       <Tabs value={tab} onValueChange={(v) => navigate({ search: { tab: v as SystemTab } })}>
         <div className='-mx-4 overflow-x-auto px-4 pb-1'>

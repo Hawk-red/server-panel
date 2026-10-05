@@ -242,6 +242,18 @@ export async function systemRoutes(app: FastifyInstance) {
     }
   )
 
+  // Перезапуск самой панели: лёгкое действие (пароль не нужен, подтверждение — в интерфейсе). Одна точная команда через sudo.
+  // Ответ уходит до остановки службы: команда стартует с задержкой. Панель вернётся сама, страница ждёт её.
+  app.post('/api/system/panel/restart', async (req, reply) => {
+    audit({ ip: req.clientIp, user: 'admin', action: 'system.panel-restart', result: 'ok', details: { note: 'перезапуск службы server-panel' } })
+    setTimeout(() => {
+      const child = spawn('/usr/bin/sudo', ['-n', '/usr/bin/systemctl', 'restart', 'server-panel.service'], { stdio: 'ignore', detached: true })
+      child.on('error', () => undefined)
+      child.unref()
+    }, 1500)
+    return reply.code(202).send({ ok: true, in: 1.5 })
+  })
+
   app.get('/api/system/updates', async () => listUpdates())
 
   // Установка обновлений apt: только уже установленные пакеты из текущего списка (--only-upgrade) или dist-upgrade
