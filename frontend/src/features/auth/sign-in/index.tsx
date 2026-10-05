@@ -17,7 +17,7 @@ export function SignIn() {
       <Card className='w-full max-w-sm gap-4'>
         <CardHeader>
           <CardTitle className='text-lg tracking-tight'>Вход</CardTitle>
-          <CardDescription>Введите пароль администратора панели.</CardDescription>
+          <CardDescription>Введите пароль администратора панели. Из интернета нужен ещё код из приложения-аутентификатора.</CardDescription>
         </CardHeader>
         <CardContent>
           <UserAuthForm redirectTo={redirect} />

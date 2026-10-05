@@ -17,6 +17,7 @@ import {
   Wifi,
   ScrollText,
   ShieldCheck,
+  ShieldHalf,
   Sparkles,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
@@ -53,6 +54,7 @@ export const sidebarData: SidebarData = {
         { title: 'Интернет', url: '/internet', icon: Wifi, color: 'text-info' },
         { title: 'Беспроводные', url: '/wireless', icon: Bluetooth, color: 'text-info' },
         { title: 'SSH и доступ', url: '/access', icon: KeyRound, color: 'text-brand' },
+        { title: 'Безопасность', url: '/security', icon: ShieldHalf, color: 'text-ok' },
         { title: 'Сеть и устройства', url: '/network', icon: Network, color: 'text-indigo' },
         { title: 'Журнал действий', url: '/audit', icon: ScrollText, color: 'text-muted-foreground' },
       ],

@@ -32,6 +32,7 @@ import { Route as AuthenticatedInternetIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedMediaIndexRouteImport } from './routes/_authenticated/media/index'
 import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authenticated/network/index'
 import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_authenticated/notifications/index'
+import { Route as AuthenticatedSecurityIndexRouteImport } from './routes/_authenticated/security/index'
 import { Route as AuthenticatedSitesIndexRouteImport } from './routes/_authenticated/sites/index'
 import { Route as AuthenticatedSystemIndexRouteImport } from './routes/_authenticated/system/index'
 import { Route as AuthenticatedTelegramIndexRouteImport } from './routes/_authenticated/telegram/index'
@@ -161,6 +162,12 @@ const AuthenticatedNotificationsIndexRoute =
     path: '/notifications/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSecurityIndexRoute =
+  AuthenticatedSecurityIndexRouteImport.update({
+    id: '/security/',
+    path: '/security/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSitesIndexRoute = AuthenticatedSitesIndexRouteImport.update({
   id: '/sites/',
   path: '/sites/',
@@ -220,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/media/': typeof AuthenticatedMediaIndexRoute
   '/network/': typeof AuthenticatedNetworkIndexRoute
   '/notifications/': typeof AuthenticatedNotificationsIndexRoute
+  '/security/': typeof AuthenticatedSecurityIndexRoute
   '/sites/': typeof AuthenticatedSitesIndexRoute
   '/system/': typeof AuthenticatedSystemIndexRoute
   '/telegram/': typeof AuthenticatedTelegramIndexRoute
@@ -250,6 +258,7 @@ export interface FileRoutesByTo {
   '/media': typeof AuthenticatedMediaIndexRoute
   '/network': typeof AuthenticatedNetworkIndexRoute
   '/notifications': typeof AuthenticatedNotificationsIndexRoute
+  '/security': typeof AuthenticatedSecurityIndexRoute
   '/sites': typeof AuthenticatedSitesIndexRoute
   '/system': typeof AuthenticatedSystemIndexRoute
   '/telegram': typeof AuthenticatedTelegramIndexRoute
@@ -282,6 +291,7 @@ export interface FileRoutesById {
   '/_authenticated/media/': typeof AuthenticatedMediaIndexRoute
   '/_authenticated/network/': typeof AuthenticatedNetworkIndexRoute
   '/_authenticated/notifications/': typeof AuthenticatedNotificationsIndexRoute
+  '/_authenticated/security/': typeof AuthenticatedSecurityIndexRoute
   '/_authenticated/sites/': typeof AuthenticatedSitesIndexRoute
   '/_authenticated/system/': typeof AuthenticatedSystemIndexRoute
   '/_authenticated/telegram/': typeof AuthenticatedTelegramIndexRoute
@@ -314,6 +324,7 @@ export interface FileRouteTypes {
     | '/media/'
     | '/network/'
     | '/notifications/'
+    | '/security/'
     | '/sites/'
     | '/system/'
     | '/telegram/'
@@ -344,6 +355,7 @@ export interface FileRouteTypes {
     | '/media'
     | '/network'
     | '/notifications'
+    | '/security'
     | '/sites'
     | '/system'
     | '/telegram'
@@ -375,6 +387,7 @@ export interface FileRouteTypes {
     | '/_authenticated/media/'
     | '/_authenticated/network/'
     | '/_authenticated/notifications/'
+    | '/_authenticated/security/'
     | '/_authenticated/sites/'
     | '/_authenticated/system/'
     | '/_authenticated/telegram/'
@@ -558,6 +571,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedNotificationsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/security/': {
+      id: '/_authenticated/security/'
+      path: '/security'
+      fullPath: '/security/'
+      preLoaderRoute: typeof AuthenticatedSecurityIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/sites/': {
       id: '/_authenticated/sites/'
       path: '/sites'
@@ -618,6 +638,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMediaIndexRoute: typeof AuthenticatedMediaIndexRoute
   AuthenticatedNetworkIndexRoute: typeof AuthenticatedNetworkIndexRoute
   AuthenticatedNotificationsIndexRoute: typeof AuthenticatedNotificationsIndexRoute
+  AuthenticatedSecurityIndexRoute: typeof AuthenticatedSecurityIndexRoute
   AuthenticatedSitesIndexRoute: typeof AuthenticatedSitesIndexRoute
   AuthenticatedSystemIndexRoute: typeof AuthenticatedSystemIndexRoute
   AuthenticatedTelegramIndexRoute: typeof AuthenticatedTelegramIndexRoute
@@ -641,6 +662,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMediaIndexRoute: AuthenticatedMediaIndexRoute,
   AuthenticatedNetworkIndexRoute: AuthenticatedNetworkIndexRoute,
   AuthenticatedNotificationsIndexRoute: AuthenticatedNotificationsIndexRoute,
+  AuthenticatedSecurityIndexRoute: AuthenticatedSecurityIndexRoute,
   AuthenticatedSitesIndexRoute: AuthenticatedSitesIndexRoute,
   AuthenticatedSystemIndexRoute: AuthenticatedSystemIndexRoute,
   AuthenticatedTelegramIndexRoute: AuthenticatedTelegramIndexRoute,
