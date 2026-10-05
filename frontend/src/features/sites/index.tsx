@@ -40,7 +40,7 @@ function UnitRow({ title, icon, u, version }: { title: string; icon: string; u: 
           )}
         </div>
       </div>
-      {u ? <StatusBadge status={unitStatus(u.active)} label={u.active === 'active' ? 'работает' : u.active} /> : <NoData />}
+      {u ? <StatusBadge status={unitStatus(u.active)} label={u.active === 'active' ? undefined : u.active} /> : <NoData />}
     </div>
   )
 }
@@ -270,7 +270,7 @@ export function Sites() {
               <CardTitle className='text-base'>pulsdev-api (api.pulsdev.net)</CardTitle>
               <p className='text-xs text-muted-foreground'>Node.js/Express · /home/hawk/pulsdev-api · systemd pulsdev-api · 127.0.0.1:8787 ← nginx :443</p>
             </div>
-            {puls ? <StatusBadge status={unitStatus(puls.active)} label={puls.active === 'active' ? 'работает' : puls.active} /> : <NoData />}
+            {puls ? <StatusBadge status={unitStatus(puls.active)} label={puls.active === 'active' ? undefined : puls.active} /> : <NoData />}
           </CardHeader>
           <CardContent className='space-y-3 text-sm'>
             <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>

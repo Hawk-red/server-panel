@@ -126,7 +126,7 @@ function SshCard({
         {s ? (
           <StatusBadge
             status={s.running ? 'ok' : 'error'}
-            label={s.running ? 'работает' : 'отключён'}
+            label={s.running ? undefined : 'отключён'}
           />
         ) : (
           <NoData reason={data?.ssh.error} />
@@ -732,7 +732,7 @@ function RemoteCard({ data, part }: { data?: AccessData; part: 'rdp' | 'wg' }) {
                     <span className='font-medium'>VNC (:5900)</span>
                     <StatusBadge
                       status={r.vnc.listening ? 'ok' : 'unknown'}
-                      label={r.vnc.listening ? 'работает' : 'не настроен'}
+                      label={r.vnc.listening ? undefined : 'не настроен'}
                     />
                   </div>
                   {r.vnc.listening ? (

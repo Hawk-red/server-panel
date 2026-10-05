@@ -2,11 +2,13 @@ import { cn } from '@/lib/utils'
 
 export type Status = 'ok' | 'warning' | 'error' | 'unknown'
 
-// Единый индикатор статуса: цветная точка + текст (смысл всегда продублирован словом)
+// Единый индикатор статуса: цветная точка + текст (смысл всегда продублирован словом).
+// Словарь один на всю панель: «в норме» / «внимание» / «сбой» / «нет данных». Нейтральные состояния
+// (например, «на паузе») передают свою подпись через label, цвет точки при этом остаётся серым.
 const STYLE: Record<Status, { dot: string; text: string; label: string }> = {
-  ok: { dot: 'bg-ok', text: 'text-ok-foreground', label: 'работает' },
-  warning: { dot: 'bg-warn', text: 'text-warn-foreground', label: 'проблемы' },
-  error: { dot: 'bg-danger', text: 'text-danger-foreground', label: 'не работает' },
+  ok: { dot: 'bg-ok', text: 'text-ok-foreground', label: 'в норме' },
+  warning: { dot: 'bg-warn', text: 'text-warn-foreground', label: 'внимание' },
+  error: { dot: 'bg-danger', text: 'text-danger-foreground', label: 'сбой' },
   unknown: { dot: 'bg-muted-foreground/40', text: 'text-muted-foreground', label: 'нет данных' },
 }
 

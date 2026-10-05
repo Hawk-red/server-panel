@@ -210,10 +210,10 @@ export function Docker() {
                             <div className='truncate font-medium'>{c.name}</div>
                           )}
                           <div className='truncate text-xs text-muted-foreground'>{c.image}</div>
-                          <StatusBadge className='mt-1 sm:hidden' status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
+                          <StatusBadge className='mt-1 sm:hidden' status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? undefined : c.state} />
                         </TableCell>
                         <TableCell className='hidden sm:table-cell'>
-                          <StatusBadge status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
+                          <StatusBadge status={c.state === 'running' ? 'ok' : c.state === 'restarting' ? 'warning' : 'error'} label={c.state === 'running' ? undefined : c.state} />
                         </TableCell>
                         <TableCell className='hidden whitespace-nowrap md:table-cell'>
                           {c.startedAt ? <Value kind='duration' value={Math.round((Date.now() - c.startedAt) / 1000)} /> : '—'}

@@ -74,7 +74,7 @@ export function Autostart() {
                     </div>
                     <div className='flex shrink-0 items-center gap-3'>
                       <Badge variant={c.restart === 'no' ? 'outline' : 'secondary'}>{c.restart}</Badge>
-                      <StatusBadge status={c.state === 'running' ? 'ok' : 'error'} label={c.state === 'running' ? 'работает' : c.state} />
+                      <StatusBadge status={c.state === 'running' ? 'ok' : 'error'} label={c.state === 'running' ? undefined : c.state} />
                     </div>
                   </div>
                 ))
