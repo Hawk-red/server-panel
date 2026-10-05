@@ -58,21 +58,21 @@ export function Page({ title, description, actions, children, layoutPage }: Page
       </Header>
       <Main>
         <div className='mb-4 flex flex-wrap items-end justify-between gap-2'>
-          <div>
-            <h1 className='flex items-center gap-2 text-2xl font-bold tracking-tight'>
-              {Icon && <Icon className={cn('size-6 shrink-0', section?.color)} aria-hidden='true' />}
-              {title}
-            </h1>
-            {description && (
-              <p className='text-muted-foreground'>{description}</p>
-            )}
-          </div>
-          <div className='flex flex-wrap items-center gap-2'>
-            {actions}
-            {phone ? (
+          <div className='flex min-w-0 flex-1 items-start justify-between gap-2 max-sm:basis-full'>
+            <div className='min-w-0'>
+              <h1 className='flex items-center gap-2 text-2xl font-bold tracking-tight'>
+                {Icon && <Icon className={cn('size-6 shrink-0', section?.color)} aria-hidden='true' />}
+                {title}
+              </h1>
+              {description && (
+                <p className='text-muted-foreground'>{description}</p>
+              )}
+            </div>
+            {/* Телефон: «⋯» стоит в строке заголовка, а не отдельной строкой под описанием */}
+            {phone && (
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <Button variant='outline' size='icon' aria-label='Ещё'>
+                  <Button variant='outline' size='icon' aria-label='Ещё' className='shrink-0'>
                     <Ellipsis />
                   </Button>
                 </DropdownMenuTrigger>
@@ -88,7 +88,11 @@ export function Page({ title, description, actions, children, layoutPage }: Page
                   <ViewModeItems tvLink={tvLink} />
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : (
+            )}
+          </div>
+          <div className='flex flex-wrap items-center gap-2 empty:hidden'>
+            {actions}
+            {!phone && (
               <>
                 {layoutPage && (
                   <Button variant={editing ? 'default' : 'outline'} size='sm' onClick={() => setEditing(!editing)} aria-pressed={editing}>

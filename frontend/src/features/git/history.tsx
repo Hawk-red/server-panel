@@ -210,12 +210,12 @@ export function PanelChanges() {
             const isOpen = open === c.hash
             return (
               <div key={c.hash} className={cn(!c.active && c.kind === 'commit' && 'bg-muted/30')}>
-                <div className='flex items-start gap-3 px-4 py-2.5'>
+                <div className='flex flex-wrap items-start gap-x-3 gap-y-2 px-3 py-2.5 sm:flex-nowrap sm:px-4'>
                   <button
                     type='button'
                     onClick={() => setOpen(isOpen ? null : c.hash)}
                     aria-expanded={isOpen}
-                    className='flex min-w-0 flex-1 items-start gap-3 text-start text-sm focus-visible:outline-none'
+                    className='flex min-w-0 flex-1 basis-[calc(100%-2rem)] items-start gap-3 text-start text-sm focus-visible:outline-none sm:basis-0'
                   >
                     <GitCommitHorizontal className='mt-0.5 size-4 shrink-0 text-info' aria-hidden />
                     <div className='min-w-0 flex-1'>
@@ -230,7 +230,7 @@ export function PanelChanges() {
                       )}
                     </div>
                   </button>
-                  <div className='flex shrink-0 flex-col items-end gap-1.5'>
+                  <div className='flex shrink-0 items-center justify-between gap-1.5 max-sm:order-last max-sm:w-full sm:flex-col sm:items-end'>
                     <div className='flex flex-wrap justify-end gap-1'>
                       <StatusBadge status={c.pushed ? 'ok' : 'warning'} label={c.pushed ? 'на GitHub' : 'не отправлен'} className='text-xs' />
                       {c.kind === 'commit' && !c.active && <StatusBadge status='unknown' label='откачен' className='text-xs' />}

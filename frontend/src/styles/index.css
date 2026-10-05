@@ -207,3 +207,7 @@ html[data-view='phone'] [data-slot='alert-dialog-footer'] > * {
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
 }
+html[data-view='phone'] [data-slot='dialog-header'],
+html[data-view='phone'] [data-slot='alert-dialog-header'] {
+  text-align: start;
+}

@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import type { MetricsResponse, Range } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { useViewMode } from '@/lib/view-mode'
 import { NoData } from './no-data'
 
 export const RANGE_LABELS: Record<Range, string> = {
@@ -37,6 +38,7 @@ function tickTime(ts: number, range: Range) {
 }
 
 export function MetricChart({ title, series, range, format, domain, heightClass = 'h-44 xl:h-40 2xl:h-48' }: MetricChartProps) {
+  const phone = useViewMode().view === 'phone'
   const { data, isError } = useQuery({
     queryKey: ['metrics', range, series.map((s) => s.name).join(',')],
     queryFn: async () =>
@@ -60,7 +62,7 @@ export function MetricChart({ title, series, range, format, domain, heightClass 
       <CardHeader className='px-4'>
         <CardTitle className='text-sm font-medium'>{title}</CardTitle>
       </CardHeader>
-      <CardContent className={cn('px-1', heightClass)}>
+      <CardContent className={cn('px-1', phone ? 'h-36' : heightClass)}>
         {isError || (data && points.length === 0) ? (
           <div className='flex h-full items-center justify-center'>
             <NoData reason={isError ? 'ошибка запроса' : 'источник пока не собрал данных за этот период'} />
@@ -75,9 +77,9 @@ export function MetricChart({ title, series, range, format, domain, heightClass 
                 domain={['dataMin', 'dataMax']}
                 tickFormatter={(t) => tickTime(t, range)}
                 fontSize={10}
-                minTickGap={40}
+                minTickGap={phone ? 64 : 40}
               />
-              <YAxis tickFormatter={format} fontSize={10} width={56} domain={domain ?? ['auto', 'auto']} />
+              <YAxis tickFormatter={format} fontSize={10} width={phone ? 44 : 56} domain={domain ?? ['auto', 'auto']} />
               <Tooltip
                 labelFormatter={(t) => new Date(Number(t)).toLocaleString('ru-RU')}
                 formatter={(v, name) => [format(Number(v)), series.find((s) => s.name === name)?.label ?? String(name)]}
