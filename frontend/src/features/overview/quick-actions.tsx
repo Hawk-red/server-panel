@@ -6,7 +6,6 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { QuickState } from '@/features/infra-types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { type Status, StatusBadge } from '@/components/status-badge'
 import { NoData } from '@/components/no-data'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -77,14 +76,12 @@ export function QuickActions() {
         done: 'AdGuard выключен на 10 минут',
       }
 
-  // Статус — в общем словаре панели (StatusBadge); подпись уточняет, что именно происходит
-  const rows: { key: string; icon: React.ElementType; label: string; status: Status; statusLabel?: string; sub: React.ReactNode; button: string; ButtonIcon: React.ElementType; action: Action; disabled: boolean }[] = [
+  const rows: { key: string; icon: React.ElementType; label: string; state: React.ReactNode; button: string; ButtonIcon: React.ElementType; action: Action; disabled: boolean }[] = [
     {
       key: 'qbt',
       icon: RotateCw,
       label: 'qBittorrent',
-      status: container ? (container.state === 'running' ? 'ok' : container.state === 'restarting' ? 'warning' : 'error') : 'unknown',
-      sub: container ? (container.state === 'running' ? 'контейнер запущен' : `контейнер: ${container.state}`) : (data?.container.error ?? 'нет данных'),
+      state: container ? (container.state === 'running' ? 'контейнер работает' : `контейнер: ${container.state}`) : <NoData reason={data?.container.error} />,
       button: 'Перезапустить',
       ButtonIcon: RotateCw,
       action: restartAction,
@@ -94,8 +91,7 @@ export function QuickActions() {
       key: 'alert-bot',
       icon: RotateCw,
       label: 'Бот Air Alert',
-      status: alertBot ? (alertBot.active === 'active' ? 'ok' : 'error') : 'unknown',
-      sub: alertBot ? (alertBot.active === 'active' ? 'служба запущена' : `служба: ${alertBot.active}`) : (data?.alertBot?.error ?? 'нет данных'),
+      state: alertBot ? (alertBot.active === 'active' ? 'служба работает' : <span className='text-danger-foreground'>служба: {alertBot.active}</span>) : <NoData reason={data?.alertBot?.error} />,
       button: 'Перезапустить бота',
       ButtonIcon: RotateCw,
       action: alertBotAction,
@@ -105,9 +101,7 @@ export function QuickActions() {
       key: 'torrents',
       icon: Pause,
       label: 'Торренты',
-      status: torrents ? (torrents.total === 0 || torrents.allStopped ? 'unknown' : 'ok') : 'unknown',
-      statusLabel: torrents ? (torrents.total === 0 ? 'торрентов нет' : torrents.allStopped ? 'на паузе' : undefined) : undefined,
-      sub: torrents ? (torrents.total === 0 ? 'закачек нет' : torrents.allStopped ? `все на паузе: ${torrents.total}` : `работают ${torrents.running} из ${torrents.total}`) : (data?.torrents.error ?? 'нет данных'),
+      state: torrents ? (torrents.total === 0 ? 'торрентов нет' : torrents.allStopped ? `все на паузе (${torrents.total})` : `${torrents.running} из ${torrents.total} работают`) : <NoData reason={data?.torrents.error} />,
       button: torrents?.allStopped ? 'Продолжить' : 'Пауза',
       ButtonIcon: torrents?.allStopped ? Play : Pause,
       action: pauseAction,
@@ -117,9 +111,15 @@ export function QuickActions() {
       key: 'adguard',
       icon: ShieldCheck,
       label: 'AdGuard Home',
-      status: protection ? (adguardOff ? 'warning' : 'ok') : 'unknown',
-      statusLabel: protection && adguardOff ? 'защита выключена' : undefined,
-      sub: protection ? (adguardOff ? (protection.disabledLeftSec ? `вернётся через ${Math.max(1, Math.ceil(protection.disabledLeftSec / 60))} мин` : 'выключена вручную') : 'защита включена') : (data?.protection.error ?? 'нет данных'),
+      state: protection ? (
+        adguardOff ? (
+          <span className='text-warn-foreground'>защита выключена{protection.disabledLeftSec ? `, ещё ${Math.max(1, Math.ceil(protection.disabledLeftSec / 60))} мин` : ''}</span>
+        ) : (
+          'защита включена'
+        )
+      ) : (
+        <NoData reason={data?.protection.error} />
+      ),
       button: adguardOff ? 'Включить' : 'Выключить на 10 мин',
       ButtonIcon: adguardOff ? ShieldCheck : ShieldOff,
       action: adguardAction,
@@ -138,18 +138,14 @@ export function QuickActions() {
         {isError ? (
           <NoData reason='бэкенд не ответил' />
         ) : (
-          <ul className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+          <ul className='divide-y'>
             {rows.map((r) => (
-              <li key={r.key} className='flex flex-col gap-3 rounded-lg border bg-card p-3'>
-                <div className='flex min-w-0 items-start justify-between gap-2'>
-                  <div className='flex min-w-0 items-center gap-2'>
-                    <r.icon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
-                    <span className='truncate text-sm font-medium'>{r.label}</span>
-                  </div>
-                  <StatusBadge status={r.status} label={r.statusLabel} className='shrink-0 text-xs' />
+              <li key={r.key} className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-2.5'>
+                <div className='min-w-0'>
+                  <div className='text-sm font-medium'>{r.label}</div>
+                  <div className='text-xs text-muted-foreground'>{r.state}</div>
                 </div>
-                <div className='text-xs text-muted-foreground'>{r.sub}</div>
-                <Button size='sm' variant='outline' className='mt-auto w-full' disabled={r.disabled || exec.isPending} onClick={() => setPending(r.action)}>
+                <Button size='sm' variant='outline' disabled={r.disabled || exec.isPending} onClick={() => setPending(r.action)}>
                   <r.ButtonIcon /> {r.button}
                 </Button>
               </li>
