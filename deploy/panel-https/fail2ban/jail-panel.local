@@ -1,0 +1,16 @@
+# /etc/fail2ban/jail.d/panel-auth.local — подбор пароля и кода при входе в панель снаружи.
+# 5 неудач за 10 минут с одного адреса → бан на 1 час; повторные баны растут (1 ч → 4 ч → 24 ч → 4 суток).
+# Бан — iptables (как у остальных jail на этом сервере: banaction по умолчанию iptables-multiport; ufw работает поверх тех же таблиц,
+# а правила fail2ban вставляются в начало цепочки INPUT, поэтому сработают раньше правил ufw). Порт 443: роутер пробрасывает 9443 → 443.
+[panel-auth]
+enabled  = true
+port     = 443
+filter   = panel-auth
+logpath  = /var/log/nginx/panel.access.log
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+bantime.increment  = true
+bantime.multipliers = 1 4 24 96
+bantime.maxtime    = 5w
+ignoreip = 127.0.0.1/8 ::1 192.168.31.0/24 10.10.10.0/24
