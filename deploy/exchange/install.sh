@@ -14,7 +14,8 @@ VHOST=/etc/nginx/sites-available/api.pulsdev.net
 mkdir -p "$BK"; chmod 700 "$BK"
 
 echo "== 1. каталоги"
-install -d -o hawk -g hawk -m 750 /srv/exchange /srv/exchange/uploads
+# На сервере /srv/exchange — символическая ссылка на /mnt/hdd1tb/sftpgo-data (move-to-hdd1tb.sh): ссылку не заменять папкой
+if [[ -L /srv/exchange ]]; then echo "   /srv/exchange — ссылка на $(readlink /srv/exchange), не трогаю"; else install -d -o hawk -g hawk -m 750 /srv/exchange /srv/exchange/uploads; fi
 install -d -o 1001 -g 1001 -m 750 /opt/sftpgo /opt/sftpgo/data
 # панель читает содержимое (размеры, «последние загрузки»); новые файлы наследуют доступ
 setfacl -R -m u:panel:rX /srv/exchange

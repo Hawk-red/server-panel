@@ -65,8 +65,9 @@ function LinkRow({ label, url, hint, homeOnly, service }: { label: string; url: 
 export function ExchangeCard() {
   const { data, isError } = useQuery({ queryKey: ['exchange'], queryFn: async () => (await api.get<ExchangeState>('/exchange')).data, refetchInterval: 30_000 })
   const running = data?.container?.state === 'running'
-  const status = !data ? null : !data.installed ? 'unknown' : running && data.health?.ok ? 'ok' : running ? 'warning' : 'error'
-  const label = !data ? '' : !data.installed ? 'не установлен' : running && data.health?.ok ? `работает · ответ за ${data.health.ms} мс` : running ? 'запущен, но не отвечает' : `контейнер: ${data.container?.state}`
+  const missing = data?.storage?.place === 'missing'
+  const status = !data ? null : !data.installed ? 'unknown' : missing ? 'error' : running && data.health?.ok ? 'ok' : running ? 'warning' : 'error'
+  const label = !data ? '' : !data.installed ? 'не установлен' : missing ? 'диск hdd1tb не смонтирован' : running && data.health?.ok ? `работает · ответ за ${data.health.ms} мс` : running ? 'запущен, но не отвечает' : `контейнер: ${data.container?.state}`
   const monitor = useMonitor('sftpgo')
   return (
     <Card id='exchange' className='gap-3'>
@@ -115,10 +116,13 @@ export function ExchangeCard() {
                     )}
                   </div>
                   {data.disk.fs && <Meter value={data.disk.fs.percent} direction='higher-worse' label='Диск обменника' />}
-                  <p className='text-xs text-muted-foreground'>Обменник лежит на системном SSD. Предел для гостя (квота и размер файла) задаётся в админке.</p>
+                  <p className={`text-xs ${data.storage.place === 'hdd1tb' ? 'text-muted-foreground' : 'text-warn-foreground'}`}>{data.storage.note}. Предел для гостя (квота и размер файла) задаётся в админке.</p>
                 </>
               ) : (
-                <NoData reason='каталог /srv/exchange не найден' />
+                <>
+                  <NoData reason={data.storage.note} />
+                  {data.storage.place === 'missing' && <p className='text-xs text-danger-foreground'>{data.storage.note}. Смонтировать диск можно кнопкой в разделе «Диски».</p>}
+                </>
               )}
             </div>
 

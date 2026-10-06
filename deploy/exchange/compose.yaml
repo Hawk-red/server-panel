@@ -17,7 +17,14 @@ services:
       - "127.0.0.1:8082:8082"
     volumes:
       - /opt/sftpgo/data:/var/lib/sftpgo   # база пользователей и настроек (SQLite), ключи
-      - /srv/exchange:/data/exchange       # файлы обменника
+      # Файлы обменника. /srv/exchange — символическая ссылка на /mnt/hdd1tb/sftpgo-data (deploy/exchange/move-to-hdd1tb.sh).
+      # Долгий синтаксис с create_host_path: false: если диск не смонтирован и ссылка ведёт в никуда, контейнер НЕ запускается
+      # (короткий синтаксис -v создал бы пустую папку и обменник молча писал бы на системный SSD).
+      - type: bind
+        source: /srv/exchange
+        target: /data/exchange
+        bind:
+          create_host_path: false
       # Русский перевод веб-клиента: английский файл образа + наши строки (собирает build-locale.py). Один файл поверх образа —
       # обновление контейнера это не ломает, новые строки остаются английскими
       - /opt/sftpgo/locales/en/translation.json:/usr/share/sftpgo/static/locales/en/translation.json:ro

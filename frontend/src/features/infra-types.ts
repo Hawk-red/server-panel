@@ -67,6 +67,8 @@ export type ExchangeState = {
   container: { state: string; status: string | null } | null
   health: { ok: boolean; ms: number } | null
   urls: { external: string; home: string; admin: string }
+  /** где лежат данные: hdd1tb, missing (диск не смонтирован), ssd, other */
+  storage: { path: string; target: string | null; place: 'hdd1tb' | 'missing' | 'ssd' | 'other'; note: string }
   disk: { fs: { total: number; used: number; free: number; percent: number } | null; exchangeBytes: number | null; uploadsBytes: number | null } | null
   recent: { ts: number; user: string; ip: string; name: string; size: number }[]
   owner: string

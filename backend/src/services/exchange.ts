@@ -1,6 +1,7 @@
 // Обменник файлов (SFTPGo в Docker, /srv/exchange): состояние для карточки и уведомления о загрузках.
 // Загрузки берём из журнала контейнера: на уровне info SFTPGo пишет событие «Upload» с пользователем,
 // путём, размером и настоящим IP (за nginx он передаётся заголовком X-Forwarded-For). Секреты и админка не нужны.
+import { lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs'
 import type { FastifyBaseLogger } from 'fastify'
 import { readFsUsage } from '../collector/sources.js'
 import { config } from '../config.js'
@@ -108,6 +109,37 @@ function dirSize(path: string): number | null {
   return c?.value ?? null
 }
 
+// Где физически лежит обменник: /srv/exchange — ссылка на /mnt/hdd1tb/sftpgo-data (deploy/exchange/move-to-hdd1tb.sh).
+//  hdd1tb — данные на диске hdd1tb; missing — ссылка ведёт в никуда (диск не смонтирован, контейнер не стартует);
+//  ssd — обычная папка на системном SSD (до переноса или после отката); other — на другом диске.
+const DISK = '/mnt/hdd1tb'
+export type Storage = { path: string; target: string | null; place: 'hdd1tb' | 'missing' | 'ssd' | 'other'; note: string }
+export function storageInfo(): Storage {
+  try {
+    const st = lstatSync(DIR)
+    const target = st.isSymbolicLink() ? readlinkSync(DIR) : null
+    let real: string
+    try {
+      real = realpathSync(DIR)
+    } catch {
+      return { path: DIR, target, place: 'missing', note: 'диск hdd1tb не смонтирован: каталог данных недоступен, обменник остановлен (запустится сам, когда диск вернётся)' }
+    }
+    const dev = statSync(real).dev
+    const rootDev = statSync('/').dev
+    if (dev === rootDev) return { path: DIR, target, place: 'ssd', note: 'обменник лежит на системном SSD' }
+    let diskDev: number | null = null
+    try {
+      diskDev = statSync(DISK).dev
+    } catch {
+      /* нет точки монтирования */
+    }
+    if (diskDev !== null && dev === diskDev && diskDev !== rootDev && real.startsWith(`${DISK}/`)) return { path: DIR, target, place: 'hdd1tb', note: `обменник лежит на диске hdd1tb (${real})` }
+    return { path: DIR, target, place: 'other', note: `обменник лежит на другом диске (${real})` }
+  } catch {
+    return { path: DIR, target: null, place: 'missing', note: 'каталог /srv/exchange не найден' }
+  }
+}
+
 export async function exchangeState() {
   const container = await docker.getContainer(CONTAINER).catch(() => null)
   let health: { ok: boolean; ms: number } | null = null
@@ -122,6 +154,7 @@ export async function exchangeState() {
     container: container ? { state: container.state, status: container.status ?? null } : null,
     health,
     urls: EXCHANGE_URLS,
+    storage: storageInfo(),
     disk: dirOk ? { fs, exchangeBytes: dirSize(DIR), uploadsBytes: dirSize(`${DIR}/uploads`) } : null,
     recent: getSetting<UploadRecord[]>(RECENT_KEY, []).slice(0, 15),
     owner: OWNER,
