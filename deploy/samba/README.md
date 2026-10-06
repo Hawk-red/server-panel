@@ -15,7 +15,7 @@
   разыменовывается по пути при каждом обращении. Нужны `wide links = yes` (на шаре MacMini), `allow insecure wide links = yes` и `unix extensions = no`
   (глобально). Расширения Unix относятся к SMB1, а `min protocol = SMB2`, поэтому macOS-клиенты (SMB2/3) это не затрагивает; на старых шарах `wide links` не включён.
 - **Корень `/srv/share`** принадлежит root (755): создавать в нём нечего, пишется только внутри папок-целей (права файловых систем целей, пользователь `macmini`, как у старых шар).
-- **hide files**: `lost+found` скрыт в `1TB` и в `MacMini`, `qbittorrent-downloads` — только в `MacMini`. Скрытие — атрибут «скрытый», файлы остаются на месте и доступны по имени.
+- **veto files** (вместо hide files, который Finder показывал): `lost+found` невидим и недоступен в `1TB` и в `MacMini`, `qbittorrent-downloads` — только в `MacMini` (в `1TB` и в qBittorrent он на месте). Файлы на диске не меняются; `delete veto files = no`. Применение: `apply-veto.sh`, откат: `rollback-veto.sh`.
 - **Exchange**: на `/srv/exchange` добавлены ACL `macmini` (rwX) и `hawk` (rwX) рядом с `panel` (rX), в том числе default-ACL, чтобы SFTPGo (uid 1001 = hawk) мог работать с файлами,
   созданными через SMB (владелец у них macmini).
 - **Квота SFTPGo**: файлы, добавленные через SMB, SFTPGo сам не видит; их учитывает только пересчёт квоты (по README панели — раз в час, либо вручную в админке «Quota scan»).

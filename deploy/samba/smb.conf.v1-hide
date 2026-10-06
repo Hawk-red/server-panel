@@ -306,10 +306,7 @@
    comment = HDD 1TB - торренты
    path = /mnt/hdd1tb
    browseable = no
-   # veto files: lost+found невидим и недоступен для клиентов (hide files Finder показывал). Файлы на диске не меняются,
-   # delete veto files = no — папку с «вето»-содержимым клиент удалить не сможет
-   veto files = /lost+found/
-   delete veto files = no
+   hide files = /lost+found/
    read only = no
    guest ok = no
    valid users = macmini
@@ -343,9 +340,7 @@
    inherit acls = yes
    follow symlinks = yes
    wide links = yes
-   # veto files: lost+found и qbittorrent-downloads невидимы и недоступны ТОЛЬКО через эту шару (в шаре 1TB и в qBittorrent всё на месте)
-   veto files = /lost+found/qbittorrent-downloads/
-   delete veto files = no
+   hide files = /lost+found/qbittorrent-downloads/
    vfs objects = catia fruit
    fruit:metadata = netatalk
    fruit:model = MacSamba
