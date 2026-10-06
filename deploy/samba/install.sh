@@ -22,7 +22,7 @@ if ! cmp -s "$LIVE" "$DIR/smb.conf.before"; then
   [[ "${FORCE:-}" == 1 ]] || { echo "   Для продолжения запустите с FORCE=1" >&2; exit 1; }
 fi
 
-echo "== 3. Корень шары и права Exchange"
+echo "== 3. Корень шары (ссылки, в том числе SFTPGo) и права каталога обменника"
 "$DIR/share-tree.sh"
 
 echo "== 4. Проверка нового конфига (testparm)"

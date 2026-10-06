@@ -1,5 +1,5 @@
 #!/bin/bash
-# Корень единой шары MacMini: /srv/share (root:root, 755) с символическими ссылками на каталоги дисков, и права для Exchange.
+# Корень единой шары MacMini: /srv/share (root:root, 755) с символическими ссылками на каталоги дисков, и права каталога обменника.
 # Идемпотентно, можно запускать повторно (например, когда /srv/exchange станет точкой монтирования нового диска).
 # Запуск: sudo /opt/server-panel/deploy/samba/share-tree.sh
 #
@@ -21,9 +21,21 @@ link() { # имя цель
 link 1TB "$HDD"
 link FLAC "$FLAC"
 link MacMiniTorrents "$TORR"
-link Exchange "$EXCH"
+# Папка обменника в шаре называется SFTPGo (раньше — Exchange). Каталог данных остаётся /srv/exchange.
+# Старая ссылка Exchange (только символическая, настоящую папку не трогаем): переименовывается в SFTPGo, а если SFTPGo уже есть — удаляется.
+if [[ -L "$SHARE_ROOT/Exchange" ]]; then
+  if [[ -e "$SHARE_ROOT/SFTPGo" || -L "$SHARE_ROOT/SFTPGo" ]]; then rm -f "$SHARE_ROOT/Exchange"; echo "   Exchange: старая ссылка удалена (SFTPGo уже есть)"
+  else mv -T "$SHARE_ROOT/Exchange" "$SHARE_ROOT/SFTPGo"; echo "   Exchange → SFTPGo: ссылка переименована"; fi
+elif [[ -e "$SHARE_ROOT/Exchange" ]]; then
+  echo "   ВНИМАНИЕ: $SHARE_ROOT/Exchange — не ссылка, не трогаю" >&2
+fi
+if [[ -e "$SHARE_ROOT/SFTPGo" && ! -L "$SHARE_ROOT/SFTPGo" ]]; then
+  echo "   ВНИМАНИЕ: $SHARE_ROOT/SFTPGo — не ссылка, не трогаю" >&2
+else
+  link SFTPGo "$EXCH"
+fi
 
-echo "== Exchange: доступ для macmini (шара) и hawk (SFTPGo, uid 1001) рядом с существующим ACL панели"
+echo "== Каталог обменника ($EXCH): доступ для macmini (шара) и hawk (SFTPGo, uid 1001) рядом с существующим ACL панели"
 # Не ломаем прежнее: владелец hawk, ACL u:panel:r-x остаётся. Добавляем macmini (чтение и запись) и hawk (чтобы SFTPGo мог работать с файлами,
 # которые создал macmini: владелец у них macmini, а доступ hawk даёт именно этот ACL). Default-ACL наследуется новыми файлами и папками.
 if [[ -d "$EXCH" ]]; then
