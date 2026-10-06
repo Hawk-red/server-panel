@@ -15,9 +15,12 @@
   разыменовывается по пути при каждом обращении. Нужны `wide links = yes` (на шаре MacMini), `allow insecure wide links = yes` и `unix extensions = no`
   (глобально). Расширения Unix относятся к SMB1, а `min protocol = SMB2`, поэтому macOS-клиенты (SMB2/3) это не затрагивает; на старых шарах `wide links` не включён.
 - **Корень `/srv/share`** принадлежит root (755): создавать в нём нечего, пишется только внутри папок-целей (права файловых систем целей, пользователь `macmini`, как у старых шар).
-- **veto files** (вместо hide files, который Finder показывал): `lost+found` невидим и недоступен в `1TB` и в `MacMini`, `qbittorrent-downloads` — только в `MacMini` (в `1TB` и в qBittorrent он на месте). Файлы на диске не меняются; `delete veto files = no`. Применение: `apply-veto.sh`, откат: `rollback-veto.sh`.
+- **veto files** (вместо hide files, который Finder показывал): `lost+found` невидим и недоступен в `1TB` и в `MacMini`; **`qbittorrent-completed`** (пустая, контейнер qBittorrent использует её как `/completed`) — тоже в обеих шарах; `qbittorrent-downloads` — только в `MacMini` (в `1TB` и в qBittorrent он на месте). Файлы и папки на диске не меняются; `delete veto files = no`. Применение: `apply-veto.sh`, затем `apply-veto-completed.sh`; откат: `rollback-veto-completed.sh` / `rollback-veto.sh`.
 - **SFTPGo** (ссылка `/srv/share/SFTPGo → /srv/exchange`; прежнее имя ссылки — `Exchange`, `share-tree.sh` при запуске переименовывает или убирает её): на `/srv/exchange` добавлены ACL `macmini` (rwX) и `hawk` (rwX) рядом с `panel` (rX), в том числе default-ACL, чтобы SFTPGo (uid 1001 = hawk) мог работать с файлами,
   созданными через SMB (владелец у них macmini).
 - **Квота SFTPGo**: файлы, добавленные через SMB, SFTPGo сам не видит; их учитывает только пересчёт квоты (по README панели — раз в час, либо вручную в админке «Quota scan»).
   Запись по SMB квоту не проверяет и может её превысить: после этого веб-клиент перестанет принимать новые загрузки, пока не освободится место.
 - **hosts allow** задан только у новой шары (LAN, WireGuard, localhost); у старых его нет, их закрывает ufw.
+
+## Где лежит DTS
+Папка `DTS-MusicDemo_BDRemux` (≈170 ГБ) находится в корне hdd1tb: `/mnt/hdd1tb/DTS-MusicDemo_BDRemux`, то есть `1TB/DTS-MusicDemo_BDRemux` в Finder. `qbittorrent-completed` и `qbittorrent-downloads` удаляются только после завершения торрента DTS и вместе с пересозданием контейнера qBittorrent (см. `deploy/torrents-migration/README.md`).

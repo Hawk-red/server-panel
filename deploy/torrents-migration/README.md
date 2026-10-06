@@ -1,5 +1,15 @@
 # Перенос торрентов с SSD на hdd1tb (05.10.2026)
 
+> **Обновление 06.10.2026.** Готовая копия `DTS-MusicDemo_BDRemux` теперь лежит в **корне hdd1tb**: `/mnt/hdd1tb/DTS-MusicDemo_BDRemux`
+> (в SMB-шарах `1TB` и `MacMini/1TB` она видна и читается). Папки `qbittorrent-completed` (пустая, только `.DS_Store`) и
+> `qbittorrent-downloads` (пустая) на диске остаются: контейнер qBittorrent использует их как `/completed` и `/downloads-hdd`,
+> а `move-completed.sh` пишет в `/completed`. В Finder они скрыты через `veto files` (`deploy/samba/`), на диске ничего не менялось.
+>
+> **Удалять `qbittorrent-completed` и `qbittorrent-downloads` можно только после того, как торрент DTS докачается, и только вместе с пересозданием
+> контейнера qBittorrent** (убрать binds `/completed` и `/downloads-hdd` или направить их на новые каталоги, поправить `move-completed.sh`, если он
+> понадобится, и `save_path` у оставшихся торрентов). Удаление раньше сломает запуск контейнера (bind на несуществующий путь) и `save_path` JRiver.
+> Торрент DTS трогать (пауза, `setLocation`, удаление) до его завершения нельзя.
+
 ## Что сделано
 1. Копия DTS-MusicDemo_BDRemux на `/mnt/hdd1tb/qbittorrent-completed/` проверена: 170 383 851 040 байт, 180 файлов, SHA-256 двух крупнейших файлов совпадает.
 2. Исходная папка на SSD (`/home/torrents-tmp/DTS-MusicDemo_BDRemux`) удалена. Корень: 98% → 25%.
