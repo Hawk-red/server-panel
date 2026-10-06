@@ -307,8 +307,8 @@
    path = /mnt/hdd1tb
    browseable = no
    # veto files: lost+found и пустая qbittorrent-completed (контейнер qBittorrent использует её как /completed) невидимы и недоступны
-   # клиентам; sftpgo-data — настоящий каталог данных обменника на диске (виден как SFTPGo через ссылку, дубль не нужен). qbittorrent-downloads в этой шаре видна. Файлы на диске не меняются, delete veto files = no — папку с «вето»-содержимым клиент удалить не сможет
-   veto files = /lost+found/qbittorrent-completed/sftpgo-data/
+   # клиентам. qbittorrent-downloads в этой шаре видна. Файлы на диске не меняются, delete veto files = no — папку с «вето»-содержимым клиент удалить не сможет
+   veto files = /lost+found/qbittorrent-completed/
    delete veto files = no
    read only = no
    guest ok = no
@@ -343,8 +343,8 @@
    inherit acls = yes
    follow symlinks = yes
    wide links = yes
-   # veto files: lost+found, qbittorrent-completed, qbittorrent-downloads и sftpgo-data (обменник виден как SFTPGo) невидимы и недоступны ТОЛЬКО через эту шару (в qBittorrent все папки на месте)
-   veto files = /lost+found/qbittorrent-downloads/qbittorrent-completed/sftpgo-data/
+   # veto files: lost+found, qbittorrent-completed и qbittorrent-downloads невидимы и недоступны ТОЛЬКО через эту шару (в qBittorrent все папки на месте)
+   veto files = /lost+found/qbittorrent-downloads/qbittorrent-completed/
    delete veto files = no
    vfs objects = catia fruit
    fruit:metadata = netatalk
