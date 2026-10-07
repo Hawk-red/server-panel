@@ -23,6 +23,7 @@ import { infraRoutes } from './routes/infra.js'
 import { networkRoutes } from './routes/network.js'
 import { notifyRoutes } from './routes/notify.js'
 import { startNotifier } from './notifier.js'
+import { startAlertIngest } from './services/alertEvents.js'
 import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
@@ -172,6 +173,7 @@ startDeadlines()
 startUpdates()
 startSpeedtest()
 startExchange(app.log)
+startAlertIngest(app.log, db)
 {
   const n = scrubAuditSecrets()
   if (n) app.log.warn({ records: n }, 'из журнала действий убраны токены, попавшие туда до маскирования')

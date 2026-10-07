@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "set-password": "node dist/scripts/set-password.js"
+    "set-password": "node dist/scripts/set-password.js",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "engines": {
     "node": ">=20.19"
