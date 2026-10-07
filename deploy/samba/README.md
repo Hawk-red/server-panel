@@ -24,3 +24,9 @@
 
 ## Где лежит DTS
 Папка `DTS-MusicDemo_BDRemux` (≈170 ГБ) находится в корне hdd1tb: `/mnt/hdd1tb/DTS-MusicDemo_BDRemux`, то есть `1TB/DTS-MusicDemo_BDRemux` в Finder. `qbittorrent-completed` и `qbittorrent-downloads` удаляются только после завершения торрента DTS и вместе с пересозданием контейнера qBittorrent (см. `deploy/torrents-migration/README.md`).
+
+## Свободное место в Finder (dfree)
+Корень шары MacMini (`/srv/share`) лежит на корневом SSD, и Finder показывал его свободное место («64 MB free»), хотя папки внутри — ссылки на другие диски.
+`smb-dfree.sh` (ставится в `/usr/local/sbin`) получает путь от Samba и отдаёт `total_kb free_kb`: для самого `/srv/share` — df `/mnt/hdd1tb`, для остальных — df реального пути (`readlink -f`); `timeout 3 с`, при ошибке — df самого пути, в крайнем случае `0 0`.
+- `sudo deploy/samba/apply-dfree.sh` — копия `smb.conf` (`/root/backup-configs/`), установка скрипта, в `[MacMini]` добавляются `dfree command` и `dfree cache time = 60`, `testparm`, `smbcontrol all reload-config` (не restart). Отказывается работать, если на `/` меньше 5 МБ.
+- `sudo deploy/samba/rollback-dfree.sh` — вернуть последнюю копию, reload.
