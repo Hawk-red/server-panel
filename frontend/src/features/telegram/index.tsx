@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import type { AlertAnalytics, BotInfo, FileInfo, LeadAnalytics, PanelNotifierAnalytics } from '@/lib/types'
+import { AlertStatsView } from './alert-stats'
 import { Page } from '@/components/layout/page'
 import { type Block, blockId, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
@@ -87,7 +88,7 @@ function AlertBlock({ a, days, onDays }: { a: AlertAnalytics; days: number; onDa
         <div className='text-sm'>
           Тревог за {phrase}: <Value kind='count' value={a.total} /> · дней с тревогами: <Value kind='count' value={a.daysWithAlerts} />
         </div>
-        <Bars data={a.alertsSeries} bucket={a.period.bucket} label='тревог' color='var(--info)' />
+        {a.stats ? <AlertStatsView s={a.stats} /> : <Bars data={a.alertsSeries} bucket={a.period.bucket} label='тревог' color='var(--info)' />}
         {shortCoverage && (
           <p className='text-xs text-muted-foreground'>
             В логах бота данные только с {new Date(coverage).toLocaleDateString('ru-RU')}: более ранние тревоги не учтены (логи ротируются).

@@ -190,3 +190,78 @@ export function startAlertIngest(log: FastifyBaseLogger, db: Database.Database) 
   setTimeout(tick, 5_000) // бэкфилл не мешает старту
   setInterval(tick, 10 * 60_000)
 }
+
+// ---------- выборки для карточки Air Alert ----------
+const DAY_MS = 86_400_000
+const dayKey = (ts: number) => new Date(ts).toLocaleDateString('sv-SE')
+const dayNum = (d: string) => Math.round(Date.parse(`${d}T00:00:00Z`) / DAY_MS)
+
+export interface AlertStats {
+  version: number
+  bucket: 'day' | 'week'
+  /** Столбики от старых к новым (как alertsSeries). all — все сообщения; missile — ракетные (is_missile); rest = all − missile;
+   *  drone / aviation / other — по категориям (сообщение может попасть в несколько) */
+  series: { day: string; all: number; missile: number; rest: number; drone: number; aviation: number; other: number }[]
+  totals: { all: number; missile: number; drone: number; aviation: number; other: number; missileDays: number }
+  /** первая запись в таблице (история копится с момента, когда логи начали разбираться) */
+  coverageFrom: number
+  covered: boolean
+  lastMissile: { ts: number; text: string; categories: string } | null
+  /** последний вылет носителей (Ту-95/160/22, МіГ-31К) — отдельно от ракет */
+  lastStrategic: { ts: number; text: string } | null
+  /** Паузы между ракетными днями за ВСЮ историю, в календарных днях (1 = ракеты два дня подряд) */
+  pauses: { count: number; min: number | null; median: number | null; max: number | null; last: { from: string; to: string; days: number }[] }
+}
+
+export function alertStats(db: Database.Database, days: number, now = Date.now()): AlertStats | null {
+  const head = db.prepare('SELECT COUNT(*) n, MIN(ts) first FROM alert_events WHERE ignored = 0').get() as { n: number; first: number | null }
+  if (!head.n || head.first == null) return null
+
+  const since = now - days * DAY_MS
+  const bucket: 'day' | 'week' = days > 90 ? 'week' : 'day'
+  const size = bucket === 'week' ? 7 : 1
+  const n = Math.ceil(days / size)
+  const series = Array.from({ length: n }, (_, i) => ({
+    day: dayKey(now - (n - i) * size * DAY_MS + DAY_MS), all: 0, missile: 0, rest: 0, drone: 0, aviation: 0, other: 0,
+  }))
+  const totals = { all: 0, missile: 0, drone: 0, aviation: 0, other: 0, missileDays: 0 }
+  const rows = db.prepare('SELECT ts, categories, is_missile FROM alert_events WHERE ignored = 0 AND ts >= ? AND ts <= ?').all(since, now) as { ts: number; categories: string; is_missile: number }[]
+  const missileDaysInPeriod = new Set<string>()
+  for (const r of rows) {
+    const idx = Math.floor((now - r.ts) / (size * DAY_MS))
+    if (idx >= n) continue
+    const s = series[n - 1 - idx]
+    const cats = r.categories.split(',')
+    s.all++
+    totals.all++
+    if (r.is_missile) {
+      s.missile++
+      totals.missile++
+      missileDaysInPeriod.add(dayKey(r.ts))
+    } else s.rest++
+    if (cats.includes('drone')) (s.drone++, totals.drone++)
+    if (cats.includes('aviation')) (s.aviation++, totals.aviation++)
+    if (cats.includes('other')) (s.other++, totals.other++)
+  }
+  totals.missileDays = missileDaysInPeriod.size
+
+  const lastMissile = (db.prepare('SELECT ts, text, categories FROM alert_events WHERE ignored = 0 AND is_missile = 1 ORDER BY ts DESC LIMIT 1').get() as AlertStats['lastMissile']) ?? null
+  const lastStrategic = (db.prepare('SELECT ts, text FROM alert_events WHERE ignored = 0 AND takeoff = 1 ORDER BY ts DESC LIMIT 1').get() as AlertStats['lastStrategic']) ?? null
+
+  const missileDays = (db.prepare('SELECT DISTINCT day FROM alert_events WHERE ignored = 0 AND is_missile = 1 ORDER BY day').all() as { day: string }[]).map((r) => r.day)
+  const gaps = missileDays.slice(1).map((d, i) => ({ from: missileDays[i], to: d, days: dayNum(d) - dayNum(missileDays[i]) }))
+  const sorted = gaps.map((g) => g.days).sort((a, b) => a - b)
+  const median = sorted.length ? (sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2) : null
+
+  return {
+    version: CLASSIFIER_VERSION,
+    bucket,
+    series,
+    totals,
+    coverageFrom: head.first,
+    covered: head.first <= since + DAY_MS,
+    lastMissile,
+    lastStrategic,
+    pauses: { count: gaps.length, min: sorted[0] ?? null, median, max: sorted.at(-1) ?? null, last: gaps.slice(-10) },
+  }
+}

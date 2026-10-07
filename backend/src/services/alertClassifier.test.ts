@@ -51,6 +51,12 @@ test('стратегическая авиация → aviation', () => {
   assert.equal(cats('✈ Близько 3.00 зафіксовано зліт 6 бортів Ту-95 з аеродрому «Оленегорськ»!'), 'aviation')
   assert.equal(cats('Зліт стратегічної авіації з Енгельса'), 'aviation')
 })
+test('вылет Ту-95 с оговоркой про крылатые — не ракетный удар', () => {
+  const c = classifyAlert('✈ Близько 3.00 зафіксовано зліт 6 бортів Ту-95!\n\nУ разі здійснення пусків крилатих ракет, входження їх у повітряний простір очікується після 06:00.')
+  assert.equal(c.isMissile, false)
+  assert.equal(c.takeoff, true)
+  assert.deepEqual(c.categories, ['cruise', 'aviation'])
+})
 test('крылатые и смешанные', () => {
   assert.equal(cats('Крилаті ракети Калібр з Чорного моря'), 'cruise')
   assert.equal(cats('Крилата ракета та БпЛА на Київ'), 'cruise,drone')

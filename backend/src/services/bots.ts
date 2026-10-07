@@ -5,7 +5,9 @@ import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
 import { BACKEND_DIR, parseEnv } from '../config.js'
+import { db } from '../db.js'
 import { run } from '../exec.js'
+import { alertStats } from './alertEvents.js'
 import { httpJson } from '../http.js'
 
 type BotDef = {
@@ -161,6 +163,18 @@ export type AlertPeriod = (typeof ALERT_PERIODS)[number]
 const DAY_MS = 86_400_000
 
 async function alertAnalytics(bot: BotDef, days: AlertPeriod) {
+  const base = await alertAnalyticsLogs(bot, days)
+  // Статистика из БД (alert_events) — вне кэша: счётчик «без ракет» должен идти по часам; запросы дешёвые
+  let stats = null
+  try {
+    stats = alertStats(db, days)
+  } catch {
+    /* таблицы ещё нет / БД занята — карточка покажет старую диаграмму */
+  }
+  return { ...base, stats }
+}
+
+async function alertAnalyticsLogs(bot: BotDef, days: AlertPeriod) {
   return cached(`alert:${bot.id}:${days}`, 10 * 60_000, async () => {
     const cfg = JSON.parse(await readFile(bot.config!, 'utf8').catch(() => '{}'))
     const subs = JSON.parse(await readFile(path.join(bot.dir!, 'subscribers.json'), 'utf8').catch(() => '[]'))

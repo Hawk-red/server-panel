@@ -66,8 +66,8 @@ export function classifyAlert(rawText: string): AlertClass {
   if (drone) categories.push('drone')
   if (!categories.length) categories.push('other')
 
-  // Вылет носителей (Ту-95/МіГ-31К) без самого пуска — предупреждение, а не ракетный удар.
-  // Если в том же сообщении есть баллистика/крылатые/«ракета на Київ» — это пуск, считаем ракетой.
-  const launched = ballistic || cruise || missile || (hypersonic && !takeoff)
+  // Сообщение о вылете носителей (Ту-95/160/22, МіГ-31К) — предупреждение, а не ракетный удар, даже если в нём
+  // упомянуты «у разі пусків крилатих ракет…»: категории остаются в списке, но в ракетную статистику оно не идёт.
+  const launched = !takeoff && (ballistic || cruise || missile || hypersonic)
   return { categories, isMissile: launched, ignored: false, ignoreReason: null, takeoff }
 }

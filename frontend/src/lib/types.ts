@@ -353,6 +353,18 @@ export type PanelNotifierAnalytics = {
   rulesOn: number
   rulesTotal: number
 }
+/** Статистика обстрелов из БД (backend/src/services/alertEvents.ts); null — таблица ещё пуста */
+export type AlertStats = {
+  version: number
+  bucket: 'day' | 'week'
+  series: { day: string; all: number; missile: number; rest: number; drone: number; aviation: number; other: number }[]
+  totals: { all: number; missile: number; drone: number; aviation: number; other: number; missileDays: number }
+  coverageFrom: number
+  covered: boolean
+  lastMissile: { ts: number; text: string; categories: string } | null
+  lastStrategic: { ts: number; text: string } | null
+  pauses: { count: number; min: number | null; median: number | null; max: number | null; last: { from: string; to: string; days: number }[] }
+}
 export type AlertAnalytics = {
   channel: string | null
   subscribers: number
@@ -365,6 +377,7 @@ export type AlertAnalytics = {
   daysWithAlerts: number
   lastAlerts: { ts: number; reason: string; text: string }[]
   delivery: { avgSec: number; maxSec: number; messages: number } | null
+  stats: AlertStats | null
 }
 export type LeadAnalytics = {
   loggingEnabled: boolean
