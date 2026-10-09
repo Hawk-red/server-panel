@@ -30,7 +30,7 @@ import { updateLock as qbUpdateLock } from './qbittorrent.js'
 const api = (path: string) => `${config.dockerProxy}${path}`
 
 // Контейнеры, для которых обновление требует повторного ввода пароля панели (даже если белый список не говорит об этом)
-const DANGEROUS = new Set(['portainer', 'adguardhome', 'qbittorrent', 'docker-socket-proxy'])
+export const DANGEROUS = new Set(['portainer', 'adguardhome', 'qbittorrent', 'docker-socket-proxy'])
 
 // ---------- apt: доступные обновления ----------
 
@@ -321,19 +321,21 @@ export function upgradableNames(): Set<string> {
   return new Set((c?.packages ?? []).map((p) => p.name))
 }
 
+// Временный замок обновления (null — можно). Пока только qBittorrent: незавершённые закачки; сбой проверки = замок (безопаснее)
+export async function lockFor(container: string): Promise<string | null> {
+  if (container !== 'qbittorrent') return null
+  try {
+    return await qbUpdateLock()
+  } catch {
+    return 'не удалось проверить закачки в qBittorrent'
+  }
+}
+
 // Замок/пометки/признак «подключён к кнопке» — живые данные, в кэш проверки не попадают
 async function liveFor(container: string, c: Cached): Promise<DockerLive> {
   const managed = await managedInfo(container)
-  let lock: string | null = null
-  let note: string | null = null
-  if (container === 'qbittorrent') {
-    note = 'обновление — только после завершения закачек'
-    try {
-      lock = await qbUpdateLock()
-    } catch {
-      lock = 'не удалось проверить закачки в qBittorrent'
-    }
-  }
+  const lock = await lockFor(container)
+  const note = container === 'qbittorrent' ? 'обновление — только после завершения закачек' : null
   const blockReason = c.composeProject ? 'compose-файл есть, но к панели не подключён' : 'нет compose-файла (контейнер создан через docker run)'
   return {
     managed: managed.managed,
@@ -506,6 +508,12 @@ export async function checkDockerNow(): Promise<boolean> {
     listCache = null
   }
   return true
+}
+
+// Обновить данные Docker-образов после обновления контейнера (без ограничения частоты ручной кнопки)
+export async function refreshDockerNow(): Promise<void> {
+  lastManualCheck = 0
+  await checkDockerNow()
 }
 
 export function invalidateUpdatesCache() {

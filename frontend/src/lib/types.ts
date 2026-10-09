@@ -421,6 +421,22 @@ export type DockerImageStatus = {
   warning: string | null
   rollback: { version: string | null; at: number } | null
 }
+export type DockerJobView = {
+  id: string
+  action: 'update' | 'rollback'
+  container: string
+  dryRun: boolean
+  status: 'queued' | 'running' | 'ok' | 'error' | 'rolledback' | 'failed'
+  startedAt: number
+  finishedAt: number | null
+  steps: { id: string; label: string; status: 'pending' | 'running' | 'ok' | 'error' | 'skipped'; detail: string | null }[]
+  from: { version: string | null; id: string } | null
+  to: { version: string | null; id: string } | null
+  summary: string | null
+  error: string | null
+  lines: string[]
+  offset: number
+}
 export type DockerUpdateEvent = { container: string; repo: string; oldDigest: string | null; newDigest: string; detectedAt: number }
 export type UpdatesSnapshot = {
   apt: AptStatus

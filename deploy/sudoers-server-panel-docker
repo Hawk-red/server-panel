@@ -1,0 +1,8 @@
+# /etc/sudoers.d/server-panel-docker — обновление Docker-контейнеров из раздела «Обновления» панели (пользователь panel).
+# Источник: /opt/server-panel/deploy/sudoers-server-panel-docker. Проверка перед установкой: visudo -cf <файл>
+# Отдельный файл — основной /etc/sudoers.d/server-panel не трогаем.
+# Только две команды root-утилиты. Имя контейнера утилита сверяет с белым списком /etc/server-panel/docker-projects.json,
+# число и вид аргументов проверяет сама (допустимо: <действие> <имя> [--dry-run]); внутренний вход `_run` в sudoers отсутствует.
+Cmnd_Alias SP_DOCKER = /usr/local/sbin/server-panel-docker update *, /usr/local/sbin/server-panel-docker rollback *
+
+panel ALL=(root) NOPASSWD: SP_DOCKER

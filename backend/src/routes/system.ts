@@ -16,7 +16,8 @@ import { run } from '../exec.js'
 import { staleBackups, backupsOverview } from '../services/backups.js'
 import { listDeadlines } from '../services/deadlines.js'
 import { fmtDur, internetStatus, lastPing } from '../services/internet.js'
-import { checkDockerNow, listUpdates, upgradableNames } from '../services/updates.js'
+import { checkDockerNow, DANGEROUS, listUpdates, lockFor, upgradableNames } from '../services/updates.js'
+import { getDockerJob, managedInfo, runningDockerJob, startDockerJob, StartError } from '../services/dockerManage.js'
 import { getAptJob, jobSlice, startAptJob } from '../services/aptJob.js'
 import { ACTIONS, CONTROLLABLE, controlUnit, failedUnits, listAutostart, listServices, type UnitAction } from '../system/units.js'
 
@@ -260,6 +261,58 @@ export async function systemRoutes(app: FastifyInstance) {
     const ran = await checkDockerNow()
     if (!ran) return reply.code(429).send({ message: 'проверка уже идёт или была только что — подождите несколько секунд' })
     return listUpdates()
+  })
+
+  // Обновление/откат Docker-контейнера через root-помощника. Только контейнеры из белого списка помощника; для опасных
+  // (portainer, adguardhome, qbittorrent, docker-socket-proxy) — повторный ввод пароля панели. Кнопки «обновить все» нет.
+  for (const action of ['update', 'rollback'] as const) {
+    app.post<{ Params: { name: string }; Body: { password?: string } }>(
+      `/api/system/updates/docker/:name/${action}`,
+      {
+        schema: {
+          params: { type: 'object', required: ['name'], properties: { name: { type: 'string', pattern: '^[a-z0-9][a-z0-9_.-]{0,40}$' } } },
+          body: { type: 'object', properties: { password: { type: 'string', maxLength: 512 } } },
+        },
+      },
+      async (req, reply) => {
+        const { name } = req.params
+        const audited = (result: 'denied' | 'error', reason: string) => audit({ ip: req.clientIp, user: 'admin', action: `docker.${action}.start`, target: name, result, details: { reason } })
+        const info = await managedInfo(name)
+        if (!info.managed) return reply.code(409).send({ message: 'контейнер не подключён к обновлению из панели' })
+        if (info.danger || DANGEROUS.has(name)) {
+          if (!req.body?.password) return reply.code(400).send({ message: 'нужен пароль панели' })
+          const check = await confirmPanelPassword(req.clientIp, req.body.password)
+          if (!check.ok) {
+            audited('denied', check.status === 401 ? 'bad-password' : 'rate-limit')
+            return reply.code(check.status).send({ message: check.message })
+          }
+        }
+        if (action === 'rollback' && !info.rollback) return reply.code(409).send({ message: 'нет сохранённого образа для отката' })
+        const busy = await runningDockerJob()
+        if (busy) return reply.code(409).send({ message: `уже выполняется задача для ${busy.container}` })
+        if (action === 'update') {
+          const lock = await lockFor(name)
+          if (lock) {
+            audited('denied', `lock: ${lock}`)
+            return reply.code(409).send({ message: `обновление заблокировано: ${lock}` })
+          }
+        }
+        try {
+          const id = await startDockerJob(action, name, req.clientIp)
+          return reply.code(202).send({ id })
+        } catch (e) {
+          const status = e instanceof StartError ? e.statusCode : 500
+          return reply.code(status).send({ message: (e as Error).message })
+        }
+      }
+    )
+  }
+
+  // Состояние задачи обновления контейнера (последняя или по id) + новые строки журнала с offset
+  app.get<{ Querystring: { id?: string; offset?: string } }>('/api/system/updates/docker/job', async (req, reply) => {
+    const job = await getDockerJob(req.query.id ?? null, Math.max(0, Number(req.query.offset ?? 0) || 0))
+    if (!job) return reply.code(404).send({ message: 'задач пока не было' })
+    return job
   })
 
   // Установка обновлений apt: только уже установленные пакеты из текущего списка (--only-upgrade) или dist-upgrade

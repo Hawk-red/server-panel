@@ -27,6 +27,7 @@ export const INTERNAL_ONLY_READ = [
   '/api/network',
   '/api/wireless',
   '/api/sites/jetsetter',
+  '/api/system/updates/docker/job', // состояние и журнал задач обновления контейнеров
   '/api/ai/settings',
 ]
 

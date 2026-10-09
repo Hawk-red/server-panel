@@ -199,6 +199,11 @@ function updatesDockerText(e: ServerEvent) {
   return `🐳 <b>Новая версия образа:</b> ${esc(d.container ?? e.target ?? '')}${d.repo ? ` (${esc(d.repo)})` : ''}`
 }
 
+function dockerUpdateText(e: ServerEvent) {
+  const icon = e.level === 'info' ? '✅' : e.level === 'warning' ? '↩️' : '🔴'
+  return `${icon} <b>Docker:</b> ${esc(e.text)}`
+}
+
 type GuardDetails = { freeGb: number; thresholdGb: number; path: string }
 function guardPausedText(e: ServerEvent) {
   const d = e.details as GuardDetails | undefined
@@ -225,6 +230,7 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'updates.security' && rule('updates')) void send(updatesSecurityText(e), false)
   else if (e.kind === 'updates.reboot' && rule('updates')) void send('🔁 <b>Нужна перезагрузка сервера</b> — обновлены ядро или системные библиотеки', false)
   else if (e.kind === 'updates.docker' && rule('updates')) void send(updatesDockerText(e), false)
+  else if (e.kind === 'docker.update' && rule('updates')) void send(dockerUpdateText(e), e.level !== 'info')
   else if (e.kind === 'torrents.resumed' && rule('torrents')) void send(guardResumedText(e), false)
 }
 

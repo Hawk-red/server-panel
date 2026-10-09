@@ -28,6 +28,7 @@ import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
 import { startUpdates } from './services/updates.js'
+import { startDockerJobWatcher } from './services/dockerManage.js'
 import { killAllChildren } from './exec.js'
 import { externalPolicy } from './externalPolicy.js'
 import { externalEnabled, totpEnabled } from './security.js'
@@ -171,6 +172,7 @@ startDetectors(app.log)
 startNotifier(app.log)
 startDeadlines()
 startUpdates()
+startDockerJobWatcher()
 startSpeedtest()
 startExchange(app.log)
 startAlertIngest(app.log, db)

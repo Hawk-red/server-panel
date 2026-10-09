@@ -1,0 +1,891 @@
+#!/usr/bin/python3 -I
+"""server-panel-docker — узкая root-утилита обновления Docker-контейнеров из раздела «Обновления» панели.
+
+Вызывается панелью только через sudo (deploy/sudoers-server-panel-docker) и только в двух видах:
+    server-panel-docker update   <имя> [--dry-run]
+    server-panel-docker rollback <имя> [--dry-run]
+Имя проверяется по белому списку /etc/server-panel/docker-projects.json (root:root, не доступен на запись остальным).
+Утилита НЕ принимает от вызывающего ни путей, ни имён образов, ни compose-аргументов.
+
+Что она делает при update (под одной глобальной блокировкой flock, по одному контейнеру за раз):
+  1. check    — белый список, compose-файл (владелец root, права, SHA-256), замки, место на диске
+  2. backup   — docker inspect в JSON, метка rollback-<ts> на текущий образ (чтобы он не пропал после pull), копии данных
+  3. pull     — docker compose pull <сервис> (контейнер ещё работает)
+  4. recreate — docker compose up -d --no-deps --pull never <сервис> (БЕЗ down, -v и --remove-orphans);
+                контейнер, созданный через `docker run`, переименовывается и останавливается, а после успеха удаляется
+  5. health   — контейнер работает, не перезапускается, healthcheck/HTTP/TCP/DNS-проверки держатся N секунд подряд
+  при провале — автооткат на сохранённый образ (шаг rollback) и повторная проверка.
+rollback возвращает метку :latest на сохранённый образ и пересоздаёт контейнер так же (без pull).
+
+Реальная работа (не --dry-run) выполняется в отдельном systemd-юните sp-docker-<id> (systemd-run), поэтому не умирает
+вместе с панелью/сессией. Состояние задач — /var/lib/server-panel-docker/jobs/<id>.json (+ .log), читает панель (группа panel).
+--dry-run: ничего не меняет и не скачивает, только проверяет всё, что можно проверить заранее.
+"""
+import fcntl
+import grp
+import hashlib
+import http.client
+import json
+import os
+import re
+import secrets
+import select
+import shutil
+import socket
+import stat
+import struct
+import subprocess
+import sys
+import time
+import traceback
+import urllib.parse
+
+# ---------- пути (тестовый режим только для не-root: у root переменные окружения не читаются) ----------
+TEST = os.environ.get("SP_DOCKER_TEST_ROOT") if os.geteuid() != 0 else None
+
+
+def P(path):
+    return (TEST + path) if TEST else path
+
+
+CONF_DIR = P("/etc/server-panel/docker")
+PROJECTS = P("/etc/server-panel/docker-projects.json")
+STATE = P("/var/lib/server-panel-docker")
+JOBS = STATE + "/jobs"
+STATES = STATE + "/state"
+INSPECTS = STATE + "/inspect"
+BACKUPS = STATE + "/backups"
+LOCKFILE = P("/run/server-panel-docker.lock")
+DOCKER = os.environ["SP_DOCKER_BIN"] if TEST else "/usr/bin/docker"
+SYSTEMD_RUN = "/usr/bin/systemd-run"
+OWNER = os.geteuid() if TEST else 0
+SELF = os.path.realpath(sys.argv[0])
+READ_GROUP = "panel"
+
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,40}$")
+KEEP_ROLLBACK_TAGS = 2
+KEEP_BACKUPS = 3
+KEEP_JOBS = 30
+PROGRESS_RE = re.compile(r"(\[[=> .-]{6,}\]|\b(Downloading|Extracting|Waiting|Pulling fs layer|Verifying Checksum|Download complete)\b)")
+
+
+class Fail(Exception):
+    restored = False  # прежний контейнер уже восстановлен (первый перенос под compose не удался)
+
+
+def die(msg, code=2):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def now_ms():
+    return int(time.time() * 1000)
+
+
+# ---------- безопасность файлов ----------
+def check_secure(path, what):
+    """Файл/каталог: не символическая ссылка, владелец root, нет записи для группы и остальных."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        raise Fail(f"{what}: не найден ({path})")
+    if stat.S_ISLNK(st.st_mode):
+        raise Fail(f"{what}: символическая ссылка запрещена ({path})")
+    if st.st_uid != OWNER:
+        raise Fail(f"{what}: владелец не root ({path})")
+    if st.st_mode & 0o022:
+        raise Fail(f"{what}: доступен на запись группе или всем ({path})")
+    return st
+
+
+def load_projects():
+    check_secure(PROJECTS, "белый список")
+    try:
+        with open(PROJECTS) as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        raise Fail(f"белый список не читается: {e}")
+    projects = data.get("projects")
+    if not isinstance(projects, dict):
+        raise Fail("белый список: нет раздела projects")
+    return projects
+
+
+def get_project(name):
+    if not NAME_RE.match(name):
+        raise Fail("недопустимое имя контейнера")
+    projects = load_projects()
+    p = projects.get(name)
+    if not p:
+        raise Fail(f"контейнер «{name}» не входит в белый список")
+    for k in ("service", "container", "image", "sha256"):
+        if not isinstance(p.get(k), str) or not p[k]:
+            raise Fail(f"белый список: у «{name}» нет поля {k}")
+    if p["container"] != name:
+        raise Fail("белый список: имя контейнера не совпадает с ключом")
+    p.setdefault("project", name)
+    if not NAME_RE.match(p["project"]) or not NAME_RE.match(p["service"]):
+        raise Fail("белый список: недопустимое имя проекта или сервиса")
+    p["_dir"] = f"{CONF_DIR}/{name}"
+    p["_compose"] = f"{CONF_DIR}/{name}/compose.yaml"
+    return p
+
+
+def verify_compose(p):
+    check_secure(CONF_DIR, "каталог compose")
+    check_secure(p["_dir"], "каталог проекта")
+    check_secure(p["_compose"], "compose-файл")
+    with open(p["_compose"], "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != p["sha256"]:
+        raise Fail("compose-файл не совпадает с хэшем из белого списка (файл менялся после установки)")
+
+
+# ---------- задача: состояние и журнал ----------
+class Job:
+    def __init__(self, jid, action, name, dry, foreground):
+        self.id, self.action, self.name, self.dry, self.fg = jid, action, name, dry, foreground
+        self.data = {
+            "id": jid, "action": action, "container": name, "dryRun": dry, "status": "queued",
+            "startedAt": now_ms(), "finishedAt": None, "updatedAt": now_ms(),
+            "steps": [], "from": None, "to": None, "summary": None, "error": None,
+        }
+        self.logpath = f"{JOBS}/{jid}.log"
+        self.jsonpath = f"{JOBS}/{jid}.json"
+
+    def save(self):
+        self.data["updatedAt"] = now_ms()
+        tmp = self.jsonpath + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(self.data, f, ensure_ascii=False)
+        set_readable(tmp)
+        os.replace(tmp, self.jsonpath)
+
+    def log(self, msg):
+        line = f"{time.strftime('%H:%M:%S')} {msg}"[:400]
+        with open(self.logpath, "a") as f:
+            f.write(line + "\n")
+        set_readable(self.logpath)
+        if self.fg:
+            print(line, flush=True)
+
+    def set_steps(self, steps):
+        self.data["steps"] = [{"id": i, "label": l, "status": "pending", "detail": None} for i, l in steps]
+        self.save()
+
+    def step(self, sid, status, detail=None):
+        for s in self.data["steps"]:
+            if s["id"] == sid:
+                s["status"] = status
+                if detail is not None:
+                    s["detail"] = detail
+                break
+        else:
+            self.data["steps"].append({"id": sid, "label": sid, "status": status, "detail": detail})
+        self.save()
+
+    def add_step(self, sid, label, status="running"):
+        self.data["steps"].append({"id": sid, "label": label, "status": status, "detail": None})
+        self.save()
+
+    def finish(self, status, summary=None, error=None):
+        self.data.update(status=status, finishedAt=now_ms(), summary=summary, error=error)
+        self.save()
+
+
+def set_readable(path):
+    """root:panel 640 — панель читает состояние без sudo."""
+    try:
+        gid = grp.getgrnam(READ_GROUP).gr_gid
+    except KeyError:
+        gid = -1
+    try:
+        if os.geteuid() == 0:
+            os.chown(path, 0, gid)
+        os.chmod(path, 0o640 if gid != -1 else 0o644)
+    except OSError:
+        pass
+
+
+def ensure_dirs():
+    for d in (STATE, JOBS, STATES, INSPECTS, BACKUPS):
+        os.makedirs(d, exist_ok=True)
+    try:
+        gid = grp.getgrnam(READ_GROUP).gr_gid
+    except KeyError:
+        gid = -1
+    for d in (STATE, JOBS, STATES):
+        try:
+            if os.geteuid() == 0:
+                os.chown(d, 0, gid)
+            os.chmod(d, 0o750 if gid != -1 else 0o755)
+        except OSError:
+            pass
+    # inspect и копии данных могут содержать секреты из окружения контейнеров — только root
+    for d in (INSPECTS, BACKUPS):
+        try:
+            os.chmod(d, 0o700)
+        except OSError:
+            pass
+
+
+def prune_jobs():
+    files = sorted(f for f in os.listdir(JOBS) if f.endswith(".json"))
+    for f in files[:-KEEP_JOBS]:
+        for ext in (".json", ".log"):
+            try:
+                os.remove(f"{JOBS}/{f[:-5]}{ext}")
+            except OSError:
+                pass
+
+
+# ---------- выполнение команд ----------
+def docker_env():
+    env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "HOME": "/root"}
+    if TEST:  # тесты с подставным docker передают свои переменные
+        env.update({k: v for k, v in os.environ.items() if k.startswith("FAKE_")})
+    return env
+
+
+def run(args, timeout=120):
+    """Без журнала: вернуть (код, вывод)."""
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=docker_env())
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except subprocess.TimeoutExpired:
+        return 124, "таймаут"
+    except OSError as e:
+        return 127, str(e)
+
+
+def run_logged(job, args, timeout=900):
+    """С потоковым выводом в журнал задачи (прогресс-полосы docker pull отбрасываются)."""
+    job.log("$ " + " ".join(os.path.basename(args[0]) if i == 0 else a for i, a in enumerate(args)))
+    try:
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=docker_env(), text=True, bufsize=1)
+    except OSError as e:
+        job.log(f"ошибка запуска: {e}")
+        return 127
+    deadline = time.time() + timeout
+    buf = ""
+    last = ""
+    while True:
+        if time.time() > deadline:
+            proc.kill()
+            job.log("таймаут команды")
+            return 124
+        r, _, _ = select.select([proc.stdout], [], [], 1.0)
+        if r:
+            chunk = os.read(proc.stdout.fileno(), 4096).decode("utf8", "replace")
+            if chunk == "":
+                break
+            buf += chunk
+            parts = re.split(r"\r\n|\r|\n", buf)
+            buf = parts.pop()
+            for line in parts:
+                line = line.strip()
+                if line and not PROGRESS_RE.search(line) and line != last:
+                    job.log("  " + line)
+                    last = line
+        elif proc.poll() is not None:
+            break
+    if buf.strip() and not PROGRESS_RE.search(buf):
+        job.log("  " + buf.strip())
+    return proc.wait()
+
+
+def dinspect(ref, kind="container"):
+    rc, out = run([DOCKER, kind, "inspect", ref])
+    if rc != 0:
+        return None
+    try:
+        return json.loads(out)[0]
+    except (ValueError, IndexError):
+        return None
+
+
+def image_info(ref):
+    i = dinspect(ref, "image")
+    if not i:
+        return None
+    labels = (i.get("Config") or {}).get("Labels") or {}
+    return {"id": i["Id"], "version": labels.get("org.opencontainers.image.version"), "created": i.get("Created")}
+
+
+def compose_base(p):
+    return [DOCKER, "compose", "--project-directory", p["_dir"], "-f", p["_compose"], "-p", p["project"]]
+
+
+def repo_of(image):
+    last = image.rsplit("/", 1)[-1]
+    return image.rsplit(":", 1)[0] if ":" in last else image
+
+
+# ---------- проверка здоровья ----------
+def dns_probe(server, port, name):
+    qname = b"".join(bytes([len(x)]) + x.encode() for x in name.split(".")) + b"\x00"
+    q = struct.pack(">HHHHHH", 0x5A5A, 0x0100, 1, 0, 0, 0) + qname + struct.pack(">HH", 1, 1)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(3)
+    try:
+        s.sendto(q, (server, port))
+        data, _ = s.recvfrom(1500)
+    finally:
+        s.close()
+    if len(data) < 12:
+        return False, "короткий ответ DNS"
+    _id, flags, _qd, an = struct.unpack(">HHHH", data[:8])
+    if (flags & 0x000F) != 0 or an == 0:
+        return False, f"DNS не ответил по существу (rcode={flags & 0xF}, ответов={an})"
+    return True, ""
+
+
+def run_check(c):
+    t = c.get("type")
+    try:
+        if t == "http":
+            u = urllib.parse.urlparse(c["url"])
+            if u.scheme != "http" or u.hostname not in ("127.0.0.1", "localhost"):
+                return False, "проверка HTTP только на 127.0.0.1"
+            conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=5)
+            conn.request("GET", (u.path or "/") + (("?" + u.query) if u.query else ""))
+            st = conn.getresponse().status
+            conn.close()
+            ok = c.get("status") or list(range(200, 400))
+            return (st in ok), f"HTTP {st} на {c['url']}"
+        if t == "tcp":
+            socket.create_connection((c.get("host", "127.0.0.1"), int(c["port"])), timeout=4).close()
+            return True, ""
+        if t == "dns":
+            return dns_probe(c.get("server", "127.0.0.1"), int(c.get("port", 53)), c.get("name", "example.com"))
+    except (OSError, ValueError, KeyError, http.client.HTTPException) as e:
+        return False, f"{t}: {e}"
+    return False, f"неизвестный тип проверки: {t}"
+
+
+def probe(name, checks, base_restarts):
+    """Один проход проверки. Возвращает (ok, причина, restartCount)."""
+    ins = dinspect(name)
+    if not ins:
+        return False, "контейнер не найден", base_restarts
+    st = ins["State"]
+    restarts = ins.get("RestartCount", 0)
+    if not st.get("Running") or st.get("Restarting"):
+        return False, "контейнер не запущен или перезапускается", restarts
+    if base_restarts is not None and restarts > base_restarts:
+        return False, "контейнер перезапускался сам", restarts
+    h = st.get("Health")
+    if h and h.get("Status") != "healthy":
+        return False, f"healthcheck контейнера: {h.get('Status')}", restarts
+    for c in checks:
+        ok, why = run_check(c)
+        if not ok:
+            return False, why, restarts
+    return True, "", restarts
+
+
+def health_wait(job, p, dry=False):
+    h = p.get("health") or {}
+    checks = h.get("checks") or []
+    timeout = int(h.get("timeout", 90))
+    stable = int(h.get("stable", 20))
+    if dry:
+        ok, why, _ = probe(p["container"], checks, None)
+        job.log("пробный проход проверки здоровья: " + ("успешно" if ok else f"НЕ прошёл ({why})"))
+        return ok
+    start = time.time()
+    ok_since = None
+    base = None
+    last_why = ""
+    while time.time() - start < timeout:
+        ok, why, restarts = probe(p["container"], checks, base)
+        if base is None:
+            base = restarts
+        if ok:
+            ok_since = ok_since or time.time()
+            if time.time() - ok_since >= stable:
+                job.log(f"контейнер здоров ({stable} с подряд)")
+                return True
+        else:
+            if why != last_why:
+                job.log(f"  ожидание: {why}")
+                last_why = why
+            ok_since = None
+            if "перезапускался" in why:
+                base = restarts
+        time.sleep(2)
+    job.log(f"проверка здоровья не пройдена за {timeout} с: {last_why or 'нет стабильного успеха'}")
+    return False
+
+
+# ---------- состояние отката ----------
+def state_path(name):
+    return f"{STATES}/{name}.json"
+
+
+def load_state(name):
+    try:
+        with open(state_path(name)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(name, st):
+    tmp = state_path(name) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f, ensure_ascii=False)
+    set_readable(tmp)
+    os.replace(tmp, state_path(name))
+
+
+def prune_rollback_tags(p, keep_tag):
+    repo = repo_of(p["image"])
+    rc, out = run([DOCKER, "images", repo, "--format", "{{.Tag}}"])
+    tags = sorted(t for t in out.splitlines() if t.startswith("rollback-"))
+    for t in tags[:-KEEP_ROLLBACK_TAGS]:
+        if f"{repo}:{t}" != keep_tag:
+            run([DOCKER, "rmi", f"{repo}:{t}"])
+
+
+# ---------- замки и проверки ----------
+def check_locks(job, p, name):
+    lock = p.get("lock")
+    if lock == "qbittorrent":
+        rc, out = run([DOCKER, "top", name])
+        if rc == 0 and "move-completed" in out:
+            raise Fail("идёт перенос завершённой закачки (move-completed.sh) — обновление после завершения")
+        job.log("замок qbittorrent: перенос файлов не идёт (список закачек проверяет панель)")
+    for m in p.get("require_mounts") or []:
+        if not os.path.ismount(m):
+            raise Fail(f"не смонтирован {m} — обновление отменено")
+    need = float(p.get("min_free_gb", 2))
+    root = "/var/lib/docker" if os.path.isdir("/var/lib/docker") else "/"
+    free = shutil.disk_usage(root).free / 1e9
+    if free < need:
+        raise Fail(f"мало места на диске: {free:.1f} ГБ, нужно {need:.0f} ГБ")
+    job.log(f"место на диске: свободно {free:.1f} ГБ")
+
+
+def check_compose_matches(job, p, name):
+    rc, out = run(compose_base(p) + ["config", "--format", "json"])
+    if rc != 0:
+        raise Fail("docker compose config: " + out[-300:])
+    cfg = json.loads(out)
+    svc = (cfg.get("services") or {}).get(p["service"])
+    if not svc:
+        raise Fail(f"в compose нет сервиса {p['service']}")
+    if svc.get("container_name") != name:
+        raise Fail("container_name в compose не совпадает с белым списком")
+    if svc.get("image") != p["image"]:
+        raise Fail(f"image в compose ({svc.get('image')}) не совпадает с белым списком ({p['image']})")
+    if svc.get("privileged"):
+        raise Fail("compose: privileged запрещён")
+    job.log("compose-файл проверен: хэш, имя контейнера и образ совпадают с белым списком")
+
+
+# ---------- пересоздание ----------
+def recreate(job, p, name, force=False):
+    """compose up -d --no-deps --pull never <сервис>. Для контейнера, созданного не через этот compose, — с переименованием."""
+    ins = dinspect(name)
+    labels = ((ins or {}).get("Config") or {}).get("Labels") or {}
+    adopt = ins is not None and (labels.get("com.docker.compose.project") != p["project"] or labels.get("com.docker.compose.service") != p["service"])
+    old_name = f"{name}.sp-old"
+    if adopt:
+        job.log("контейнер создан не через этот compose: прежний переименовывается и останавливается, новый создаётся из compose")
+        if run_logged(job, [DOCKER, "rename", name, old_name]) != 0:
+            raise Fail("не удалось переименовать прежний контейнер")
+        if run_logged(job, [DOCKER, "stop", "-t", "30", old_name], timeout=60) != 0:
+            run([DOCKER, "rename", old_name, name])
+            raise Fail("не удалось остановить прежний контейнер")
+    args = compose_base(p) + ["up", "-d", "--no-deps", "--pull", "never"] + (["--force-recreate"] if force else []) + [p["service"]]
+    rc = run_logged(job, args, timeout=300)
+    if rc != 0:
+        err = Fail("docker compose up завершился с ошибкой")
+        if adopt:
+            err.restored = restore_original(job, p, name, old_name)
+        raise err
+    return adopt
+
+
+def restore_original(job, p, name, old_name):
+    """Вернуть прежний контейнер (docker run), если новый не получился."""
+    job.log("восстанавливаю прежний контейнер")
+    cur = dinspect(name)
+    if cur and ((cur.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.project") == p["project"]:
+        run([DOCKER, "rm", "-f", name], timeout=60)
+    if dinspect(old_name):
+        run([DOCKER, "rename", old_name, name])
+        rc = run_logged(job, [DOCKER, "start", name], timeout=60)
+        job.log("прежний контейнер запущен" if rc == 0 else "ПРЕЖНИЙ КОНТЕЙНЕР НЕ ЗАПУСТИЛСЯ — нужно вмешательство")
+        return rc == 0
+    return False
+
+
+# ---------- резервные копии ----------
+def tree_size(path, cap):
+    total = 0
+    for root, _d, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+            if total > cap:
+                return total
+    return total
+
+
+def backup_paths(job, p, name, ts):
+    paths = p.get("backup") or []
+    if not paths:
+        return
+    dest = f"{BACKUPS}/{name}/{ts}"
+    os.makedirs(dest, mode=0o700, exist_ok=True)
+    for src in paths:
+        if not src.startswith("/") or ".." in src.split("/"):
+            raise Fail(f"недопустимый путь копии: {src}")
+        real = P(src)
+        if not os.path.exists(real):
+            job.log(f"копия: {src} не существует, пропускаю")
+            continue
+        cap = 2 * 1024**3
+        if tree_size(real, cap) > cap:
+            job.log(f"копия: {src} больше 2 ГБ, пропускаю (сделайте копию вручную)")
+            continue
+        out = f"{dest}/{re.sub(r'[^A-Za-z0-9_.-]', '_', src.strip('/'))}.tar.gz"
+        rc = run_logged(job, ["/usr/bin/tar", "-C", P("/"), "-czpf", out, src.lstrip("/")], timeout=600)
+        if rc != 0:
+            raise Fail(f"не удалось сделать копию {src}")
+        job.log(f"копия {src} → {out}")
+    # храним последние KEEP_BACKUPS
+    base = f"{BACKUPS}/{name}"
+    old = sorted(os.listdir(base))[:-KEEP_BACKUPS]
+    for d in old:
+        shutil.rmtree(f"{base}/{d}", ignore_errors=True)
+
+
+def ver_str(info):
+    return (info or {}).get("version") or ((info or {}).get("id") or "")[7:19] or "?"
+
+
+# ---------- сценарии ----------
+def do_update(job, p, name):
+    dry = job.dry
+    job.set_steps([
+        ("check", "Проверка"),
+        ("backup", "Копия данных и образа"),
+        ("pull", "Загрузка образа"),
+        ("recreate", "Пересоздание контейнера"),
+        ("health", "Проверка работы"),
+    ])
+    job.data["status"] = "running"
+    job.save()
+    ts = time.strftime("%Y%m%d-%H%M%S")
+
+    # 1. check
+    job.step("check", "running")
+    verify_compose(p)
+    check_compose_matches(job, p, name)
+    ins = dinspect(name)
+    if not ins:
+        raise Fail("контейнер не найден")
+    old = image_info(ins["Image"])
+    job.data["from"] = old
+    job.log(f"сейчас: {ver_str(old)} ({old['id'][7:19]})")
+    check_locks(job, p, name)
+    labels = (ins.get("Config") or {}).get("Labels") or {}
+    adopt = labels.get("com.docker.compose.project") != p["project"]
+    job.log("режим: первый перенос под compose (прежний контейнер будет заменён)" if adopt else "режим: обновление контейнера compose")
+    job.step("check", "ok")
+
+    if dry:
+        job.step("backup", "skipped", "dry-run: сделал бы inspect, метку rollback и копии: " + (", ".join(p.get("backup") or []) or "нет"))
+        job.step("pull", "skipped", f"dry-run: выполнил бы docker compose pull {p['service']}")
+        job.step("recreate", "skipped", "dry-run: выполнил бы docker compose up -d --no-deps")
+        ok = health_wait(job, p, dry=True)
+        job.step("health", "ok" if ok else "error", "dry-run: пробный проход текущего контейнера")
+        job.finish("ok" if ok else "error", "dry-run: проверка завершена, ничего не изменено", None if ok else "пробная проверка здоровья не прошла")
+        return
+
+    # 2. backup
+    job.step("backup", "running")
+    ins_path = f"{INSPECTS}/{name}"
+    os.makedirs(ins_path, mode=0o700, exist_ok=True)
+    fn = f"{ins_path}/{ts}.json"
+    with open(fn, "w") as f:
+        json.dump(ins, f, ensure_ascii=False, indent=1)
+    os.chmod(fn, 0o600)
+    job.log(f"docker inspect сохранён: {fn}")
+    rb_tag = f"{repo_of(p['image'])}:rollback-{ts}"
+    if run([DOCKER, "tag", old["id"], rb_tag])[0] != 0:
+        raise Fail("не удалось пометить текущий образ тегом отката")
+    job.log(f"текущий образ сохранён под тегом {rb_tag}")
+    backup_paths(job, p, name, ts)
+    job.step("backup", "ok")
+
+    # 3. pull
+    job.step("pull", "running")
+    if run_logged(job, compose_base(p) + ["pull", p["service"]], timeout=1800) != 0:
+        run([DOCKER, "rmi", rb_tag])
+        raise Fail("docker compose pull не удался (контейнер не тронут)")
+    new = image_info(p["image"])
+    if not new:
+        raise Fail("после pull образ не найден")
+    job.data["to"] = new
+    if new["id"] == old["id"]:
+        run([DOCKER, "rmi", rb_tag])
+        job.step("pull", "ok", "образ не изменился")
+        for s in ("recreate", "health"):
+            job.step(s, "skipped", "нечего обновлять")
+        job.log("образ не изменился — контейнер не трогаю")
+        job.finish("ok", "уже актуально: образ не изменился")
+        return
+    job.log(f"загружено: {ver_str(new)} ({new['id'][7:19]})")
+    job.step("pull", "ok", f"{ver_str(old)} → {ver_str(new)}")
+
+    # 4. recreate + 5. health (с автооткатом)
+    state = load_state(name)
+    old_name = f"{name}.sp-old"
+    try:
+        job.step("recreate", "running")
+        recreate(job, p, name)
+        job.step("recreate", "ok")
+        job.step("health", "running")
+        healthy = health_wait(job, p)
+        if not healthy:
+            raise Fail("новый контейнер не прошёл проверку здоровья")
+        job.step("health", "ok")
+    except Fail as e:
+        job.log(f"ОШИБКА: {e}")
+        for s in job.data["steps"]:
+            if s["status"] == "running":
+                s["status"] = "error"
+                s["detail"] = str(e)
+        job.save()
+        if e.restored:
+            save_state(name, {"lastJob": job.id, "lastStatus": "rolledback"})
+            run([DOCKER, "rmi", rb_tag])
+            job.finish("rolledback", "не удалось создать новый контейнер, прежний восстановлен и запущен", str(e))
+            return
+        auto_rollback(job, p, name, old, rb_tag, old_name, str(e))
+        return
+
+    # успех
+    if dinspect(old_name):
+        run([DOCKER, "rm", old_name], timeout=60)
+        job.log("прежний контейнер удалён (его описание сохранено в inspect)")
+    save_state(name, {
+        "rollbackTag": rb_tag, "rollbackImageId": old["id"], "rollbackVersion": ver_str(old),
+        "rollbackAt": now_ms(), "currentVersion": ver_str(new), "lastJob": job.id, "lastStatus": "ok",
+    })
+    prune_rollback_tags(p, rb_tag)
+    job.finish("ok", f"обновлено: {ver_str(old)} → {ver_str(new)}")
+
+
+def auto_rollback(job, p, name, old, rb_tag, old_name, reason):
+    job.add_step("rollback", "Автооткат")
+    try:
+        if run([DOCKER, "tag", old["id"], p["image"]])[0] != 0:
+            raise Fail("не удалось вернуть тег на прежний образ")
+        recreate_rollback_from_new(job, p, name, old_name)
+        if health_wait(job, p):
+            if dinspect(old_name):
+                run([DOCKER, "rm", old_name], timeout=60)
+            job.step("rollback", "ok", f"возвращено {ver_str(old)}")
+            save_state(name, {"lastJob": job.id, "lastStatus": "rolledback"})
+            job.finish("rolledback", f"обновление не удалось, выполнен откат на {ver_str(old)}", reason)
+            return
+        raise Fail("после отката контейнер тоже не здоров")
+    except Fail as e2:
+        job.log(f"ОТКАТ НЕ УДАЛСЯ: {e2}")
+        ok = False
+        if dinspect(old_name):
+            ok = restore_original(job, p, name, old_name)
+        job.step("rollback", "error", str(e2) + ("; прежний контейнер восстановлен" if ok else ""))
+        save_state(name, {"lastJob": job.id, "lastStatus": "failed"})
+        job.finish("failed", "обновление и откат не удались — нужно вмешательство", f"{reason}; {e2}")
+
+
+def recreate_rollback_from_new(job, p, name, old_name):
+    """Пересоздать контейнер на (уже возвращённом) прежнем образе. Прежний `docker run`-контейнер .sp-old не трогаем."""
+    cur = dinspect(name)
+    if cur and ((cur.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.project") != p["project"]:
+        raise Fail("под именем контейнера не compose-контейнер")
+    rc = run_logged(job, compose_base(p) + ["up", "-d", "--no-deps", "--pull", "never", "--force-recreate", p["service"]], timeout=300)
+    if rc != 0:
+        raise Fail("docker compose up (откат) завершился с ошибкой")
+
+
+def do_rollback(job, p, name):
+    dry = job.dry
+    job.set_steps([
+        ("check", "Проверка"),
+        ("retag", "Возврат прежнего образа"),
+        ("recreate", "Пересоздание контейнера"),
+        ("health", "Проверка работы"),
+    ])
+    job.data["status"] = "running"
+    job.save()
+    job.step("check", "running")
+    verify_compose(p)
+    check_compose_matches(job, p, name)
+    st = load_state(name)
+    tag, rid = st.get("rollbackTag"), st.get("rollbackImageId")
+    if not tag or not rid:
+        raise Fail("нет сохранённого образа для отката")
+    target = image_info(rid)
+    if not target:
+        raise Fail("сохранённый образ уже удалён — откат невозможен")
+    ins = dinspect(name)
+    if not ins:
+        raise Fail("контейнер не найден")
+    cur = image_info(ins["Image"])
+    job.data["from"], job.data["to"] = cur, target
+    job.log(f"сейчас: {ver_str(cur)}; откат на: {ver_str(target)} ({tag})")
+    check_locks(job, p, name)
+    job.step("check", "ok")
+    if dry:
+        for s in ("retag", "recreate"):
+            job.step(s, "skipped", "dry-run")
+        ok = health_wait(job, p, dry=True)
+        job.step("health", "ok" if ok else "error", "dry-run: пробный проход")
+        job.finish("ok" if ok else "error", "dry-run: откат возможен, ничего не изменено", None if ok else "пробная проверка здоровья не прошла")
+        return
+    job.step("retag", "running")
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    fn_dir = f"{INSPECTS}/{name}"
+    os.makedirs(fn_dir, mode=0o700, exist_ok=True)
+    with open(f"{fn_dir}/{ts}-before-rollback.json", "w") as f:
+        json.dump(ins, f, ensure_ascii=False, indent=1)
+    os.chmod(f"{fn_dir}/{ts}-before-rollback.json", 0o600)
+    if run([DOCKER, "tag", rid, p["image"]])[0] != 0:
+        raise Fail("не удалось вернуть тег на сохранённый образ")
+    job.step("retag", "ok")
+    job.step("recreate", "running")
+    recreate_rollback_from_new(job, p, name, f"{name}.sp-old")
+    job.step("recreate", "ok")
+    job.step("health", "running")
+    if not health_wait(job, p):
+        job.step("health", "error")
+        save_state(name, {**st, "lastJob": job.id, "lastStatus": "failed"})
+        job.finish("failed", "откат выполнен, но контейнер не прошёл проверку здоровья", "проверка здоровья после отката не пройдена")
+        return
+    job.step("health", "ok")
+    save_state(name, {"lastJob": job.id, "lastStatus": "rolledback-manual", "currentVersion": ver_str(target)})
+    job.finish("ok", f"откат выполнен: {ver_str(cur)} → {ver_str(target)}")
+
+
+# ---------- запуск ----------
+def new_job_id():
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
+
+
+def lock_probe():
+    fd = os.open(LOCKFILE, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
+
+
+def execute(action, name, dry, jid, fg):
+    ensure_dirs()
+    job = Job(jid, action, name, dry, fg)
+    fd = lock_probe()
+    if fd is None:
+        job.data["status"] = "error"
+        job.data["error"] = "уже выполняется другая задача обновления"
+        job.data["finishedAt"] = now_ms()
+        job.save()
+        job.log("уже выполняется другая задача обновления")
+        return 1
+    try:
+        p = get_project(name)
+        job.log(f"{'ПРОВЕРКА (dry-run)' if dry else 'ЗАДАЧА'}: {action} {name}")
+        (do_update if action == "update" else do_rollback)(job, p, name)
+        return 0 if job.data["status"] in ("ok", "rolledback") else 1
+    except Fail as e:
+        job.log(f"ОШИБКА: {e}")
+        for s in job.data["steps"]:
+            if s["status"] == "running":
+                s["status"] = "error"
+                s["detail"] = str(e)
+        job.finish("error", None, str(e))
+        return 1
+    except Exception:
+        tb = traceback.format_exc()
+        job.log("внутренняя ошибка: " + tb.strip().splitlines()[-1])
+        job.log(tb)
+        job.finish("failed", None, "внутренняя ошибка утилиты (см. журнал)")
+        return 1
+    finally:
+        os.close(fd)
+        try:
+            prune_jobs()
+        except OSError:
+            pass
+
+
+def launcher(action, name, dry):
+    """Вызывается панелью (sudo): проверяет всё, что можно, сразу и запускает работу в отдельном юните."""
+    try:
+        p = get_project(name)
+        verify_compose(p)
+    except Fail as e:
+        die(f"отказ: {e}")
+    ensure_dirs()
+    fd = lock_probe()
+    if fd is None:
+        die("отказ: уже выполняется другая задача обновления")
+    os.close(fd)
+    jid = new_job_id()
+    if dry:
+        sys.exit(execute(action, name, True, jid, True))
+    job = Job(jid, action, name, False, False)
+    job.data["status"] = "queued"
+    job.save()
+    if TEST:
+        # в тестах без systemd: запускаем в фоне тем же интерпретатором
+        subprocess.Popen([sys.executable, "-I", SELF, "_run", action, name, jid], env=os.environ.copy(), start_new_session=True)
+    else:
+        rc = subprocess.run(
+            [SYSTEMD_RUN, "--quiet", "--collect", f"--unit=sp-docker-{jid}", f"--description=Обновление контейнера {name}", SELF, "_run", action, name, jid],
+            env=docker_env(),
+        ).returncode
+        if rc != 0:
+            job.finish("error", None, "не удалось запустить юнит systemd-run")
+            die("отказ: systemd-run не запустился")
+    print(jid)
+    if sys.stdout.isatty():
+        print(f"Задача запущена в фоне. Журнал: {job.logpath}\nЖивой вывод: journalctl -fu sp-docker-{jid} либо tail -f {job.logpath}", file=sys.stderr)
+
+
+def main():
+    argv = sys.argv[1:]
+    if argv and argv[0] == "_run":
+        # внутренний вход: только из systemd-юнита (INVOCATION_ID) от root; в sudoers этой команды нет
+        if not TEST and not (os.geteuid() == 0 and os.environ.get("INVOCATION_ID")):
+            die("только из юнита systemd")
+        if len(argv) != 4:
+            die("недопустимые аргументы")
+        _, action, name, jid = argv
+        if action not in ("update", "rollback") or not re.match(r"^\d{8}-\d{6}-[0-9a-f]{6}$", jid) or not NAME_RE.match(name):
+            die("недопустимые аргументы")
+        sys.exit(execute(action, name, False, jid, False))
+    if os.geteuid() != 0 and not TEST:
+        die("нужен root (запуск через sudo)")
+    if not argv or argv[0] not in ("update", "rollback") or len(argv) not in (2, 3):
+        die("использование: server-panel-docker {update|rollback} <имя> [--dry-run]")
+    dry = False
+    if len(argv) == 3:
+        if argv[2] != "--dry-run":
+            die("неизвестный параметр")
+        dry = True
+    launcher(argv[0], argv[1], dry)
+
+
+if __name__ == "__main__":
+    main()
