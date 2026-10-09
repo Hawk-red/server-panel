@@ -419,6 +419,7 @@ export type DockerImageStatus = {
   note: string | null
   danger: boolean
   warning: string | null
+  rollbackWarning: string | null
   rollback: { version: string | null; at: number } | null
 }
 export type DockerJobView = {

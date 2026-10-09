@@ -196,6 +196,7 @@ export type DockerLive = {
   note: string | null // постоянная пометка
   danger: boolean // нужно повторно ввести пароль панели
   warning: string | null // что произойдёт при обновлении
+  rollbackWarning: string | null // что произойдёт при откате
   rollback: { version: string | null; at: number } | null // доступен ли откат
 }
 export type DockerImageStatus = {
@@ -344,6 +345,7 @@ async function liveFor(container: string, c: Cached): Promise<DockerLive> {
     note,
     danger: managed.danger || DANGEROUS.has(container),
     warning: managed.warning ?? CONTAINER_WARNINGS[container] ?? null,
+    rollbackWarning: managed.rollbackWarning,
     rollback: managed.rollback,
   }
 }

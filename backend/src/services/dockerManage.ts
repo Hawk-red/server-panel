@@ -20,10 +20,11 @@ export type ManagedInfo = {
   managed: boolean
   danger: boolean
   warning: string | null
+  rollbackWarning: string | null
   rollback: { version: string | null; at: number } | null
 }
 
-type Project = { danger?: boolean; warning?: string }
+type Project = { danger?: boolean; warning?: string; rollback_warning?: string }
 
 let projCache: { at: number; data: Record<string, Project> } | null = null
 async function projects(): Promise<Record<string, Project>> {
@@ -49,7 +50,7 @@ async function rollbackState(name: string): Promise<RollbackState> {
 
 export async function managedInfo(container: string): Promise<ManagedInfo> {
   const p = (await projects())[container]
-  if (!p) return { managed: false, danger: false, warning: null, rollback: null }
+  if (!p) return { managed: false, danger: false, warning: null, rollbackWarning: null, rollback: null }
   const st = await rollbackState(container)
   let rollback: ManagedInfo['rollback'] = null
   if (st.rollbackImageId) {
@@ -57,7 +58,7 @@ export async function managedInfo(container: string): Promise<ManagedInfo> {
     const ok = await http(`${config.dockerProxy}/images/${st.rollbackImageId}/json`, { timeoutMs: 4000 }).then(() => true, () => false)
     if (ok) rollback = { version: st.rollbackVersion ?? null, at: st.rollbackAt ?? 0 }
   }
-  return { managed: true, danger: !!p.danger, warning: p.warning ?? null, rollback }
+  return { managed: true, danger: !!p.danger, warning: p.warning ?? null, rollbackWarning: p.rollback_warning ?? null, rollback }
 }
 
 export async function isManaged(container: string): Promise<boolean> {

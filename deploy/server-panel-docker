@@ -449,13 +449,63 @@ def prune_rollback_tags(p, keep_tag):
 
 
 # ---------- замки и проверки ----------
+QBT_ENV = P("/opt/server-panel/backend/.env")
+
+
+def qbt_busy():
+    """Незавершённые закачки qBittorrent (WebUI API, логин из .env панели; root читает его без ограничений).
+    Возвращает описание замка или None. Не удалось проверить — отказ (безопаснее считать, что закачки идут)."""
+    env = {}
+    try:
+        for line in open(QBT_ENV, encoding="utf8"):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip().strip("'\"")
+    except OSError:
+        raise Fail("не удалось прочитать учётные данные qBittorrent — закачки проверить нельзя, обновление отменено")
+    u = urllib.parse.urlparse(env.get("QBT_URL", "http://127.0.0.1:8090"))
+    if u.scheme != "http" or u.hostname not in ("127.0.0.1", "localhost"):
+        raise Fail("QBT_URL должен указывать на 127.0.0.1")
+    try:
+        conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=8)
+        body = urllib.parse.urlencode({"username": env.get("QBT_USER", ""), "password": env.get("QBT_PASSWORD", "")})
+        conn.request("POST", "/api/v2/auth/login", body, {"Content-Type": "application/x-www-form-urlencoded", "Referer": f"http://{u.hostname}:{u.port or 80}"})
+        r = conn.getresponse()
+        r.read()
+        m = re.search(r"((?:QBT_)?SID(?:_\d+)?)=([^;]+)", r.getheader("Set-Cookie") or "")
+        if r.status not in (200, 204) or not m:
+            raise Fail("qBittorrent не принял логин — закачки проверить нельзя, обновление отменено")
+        conn.request("GET", "/api/v2/torrents/info", headers={"Cookie": f"{m.group(1)}={m.group(2)}", "Referer": f"http://{u.hostname}:{u.port or 80}"})
+        r = conn.getresponse()
+        data = json.loads(r.read().decode("utf8"))
+        conn.close()
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        raise Fail(f"не удалось запросить список закачек ({e}) — обновление отменено")
+    busy = [t for t in data if t.get("state") == "moving" or str(t.get("state", "")).startswith("checking")
+            or (t.get("progress", 1) < 1 and not re.match(r"^(stopped|paused)", str(t.get("state", ""))))]
+    return f"идут закачки, проверка или перенос: {len(busy)}" if busy else None
+
+
 def check_locks(job, p, name):
+    """Замки. В dry-run замок только сообщается (проверка не должна падать из-за идущих закачек)."""
+    dry = job.dry
     lock = p.get("lock")
     if lock == "qbittorrent":
+        reasons = []
         rc, out = run([DOCKER, "top", name])
         if rc == 0 and "move-completed" in out:
-            raise Fail("идёт перенос завершённой закачки (move-completed.sh) — обновление после завершения")
-        job.log("замок qbittorrent: перенос файлов не идёт (список закачек проверяет панель)")
+            reasons.append("идёт перенос завершённой закачки (move-completed.sh)")
+        busy = qbt_busy()
+        if busy:
+            reasons.append(busy)
+        if reasons:
+            msg = "; ".join(reasons)
+            if not dry:
+                raise Fail(f"замок: {msg} — обновление после завершения закачек")
+            job.log(f"ЗАМОК сейчас включён ({msg}): настоящее обновление было бы отклонено")
+        else:
+            job.log("замок qbittorrent: закачек, проверок и переноса файлов нет")
     for m in p.get("require_mounts") or []:
         if not os.path.ismount(m):
             raise Fail(f"не смонтирован {m} — обновление отменено")
@@ -536,33 +586,74 @@ def tree_size(path, cap):
     return total
 
 
-def backup_paths(job, p, name, ts):
+def archive_name(src):
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", src.strip("/")) + ".tar.gz"
+
+
+def backup_paths(job, p, name, ts, strict=False):
+    """Копии каталогов из p["backup"] в BACKUPS/<имя>/<ts>/. Возвращает каталог копий или None.
+    Опции проекта: backup_max_gb (по умолчанию 2), backup_required (нет копии — отказ), backup_keep (сколько копий хранить).
+    strict=True — контейнер остановлен, любая ошибка tar фатальна; иначе код 1 («файл изменился при чтении») допустим."""
     paths = p.get("backup") or []
     if not paths:
-        return
+        return None
+    cap = int(float(p.get("backup_max_gb", 2)) * 1024**3)
+    required = bool(p.get("backup_required"))
+    keep = int(p.get("backup_keep", KEEP_BACKUPS))
     dest = f"{BACKUPS}/{name}/{ts}"
     os.makedirs(dest, mode=0o700, exist_ok=True)
+    done = []
     for src in paths:
         if not src.startswith("/") or ".." in src.split("/"):
             raise Fail(f"недопустимый путь копии: {src}")
         real = P(src)
         if not os.path.exists(real):
+            if required:
+                raise Fail(f"копия обязательна, но {src} не существует")
             job.log(f"копия: {src} не существует, пропускаю")
             continue
-        cap = 2 * 1024**3
-        if tree_size(real, cap) > cap:
-            job.log(f"копия: {src} больше 2 ГБ, пропускаю (сделайте копию вручную)")
+        size = tree_size(real, cap)
+        if size > cap:
+            if required:
+                raise Fail(f"{src} больше {cap / 1024**3:.0f} ГБ — копия обязательна; увеличьте backup_max_gb в project.json")
+            job.log(f"копия: {src} больше {cap / 1024**3:.0f} ГБ, пропускаю (сделайте копию вручную)")
             continue
-        out = f"{dest}/{re.sub(r'[^A-Za-z0-9_.-]', '_', src.strip('/'))}.tar.gz"
-        rc = run_logged(job, ["/usr/bin/tar", "-C", P("/"), "-czpf", out, src.lstrip("/")], timeout=600)
-        if rc != 0:
+        free = shutil.disk_usage(BACKUPS).free
+        if free < size * 1.1 + 1024**3:
+            raise Fail(f"мало места для копии {src}: свободно {free / 1e9:.1f} ГБ, нужно около {size * 1.1 / 1e9 + 1:.1f} ГБ")
+        out = f"{dest}/{archive_name(src)}"
+        rc = run_logged(job, ["/usr/bin/tar", "-C", P("/"), "-czpf", out, src.lstrip("/")], timeout=1800)
+        if rc not in ((0,) if strict else (0, 1)):
             raise Fail(f"не удалось сделать копию {src}")
-        job.log(f"копия {src} → {out}")
-    # храним последние KEEP_BACKUPS
+        job.log(f"копия {src} ({size / 1e6:.0f} МБ данных) → {out}")
+        done.append(src)
+    if required and not done:
+        raise Fail("обязательная копия данных не сделана")
     base = f"{BACKUPS}/{name}"
-    old = sorted(os.listdir(base))[:-KEEP_BACKUPS]
-    for d in old:
+    for d in sorted(os.listdir(base))[:-keep]:
         shutil.rmtree(f"{base}/{d}", ignore_errors=True)
+    return dest if done else None
+
+
+def restore_backup(job, p, bdir, ts):
+    """Вернуть каталоги из копии. Текущее содержимое не удаляется, а переименовывается в <путь>.sp-before-restore-<ts>."""
+    for src in p.get("backup") or []:
+        arch = f"{bdir}/{archive_name(src)}"
+        if not os.path.exists(arch):
+            continue
+        real = P(src)
+        aside = f"{real}.sp-before-restore-{ts}"
+        try:
+            if os.path.exists(real):
+                os.rename(real, aside)
+        except OSError as e:
+            raise Fail(f"не удалось отодвинуть {src}: {e}")
+        if run_logged(job, ["/usr/bin/tar", "-C", P("/"), "-xzpf", arch], timeout=1800) != 0:
+            shutil.rmtree(real, ignore_errors=True)
+            if os.path.exists(aside):
+                os.rename(aside, real)
+            raise Fail(f"не удалось развернуть копию {src}; прежнее содержимое возвращено")
+        job.log(f"восстановлено {src}; прежнее содержимое сохранено: {src}.sp-before-restore-{ts}")
 
 
 def ver_str(info):
@@ -572,10 +663,12 @@ def ver_str(info):
 # ---------- сценарии ----------
 def do_update(job, p, name):
     dry = job.dry
+    stopped_snapshot = bool(p.get("backup_stopped") and p.get("backup"))
     job.set_steps([
         ("check", "Проверка"),
-        ("backup", "Копия данных и образа"),
+        ("backup", "Описание контейнера и прежний образ" if stopped_snapshot else "Копия данных и образа"),
         ("pull", "Загрузка образа"),
+    ] + ([("snapshot", "Снимок данных (контейнер остановлен)")] if stopped_snapshot else []) + [
         ("recreate", "Пересоздание контейнера"),
         ("health", "Проверка работы"),
     ])
@@ -600,8 +693,18 @@ def do_update(job, p, name):
     job.step("check", "ok")
 
     if dry:
-        job.step("backup", "skipped", "dry-run: сделал бы inspect, метку rollback и копии: " + (", ".join(p.get("backup") or []) or "нет"))
+        job.step("backup", "skipped", "dry-run: сделал бы inspect, метку rollback" + ("" if stopped_snapshot else " и копии: " + (", ".join(p.get("backup") or []) or "нет")))
         job.step("pull", "skipped", f"dry-run: выполнил бы docker compose pull {p['service']}")
+        if stopped_snapshot:
+            job.step("snapshot", "skipped", "dry-run: остановил бы контейнер и снял копии: " + ", ".join(p["backup"]))
+        for src in p.get("backup") or []:
+            real = P(src)
+            if not os.path.exists(real):
+                job.log(f"ВНИМАНИЕ: каталог копии {src} не найден или нет доступа")
+            else:
+                cap = int(float(p.get("backup_max_gb", 2)) * 1024**3)
+                sz = tree_size(real, cap)
+                job.log(f"каталог копии {src}: " + (f"больше {cap / 1024**3:.0f} ГБ — {'обновление будет отклонено' if p.get('backup_required') else 'копия будет пропущена'}" if sz > cap else f"{sz / 1e6:.0f} МБ, свободно {shutil.disk_usage(BACKUPS if os.path.isdir(BACKUPS) else '/').free / 1e9:.0f} ГБ"))
         job.step("recreate", "skipped", "dry-run: выполнил бы docker compose up -d --no-deps")
         ok = health_wait(job, p, dry=True)
         job.step("health", "ok" if ok else "error", "dry-run: пробный проход текущего контейнера")
@@ -621,7 +724,9 @@ def do_update(job, p, name):
     if run([DOCKER, "tag", old["id"], rb_tag])[0] != 0:
         raise Fail("не удалось пометить текущий образ тегом отката")
     job.log(f"текущий образ сохранён под тегом {rb_tag}")
-    backup_paths(job, p, name, ts)
+    bdir = None
+    if not stopped_snapshot:
+        bdir = backup_paths(job, p, name, ts)
     job.step("backup", "ok")
 
     # 3. pull
@@ -643,6 +748,21 @@ def do_update(job, p, name):
         return
     job.log(f"загружено: {ver_str(new)} ({new['id'][7:19]})")
     job.step("pull", "ok", f"{ver_str(old)} → {ver_str(new)}")
+
+    # 3б. снимок данных при остановленном контейнере (для баз: копия «на лету» может оказаться несогласованной)
+    if stopped_snapshot:
+        job.step("snapshot", "running")
+        if run_logged(job, [DOCKER, "stop", "-t", "60", name], timeout=150) != 0:
+            run([DOCKER, "rmi", rb_tag])
+            raise Fail("не удалось остановить контейнер для снимка данных")
+        try:
+            bdir = backup_paths(job, p, name, ts, strict=True)
+        except Fail:
+            job.log("снимок не сделан — запускаю контейнер обратно на прежнем образе")
+            run_logged(job, [DOCKER, "start", name], timeout=60)
+            run([DOCKER, "rmi", rb_tag])
+            raise
+        job.step("snapshot", "ok", bdir)
 
     # 4. recreate + 5. health (с автооткатом)
     state = load_state(name)
@@ -668,7 +788,7 @@ def do_update(job, p, name):
             run([DOCKER, "rmi", rb_tag])
             job.finish("rolledback", "не удалось создать новый контейнер, прежний восстановлен и запущен", str(e))
             return
-        auto_rollback(job, p, name, old, rb_tag, old_name, str(e))
+        auto_rollback(job, p, name, old, rb_tag, old_name, str(e), bdir)
         return
 
     # успех
@@ -678,16 +798,21 @@ def do_update(job, p, name):
     save_state(name, {
         "rollbackTag": rb_tag, "rollbackImageId": old["id"], "rollbackVersion": ver_str(old),
         "rollbackAt": now_ms(), "currentVersion": ver_str(new), "lastJob": job.id, "lastStatus": "ok",
+        "backupDir": bdir,
     })
     prune_rollback_tags(p, rb_tag)
     job.finish("ok", f"обновлено: {ver_str(old)} → {ver_str(new)}")
 
 
-def auto_rollback(job, p, name, old, rb_tag, old_name, reason):
+def auto_rollback(job, p, name, old, rb_tag, old_name, reason, bdir=None):
     job.add_step("rollback", "Автооткат")
     try:
         if run([DOCKER, "tag", old["id"], p["image"]])[0] != 0:
             raise Fail("не удалось вернуть тег на прежний образ")
+        if p.get("rollback_restore_backup") and bdir:
+            job.log("откат = образ + снимок данных: останавливаю контейнер и возвращаю снимок")
+            run_logged(job, [DOCKER, "stop", "-t", "60", name], timeout=150)
+            restore_backup(job, p, bdir, time.strftime("%Y%m%d-%H%M%S"))
         recreate_rollback_from_new(job, p, name, old_name)
         if health_wait(job, p):
             if dinspect(old_name):
@@ -719,9 +844,11 @@ def recreate_rollback_from_new(job, p, name, old_name):
 
 def do_rollback(job, p, name):
     dry = job.dry
+    restore = bool(p.get("rollback_restore_backup") and p.get("backup"))
     job.set_steps([
         ("check", "Проверка"),
         ("retag", "Возврат прежнего образа"),
+    ] + ([("restore", "Возврат снимка данных")] if restore else []) + [
         ("recreate", "Пересоздание контейнера"),
         ("health", "Проверка работы"),
     ])
@@ -743,11 +870,15 @@ def do_rollback(job, p, name):
     cur = image_info(ins["Image"])
     job.data["from"], job.data["to"] = cur, target
     job.log(f"сейчас: {ver_str(cur)}; откат на: {ver_str(target)} ({tag})")
+    bdir = st.get("backupDir")
+    if restore and (not bdir or not os.path.isdir(bdir)):
+        raise Fail("снимок данных для отката не найден — откат образа без снимка может сломать базу")
     check_locks(job, p, name)
     job.step("check", "ok")
     if dry:
-        for s in ("retag", "recreate"):
-            job.step(s, "skipped", "dry-run")
+        for s in ("retag", "restore", "recreate"):
+            if any(x["id"] == s for x in job.data["steps"]):
+                job.step(s, "skipped", "dry-run")
         ok = health_wait(job, p, dry=True)
         job.step("health", "ok" if ok else "error", "dry-run: пробный проход")
         job.finish("ok" if ok else "error", "dry-run: откат возможен, ничего не изменено", None if ok else "пробная проверка здоровья не прошла")
@@ -762,6 +893,16 @@ def do_rollback(job, p, name):
     if run([DOCKER, "tag", rid, p["image"]])[0] != 0:
         raise Fail("не удалось вернуть тег на сохранённый образ")
     job.step("retag", "ok")
+    if restore:
+        job.step("restore", "running")
+        run_logged(job, [DOCKER, "stop", "-t", "60", name], timeout=150)
+        try:
+            restore_backup(job, p, bdir, ts)
+        except Fail:
+            job.log("снимок не развёрнут — запускаю контейнер обратно")
+            run_logged(job, [DOCKER, "start", name], timeout=60)
+            raise
+        job.step("restore", "ok")
     job.step("recreate", "running")
     recreate_rollback_from_new(job, p, name, f"{name}.sp-old")
     job.step("recreate", "ok")

@@ -131,11 +131,14 @@ function ActionDialog({ d, action, onClose, onStarted }: { d: DockerImageStatus;
               <p className='font-mono text-foreground'>
                 {isUpdate ? imageDelta(d) : `${d.localVersion ?? 'текущая'} → ${d.rollback?.version ?? 'сохранённая версия'}`}
               </p>
-              {d.warning && <p className='text-warn-foreground'>{d.warning}</p>}
+              {isUpdate && d.warning && <p className='text-warn-foreground'>{d.warning}</p>}
+              {!isUpdate && d.rollbackWarning && <p className='text-warn-foreground'>{d.rollbackWarning}</p>}
               <p>
                 {isUpdate
                   ? 'Перед обновлением сохраняются описание контейнера и прежний образ. Если новая версия не запустится или не пройдёт проверку, панель сама вернёт прежнюю.'
-                  : 'Контейнер будет пересоздан из сохранённого прежнего образа без скачивания. Данные не откатываются.'}
+                  : d.rollbackWarning
+                    ? 'Контейнер будет пересоздан из сохранённого прежнего образа без скачивания.'
+                    : 'Контейнер будет пересоздан из сохранённого прежнего образа без скачивания. Данные не откатываются.'}
               </p>
             </div>
           </DialogDescription>

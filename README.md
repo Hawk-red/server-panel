@@ -178,6 +178,11 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
 - **Состояние:** `/var/lib/server-panel-docker/{jobs,state}` (читает panel), `inspect/` и `backups/` — только root. Журнал задачи — `jobs/<id>.log`.
 - **Замки:** qBittorrent — незавершённые закачки (проверяет панель) и работающий `move-completed.sh` (проверяет помощник).
   Опасные контейнеры (portainer, adguardhome, qbittorrent, docker-socket-proxy) требуют повторного ввода пароля панели.
+- **Параметры проекта** (`deploy/docker/<имя>/project.json`): `backup` (каталоги для копии), `backup_stopped` (копия при остановленном контейнере, сразу
+  перед пересозданием — для баз), `backup_required` / `backup_max_gb` / `backup_keep`, `rollback_restore_backup` (откат = образ + снимок; текущий
+  каталог откладывается рядом как `….sp-before-restore-<ts>`), `require_mounts`, `lock: qbittorrent` (закачки через WebUI API + `move-completed.sh`),
+  `warning` / `rollback_warning` (тексты в диалогах), `health.checks` (http / tcp / dns), `danger` (пароль панели).
+- **Сверка compose с контейнером:** `python3 -I deploy/docker/compare-inspect.py <контейнер> <compose.yaml>` (только чтение).
 - **Снаружи** все маршруты закрыты (`externalPolicy`), статус задач — в `INTERNAL_ONLY_READ`. Кнопки «обновить все» нет.
 - Проверка без изменений: `sudo /usr/local/sbin/server-panel-docker update <имя> --dry-run`.
 
