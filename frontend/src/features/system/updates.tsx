@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { DockerImages } from './docker-images'
+import { FoldButtons, usePersisted, useJobView } from './fold'
 
 type AptJobView = {
   id: string
@@ -107,7 +108,7 @@ function FoldCard({ title, count, open, onOpenChange, children }: { title: strin
 }
 
 // Журнал установки: строки apt как есть, автопрокрутка вниз, явный индикатор живого потока и итог
-function JobLog({ job, lines, now }: { job: AptJobView; lines: string[]; now: number }) {
+function JobLog({ job, lines, now, collapsed, onToggle, onHide }: { job: AptJobView; lines: string[]; now: number; collapsed: boolean; onToggle: () => void; onHide: () => void }) {
   const boxRef = useRef<HTMLPreElement>(null)
   useEffect(() => {
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight
@@ -115,6 +116,21 @@ function JobLog({ job, lines, now }: { job: AptJobView; lines: string[]; now: nu
   const running = job.status === 'running'
   const dur = Math.max(0, ((job.finishedAt ?? now) || job.startedAt) - job.startedAt) / 1000
   const what = job.mode === 'all' ? 'все обновления (dist-upgrade)' : `${job.packages.length} пакетов`
+
+  // Свёрнутое окно: одна строка с результатом, остаётся, пока не нажмут «Скрыть»
+  if (collapsed && !running) {
+    return (
+      <Card className='gap-0 py-0'>
+        <div className='flex flex-wrap items-center justify-between gap-2 px-4 py-2.5'>
+          <div className={cn('flex min-w-0 items-center gap-2 text-sm font-medium', job.status === 'ok' ? 'text-ok-foreground' : 'text-danger-foreground')}>
+            {job.status === 'ok' ? <CircleCheck className='size-4 shrink-0' /> : <CircleX className='size-4 shrink-0' />}
+            <span className='break-words'>{job.status === 'ok' ? `Установка завершена · ${what} · ${dur.toFixed(0)} сек` : `Установка не удалась (код ${job.exitCode ?? '—'}) · ${what}`}</span>
+          </div>
+          <FoldButtons collapsed onToggle={onToggle} onHide={onHide} />
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className={cn('gap-0 overflow-hidden py-0', running && 'border-info/50')}>
@@ -145,6 +161,7 @@ function JobLog({ job, lines, now }: { job: AptJobView; lines: string[]; now: nu
             </span>
           )}
           <span className='font-mono font-semibold'>{dur.toFixed(0)} с</span>
+          {!running && <FoldButtons collapsed={false} onToggle={onToggle} onHide={onHide} />}
         </div>
       </div>
 
@@ -193,6 +210,12 @@ export function Updates() {
   const [now, setNow] = useState(0)
   const [aptOpen, setAptOpen] = usePersistedOpen('updates.aptHistory.open')
   const [dockerOpen, setDockerOpen] = usePersistedOpen('updates.dockerHistory.open')
+  // Сворачивание/скрытие блоков и окон лога. collapsed = null — пользователь ещё не выбирал (тогда решает наличие обновлений)
+  const [aptCollapsedPref, setAptCollapsedPref] = usePersisted<boolean | null>('updates.apt.collapsed', null)
+  const [aptHidden, setAptHidden] = usePersisted<boolean>('updates.apt.hidden', false)
+  const [dockerCollapsedPref, setDockerCollapsedPref] = usePersisted<boolean | null>('updates.docker.collapsed', null)
+  const [dockerHidden, setDockerHidden] = usePersisted<boolean>('updates.docker.hidden', false)
+  const aptLogView = useJobView('updates.aptLog.view', job?.id ?? null, job?.status === 'ok')
 
   const apt = data?.apt
   const allNames = apt?.packages.map((p) => p.name) ?? []
@@ -273,6 +296,10 @@ export function Updates() {
   const running = job?.status === 'running' || start.isPending
   const dockerUpdates = docker.filter((d) => d.upToDate === false).length
   const dockerChecked = docker.filter((d) => d.upToDate !== null).length
+  const secCount = apt?.securityCount ?? 0
+  const aptCollapsed = aptCollapsedPref ?? allNames.length === 0 // нет обновлений — по умолчанию одна строка
+  const aptSummary = allNames.length === 0 ? 'все пакеты актуальны' : `${allNames.length} к обновлению${secCount ? ` (из них безопасности: ${secCount})` : ''}`
+  const dockerCollapsed = dockerCollapsedPref ?? dockerUpdates === 0
   const allPicked = allNames.length > 0 && pickedNow.length === allNames.length
   const toggle = (name: string) =>
     setSelected((prev) => {
@@ -313,7 +340,7 @@ export function Updates() {
           value={`${dockerUpdates}/${dockerChecked || docker.length}`}
           sub={
             dockerUpdates ? (
-              <a href='#docker-images' className='inline-flex items-center gap-1 text-info underline underline-offset-2'>
+              <a href='#docker-images' onClick={() => { setDockerHidden(false); setDockerCollapsedPref(false) }} className='inline-flex items-center gap-1 text-info underline underline-offset-2'>
                 смотреть версии <ExternalLink className='size-3' />
               </a>
             ) : (
@@ -330,15 +357,38 @@ export function Updates() {
         />
       </div>
 
-      <div className='grid gap-4 lg:grid-cols-5'>
+      {(aptHidden || dockerHidden) && (
+        <div className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+          Скрыто:
+          {aptHidden && (
+            <Button size='sm' variant='outline' className='h-7 px-2 text-xs' onClick={() => setAptHidden(false)}>
+              Показать apt-пакеты
+            </Button>
+          )}
+          {dockerHidden && (
+            <Button size='sm' variant='outline' className='h-7 px-2 text-xs' onClick={() => setDockerHidden(false)}>
+              Показать Docker-образы
+            </Button>
+          )}
+        </div>
+      )}
+
+      <div className='space-y-4'>
         {/* apt: список с чекбоксами, полная высота без внутреннего скролла */}
-        <Card className='gap-3 lg:col-span-3'>
+        <Card className={cn(aptCollapsed ? 'gap-0 py-3' : 'gap-3', aptHidden && 'hidden')}>
           <CardHeader className='flex flex-row flex-wrap items-center justify-between gap-2'>
-            <CardTitle className='flex items-center gap-2 text-sm font-medium'>
-              <PackageCheck className='size-4 text-ok' /> apt-пакеты
+            <CardTitle className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-medium'>
+              <span className='flex items-center gap-2'>
+                <PackageCheck className='size-4 text-ok' /> apt-пакеты
+              </span>
+              {aptCollapsed && <span className={cn('font-normal', allNames.length ? 'text-warn-foreground' : 'text-muted-foreground')}>{aptSummary}</span>}
             </CardTitle>
-            <span className='text-xs text-muted-foreground'>{installing ? `установлено ${doneNames.size} из ${allNames.length}` : apt?.error ? 'ошибка проверки' : apt?.checkedAt ? `проверено ${formatRelative(apt.checkedAt)}` : 'проверяется…'}</span>
+            <div className='flex flex-wrap items-center gap-2'>
+              <span className='text-xs text-muted-foreground'>{installing ? `установлено ${doneNames.size} из ${allNames.length}` : apt?.error ? 'ошибка проверки' : apt?.checkedAt ? `проверено ${formatRelative(apt.checkedAt)}` : 'проверяется…'}</span>
+              <FoldButtons collapsed={aptCollapsed} onToggle={() => setAptCollapsedPref(!aptCollapsed)} onHide={() => setAptHidden(true)} />
+            </div>
           </CardHeader>
+          {!aptCollapsed && (
           <CardContent className='space-y-3'>
             {apt?.error && <NoData reason={apt.error} />}
             {allNames.length === 0 && !apt?.error && <p className='text-sm text-muted-foreground'>все пакеты актуальны</p>}
@@ -399,19 +449,27 @@ export function Updates() {
               <CopyCommand cmd='sudo apt update && sudo apt upgrade' />
             </div>
           </CardContent>
+          )}
         </Card>
 
-        {/* Docker-образы: плитки во всю ширину колонки */}
-        <div id='docker-images' className='scroll-mt-4 lg:col-span-2'>
-          <DockerImages docker={docker} />
+        {/* Окно установки apt — прямо под блоком apt, на всю ширину */}
+        {job && !aptLogView.hidden && (
+          <div ref={jobRef} className='scroll-mt-4'>
+            <JobLog job={job} lines={lines} now={now} collapsed={job.status !== 'running' && aptLogView.collapsed} onToggle={() => aptLogView.setCollapsed(!aptLogView.collapsed)} onHide={aptLogView.hide} />
+          </div>
+        )}
+
+        {/* Docker-образы — ниже, тоже на всю ширину */}
+        <div id='docker-images' className='scroll-mt-4'>
+          <DockerImages
+            docker={docker}
+            hidden={dockerHidden}
+            collapsed={dockerCollapsed}
+            onToggle={() => setDockerCollapsedPref(!dockerCollapsed)}
+            onHide={() => setDockerHidden(true)}
+          />
         </div>
       </div>
-
-      {job && (
-        <div ref={jobRef} className='scroll-mt-4'>
-          <JobLog job={job} lines={lines} now={now} />
-        </div>
-      )}
 
       <div className={cn('grid gap-4', dockerHistory.length > 0 && 'lg:grid-cols-2')}>
         <FoldCard title='История apt' count={aptHistory.length} open={aptOpen} onOpenChange={setAptOpen}>
