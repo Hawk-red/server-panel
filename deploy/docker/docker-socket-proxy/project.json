@@ -1,0 +1,14 @@
+{
+  "service": "docker-socket-proxy",
+  "container": "docker-socket-proxy",
+  "project": "docker-socket-proxy",
+  "image": "lscr.io/linuxserver/socket-proxy:latest",
+  "danger": true,
+  "warning": "Панель потеряет доступ к Docker на 5–15 секунд (прокси пересоздаётся). Состояние задачи берётся из файла, поэтому окно процесса продолжит обновляться. Сами контейнеры не затрагиваются.",
+  "health": {
+    "checks": [{ "type": "http", "url": "http://127.0.0.1:2375/version", "status": [200] }],
+    "timeout": 60,
+    "stable": 10
+  },
+  "min_free_gb": 1
+}

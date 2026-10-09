@@ -1,0 +1,21 @@
+{
+  "service": "jellyfin",
+  "container": "jellyfin",
+  "project": "jellyfin",
+  "image": "jellyfin/jellyfin:latest",
+  "danger": false,
+  "warning": "Прервёт текущее воспроизведение (Jellyfin остановится на 1–3 минуты). Откат одного образа не откатывает базу, поэтому перед обновлением делается снимок каталога настроек, а откат = образ + снимок.",
+  "rollback_warning": "Откат вернёт прежний образ И снимок настроек на момент перед обновлением: всё, что изменилось в Jellyfin после обновления (просмотры, закладки, новые пользователи), будет потеряно. Текущий каталог не удаляется, а откладывается рядом (jellyfin-config.sp-before-restore-…).",
+  "health": {
+    "checks": [{ "type": "http", "url": "http://127.0.0.1:8096/health", "status": [200] }],
+    "timeout": 240,
+    "stable": 20
+  },
+  "backup": ["/home/macmini/audio-streaming/jellyfin-config"],
+  "backup_stopped": true,
+  "backup_required": true,
+  "backup_max_gb": 10,
+  "backup_keep": 2,
+  "rollback_restore_backup": true,
+  "min_free_gb": 6
+}

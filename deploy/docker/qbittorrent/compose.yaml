@@ -1,0 +1,54 @@
+# qBittorrent (linuxserver) — кандидат compose-файла по `docker inspect qbittorrent` (09.10.2026).
+# Контейнер сейчас создан через `docker run`. Файл НЕ используется, пока его не установит
+# deploy/docker/install-project.sh qbittorrent (корневая копия в /etc/server-panel/docker/qbittorrent/, хэш в белом списке).
+# Подключение контейнер не трогает. Пересоздание — только кнопкой «Обновить…» в панели и только когда нет закачек,
+# проверки и переноса файлов (замок), после копии /opt/qbittorrent/config и повторного ввода пароля панели.
+#
+# Все каталоги — с create_host_path: false: если диск hdd1tb не смонтирован, контейнер НЕ запустится
+# (короткая запись создала бы пустые папки на системном SSD и торренты молча писались бы туда).
+# Единственное осознанное отличие от `docker run`: stop_grace_period 60s вместо 10 с, чтобы qBittorrent успел
+# сохранить fast-resume данные перед остановкой (иначе при пересоздании возможна перепроверка торрентов).
+name: qbittorrent
+
+services:
+  qbittorrent:
+    image: linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    network_mode: bridge
+    stop_grace_period: 60s
+    environment:
+      PUID: "1000"
+      PGID: "33"
+      WEBUI_PORT: "8090"
+      TZ: Europe/Kyiv
+    ports:
+      - "8090:8090"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - type: bind
+        source: /opt/qbittorrent/config
+        target: /config
+        bind: { create_host_path: false }
+      - type: bind
+        source: /mnt/hdd1tb/qbittorrent-completed
+        target: /completed
+        bind: { create_host_path: false }
+      - type: bind
+        source: /mnt/hdd1tb/qbittorrent-downloads
+        target: /downloads-hdd
+        bind: { create_host_path: false }
+      - type: bind
+        source: /home/torrents-tmp
+        target: /downloads-tmp
+        bind: { create_host_path: false }
+      - type: bind
+        source: /home/hawk/scripts
+        target: /scripts
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: /var/log/torrent-move.log
+        target: /var/log/torrent-move.log
+        bind: { create_host_path: false }

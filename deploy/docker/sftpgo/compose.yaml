@@ -1,0 +1,70 @@
+# Обменник файлов на SFTPGo. Установлен в /opt/sftpgo/compose.yaml. Источник: /opt/server-panel/deploy/exchange/compose.yaml
+#   docker compose -f /opt/sftpgo/compose.yaml up -d      (от hawk или через sudo)
+# Порты слушают только 127.0.0.1: наружу — только через nginx.
+#   8080 — публичный веб-клиент: nginx, https://api.pulsdev.net[:9443]/files/ (админки и REST здесь нет)
+#   8082 — админка + REST: nginx на :8443 (только LAN и VPN), скрипты — напрямую
+# Порты и протоколы задаются здесь, а не в веб-интерфейсе. SFTP/FTP/WebDAV выключены.
+name: sftpgo
+
+services:
+  sftpgo:
+    image: drakkan/sftpgo:latest
+    container_name: sftpgo
+    restart: unless-stopped
+    user: "1001:1001"
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - /opt/sftpgo/data:/var/lib/sftpgo   # база пользователей и настроек (SQLite), ключи
+      # Файлы обменника. /srv/exchange — символическая ссылка на /mnt/hdd1tb/sftpgo-data (deploy/exchange/move-to-hdd1tb.sh).
+      # Долгий синтаксис с create_host_path: false: если диск не смонтирован и ссылка ведёт в никуда, контейнер НЕ запускается
+      # (короткий синтаксис -v создал бы пустую папку и обменник молча писал бы на системный SSD).
+      - type: bind
+        source: /srv/exchange
+        target: /data/exchange
+        bind:
+          create_host_path: false
+      # Русский перевод веб-клиента: английский файл образа + наши строки (собирает build-locale.py). Один файл поверх образа —
+      # обновление контейнера это не ломает, новые строки остаются английскими
+      - /opt/sftpgo/locales/en/translation.json:/usr/share/sftpgo/static/locales/en/translation.json:ro
+    environment:
+      TZ: Europe/Kyiv
+      SFTPGO_LOG_LEVEL: info                 # на этом уровне в логе есть события «Upload» с именем, размером и IP
+      SFTPGO_SFTPD__BINDINGS__0__PORT: "0"   # SFTP выключен
+      SFTPGO_HTTPD__WEB_ROOT: /files         # всё лежит под /files/
+      # Привязка 0 — публичная: только веб-клиент
+      SFTPGO_HTTPD__BINDINGS__0__PORT: "8080"
+      SFTPGO_HTTPD__BINDINGS__0__ADDRESS: 0.0.0.0
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_ADMIN: "false"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_CLIENT: "true"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_REST_API: "false"
+      SFTPGO_HTTPD__BINDINGS__0__PROXY_ALLOWED: 172.29.0.0/24     # доверяем заголовку только от nginx (шлюз сети compose)
+      SFTPGO_HTTPD__BINDINGS__0__CLIENT_IP_PROXY_HEADER: X-Forwarded-For
+      # Привязка 1 — админка и REST (за nginx на :8443, только LAN/VPN)
+      SFTPGO_HTTPD__BINDINGS__1__PORT: "8082"
+      SFTPGO_HTTPD__BINDINGS__1__ADDRESS: 0.0.0.0
+      SFTPGO_HTTPD__BINDINGS__1__ENABLE_WEB_ADMIN: "true"
+      SFTPGO_HTTPD__BINDINGS__1__ENABLE_WEB_CLIENT: "false"
+      SFTPGO_HTTPD__BINDINGS__1__ENABLE_REST_API: "true"
+      SFTPGO_HTTPD__BINDINGS__1__PROXY_ALLOWED: 172.29.0.0/24
+      SFTPGO_HTTPD__BINDINGS__1__CLIENT_IP_PROXY_HEADER: X-Forwarded-For
+      # Встроенная защита от подбора паролей: 8 неудач за 30 мин — бан на 30 мин (растёт при повторах)
+      SFTPGO_COMMON__DEFENDER__ENABLED: "true"
+      SFTPGO_COMMON__DEFENDER__THRESHOLD: "8"
+      SFTPGO_COMMON__DEFENDER__BAN_TIME: "30"
+      SFTPGO_COMMON__DEFENDER__BAN_TIME_INCREMENT: "10"
+      SFTPGO_COMMON__DEFENDER__OBSERVATION_TIME: "30"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    networks: [default]
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24

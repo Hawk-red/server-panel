@@ -1,0 +1,39 @@
+# Jellyfin — кандидат compose-файла, составленный по `docker inspect jellyfin` (09.10.2026).
+# Контейнер сейчас создан через `docker run`. Файл НЕ используется, пока его не установит
+# deploy/docker/install-project.sh jellyfin (корневая копия в /etc/server-panel/docker/jellyfin/, хэш в белом списке).
+# Обновляет его только root-помощник панели: снимок каталога настроек при остановленном контейнере → pull → up -d --no-deps.
+#
+# В environment — только то, что задавалось вручную. Остальное (JELLYFIN_*_DIR, HEALTHCHECK_URL, LANG, NVIDIA_*…) и healthcheck
+# приходят из образа — дублировать их в compose нельзя: при обновлении образа они должны меняться вместе с ним.
+# Каталог музыки смонтирован только для чтения и без автосоздания: нет каталога — контейнер не запускается.
+#
+# ВНИМАНИЕ: если в /home/macmini/audio-streaming/docker-compose.yml тоже описан сервис jellyfin, запускать
+# `docker compose up` в той папке после подключения нельзя (конфликт имени контейнера) — см. отчёт.
+name: jellyfin
+
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      JELLYFIN_PublishedServerUrl: http://192.168.31.112:8096
+      TZ: Europe/Kyiv
+    volumes:
+      - type: bind
+        source: /home/macmini/audio-streaming/jellyfin-config
+        target: /config
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /home/macmini/audio-streaming/jellyfin-cache
+        target: /cache
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/flac-usb/music
+        target: /media/music
+        read_only: true
+        bind:
+          create_host_path: false

@@ -1,0 +1,23 @@
+{
+  "service": "qbittorrent",
+  "container": "qbittorrent",
+  "project": "qbittorrent",
+  "image": "linuxserver/qbittorrent:latest",
+  "danger": true,
+  "lock": "qbittorrent",
+  "warning": "Все закачки и раздачи остановятся на время пересоздания (около минуты). Обновление возможно только когда нет незавершённых закачек, проверки и переноса файлов. Перед ним делается копия /opt/qbittorrent/config.",
+  "rollback_warning": "Откат вернёт прежний образ qBittorrent. Копия настроек (/opt/qbittorrent/config) сохраняется, но автоматически не разворачивается.",
+  "health": {
+    "checks": [{ "type": "http", "url": "http://127.0.0.1:8090/", "status": [200] }],
+    "timeout": 120,
+    "stable": 20
+  },
+  "backup": ["/opt/qbittorrent/config"],
+  "backup_stopped": true,
+  "backup_required": true,
+  "backup_max_gb": 1,
+  "backup_keep": 3,
+  "rollback_restore_backup": false,
+  "require_mounts": ["/mnt/hdd1tb"],
+  "min_free_gb": 2
+}

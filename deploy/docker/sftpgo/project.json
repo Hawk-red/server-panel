@@ -1,0 +1,25 @@
+{
+  "service": "sftpgo",
+  "container": "sftpgo",
+  "project": "sftpgo",
+  "image": "drakkan/sftpgo:latest",
+  "danger": false,
+  "warning": "Обменник файлов (https://api.pulsdev.net/files/) будет недоступен 10–30 секунд; идущая загрузка гостя прервётся. Перед обновлением делается копия базы /opt/sftpgo/data.",
+  "rollback_warning": "Откат вернёт прежний образ SFTPGo. Копия базы (/opt/sftpgo/data) сохраняется, но автоматически не разворачивается.",
+  "health": {
+    "checks": [
+      { "type": "http", "url": "http://127.0.0.1:8080/healthz", "status": [200] },
+      { "type": "http", "url": "http://127.0.0.1:8082/healthz", "status": [200] }
+    ],
+    "timeout": 90,
+    "stable": 15
+  },
+  "backup": ["/opt/sftpgo/data"],
+  "backup_stopped": true,
+  "backup_required": true,
+  "backup_max_gb": 1,
+  "backup_keep": 3,
+  "rollback_restore_backup": false,
+  "require_mounts": ["/mnt/hdd1tb"],
+  "min_free_gb": 1
+}
