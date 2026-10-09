@@ -5,6 +5,7 @@ import * as adguard from '../services/adguard.js'
 import * as docker from '../services/docker.js'
 import * as media from '../services/media.js'
 import * as qbt from '../services/qbittorrent.js'
+import { panelStoppedInfo, startPanelStopped, stopAllTorrents } from '../services/torrentControl.js'
 import { getSetting, setSetting } from '../settings.js'
 
 // Результат подисточника: данные или причина «нет данных» — страница не падает целиком
@@ -90,13 +91,23 @@ export async function serviceRoutes(app: FastifyInstance) {
     return { container, summary, guard }
   })
 
+  // Что вернёт «Запустить все»: только торренты, остановленные панелью (список хранится в panel.db)
+  app.get('/api/torrents/panel-stopped', async (_req, reply) => {
+    try {
+      return await panelStoppedInfo()
+    } catch (e) {
+      return reply.code(502).send({ message: (e as Error).message })
+    }
+  })
+
   app.post<{ Params: { action: string } }>('/api/torrents/:action', async (req, reply) => {
     const { action } = req.params
     if (action !== 'stop-all' && action !== 'start-all') return reply.code(400).send({ message: 'недопустимое действие' })
     try {
-      await (action === 'stop-all' ? qbt.stopAll() : qbt.startAll())
-      audit({ ...who(req), action: `torrents.${action}`, result: 'ok' })
-      return { ok: true }
+      // stop-all останавливает только ещё работающие и запоминает их; start-all возобновляет только запомненные (вручную остановленные не трогает)
+      const result = action === 'stop-all' ? await stopAllTorrents() : await startPanelStopped()
+      audit({ ...who(req), action: `torrents.${action}`, result: 'ok', details: result })
+      return { ok: true, ...result }
     } catch (e) {
       audit({ ...who(req), action: `torrents.${action}`, result: 'error', details: { message: (e as Error).message } })
       return reply.code(502).send({ message: (e as Error).message })

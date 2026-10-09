@@ -17,6 +17,7 @@ import { staleBackups, backupsOverview } from '../services/backups.js'
 import { listDeadlines } from '../services/deadlines.js'
 import { fmtDur, internetStatus, lastPing } from '../services/internet.js'
 import { checkDockerNow, DANGEROUS, listUpdates, lockFor, upgradableNames } from '../services/updates.js'
+import { flowActive, FlowError, getFlow, previewFlow, startFlow } from '../services/qbtUpdateFlow.js'
 import { getDockerJob, managedInfo, runningDockerJob, startDockerJob, StartError } from '../services/dockerManage.js'
 import { getAptJob, jobSlice, startAptJob } from '../services/aptJob.js'
 import { ACTIONS, CONTROLLABLE, controlUnit, failedUnits, listAutostart, listServices, type UnitAction } from '../system/units.js'
@@ -307,6 +308,39 @@ export async function systemRoutes(app: FastifyInstance) {
       }
     )
   }
+
+  // qBittorrent: «Остановить торренты и обновить». Замок помощника не ослаблен — торренты сначала останавливаются, потом идёт обычное
+  // обновление, потом возобновляются только остановленные этим процессом. Пароль панели обязателен.
+  app.get('/api/system/updates/docker/qbittorrent/stop-preview', async (_req, reply) => {
+    try {
+      return await previewFlow()
+    } catch (e) {
+      return reply.code(502).send({ message: `qBittorrent недоступен: ${(e as Error).message}` })
+    }
+  })
+  app.get('/api/system/updates/docker/qbittorrent/flow', async () => getFlow())
+  app.post<{ Body: { password: string } }>(
+    '/api/system/updates/docker/qbittorrent/stop-and-update',
+    { schema: { body: { type: 'object', required: ['password'], properties: { password: { type: 'string', minLength: 1, maxLength: 512 } } } } },
+    async (req, reply) => {
+      const act = 'qbittorrent.stop-and-update'
+      const check = await confirmPanelPassword(req.clientIp, req.body.password)
+      if (!check.ok) {
+        audit({ ip: req.clientIp, user: 'admin', action: act, target: 'qbittorrent', result: 'denied', details: { reason: check.status === 401 ? 'bad-password' : 'rate-limit' } })
+        return reply.code(check.status).send({ message: check.message })
+      }
+      if (flowActive(getFlow())) return reply.code(409).send({ message: 'такой процесс уже идёт' })
+      try {
+        const flow = await startFlow(req.clientIp)
+        audit({ ip: req.clientIp, user: 'admin', action: act, target: 'qbittorrent', result: 'ok', details: { flow: flow.id, stopped: flow.stoppedCount, job: flow.jobId, names: flow.torrents.map((t) => t.name).slice(0, 10) } })
+        return reply.code(202).send({ id: flow.id, stopped: flow.stoppedCount, job: flow.jobId })
+      } catch (e) {
+        const status = e instanceof FlowError || e instanceof StartError ? e.statusCode : 500
+        audit({ ip: req.clientIp, user: 'admin', action: act, target: 'qbittorrent', result: 'error', details: { error: (e as Error).message } })
+        return reply.code(status).send({ message: (e as Error).message })
+      }
+    }
+  )
 
   // Состояние задачи обновления контейнера (последняя или по id) + новые строки журнала с offset
   app.get<{ Querystring: { id?: string; offset?: string } }>('/api/system/updates/docker/job', async (req, reply) => {

@@ -54,6 +54,7 @@ type Torrent = {
   size: number
   state: string
   ratio: number
+  save_path?: string
 }
 
 const DOWNLOADING = new Set(['downloading', 'forcedDL', 'metaDL', 'forcedMetaDL', 'stalledDL', 'queuedDL', 'checkingDL', 'allocating'])
@@ -156,3 +157,21 @@ export async function updateLock(): Promise<string | null> {
   const busy = all.filter((t) => t.state === 'moving' || /^checking/.test(t.state) || (t.progress < 1 && !/^(stopped|paused)/.test(t.state)))
   return busy.length ? `идут закачки или проверка: ${busy.length}` : null
 }
+
+// ---------- управление торрентами по хешам (без удаления чего-либо) ----------
+export type TorrentLite = { hash: string; name: string; size: number; progress: number; state: string; dlspeed: number; upspeed: number; savePath: string }
+
+export const isStoppedState = (state: string) => /^(stopped|paused)/.test(state)
+
+export async function listTorrents(): Promise<TorrentLite[]> {
+  const all = await json<Torrent[]>('/torrents/info')
+  return all.map((t) => ({ hash: t.hash, name: t.name, size: t.size, progress: t.progress, state: t.state, dlspeed: t.dlspeed, upspeed: t.upspeed, savePath: t.save_path ?? '' }))
+}
+
+async function postHashes(path: '/torrents/stop' | '/torrents/start', hashes: string[]) {
+  if (hashes.length === 0) return
+  if (!hashes.every((h) => /^[0-9a-f]{40}$|^[0-9a-f]{64}$/i.test(h))) throw new Error('недопустимый хеш торрента')
+  await call(path, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ hashes: hashes.join('|') }).toString() })
+}
+export const stopHashes = (hashes: string[]) => postHashes('/torrents/stop', hashes)
+export const startHashes = (hashes: string[]) => postHashes('/torrents/start', hashes)

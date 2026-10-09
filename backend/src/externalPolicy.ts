@@ -28,6 +28,8 @@ export const INTERNAL_ONLY_READ = [
   '/api/wireless',
   '/api/sites/jetsetter',
   '/api/system/updates/docker/job', // состояние и журнал задач обновления контейнеров
+  '/api/system/updates/docker/qbittorrent', // список торрентов и состояние «остановить и обновить»
+  '/api/torrents/panel-stopped', // имена торрентов
   '/api/ai/settings',
 ]
 

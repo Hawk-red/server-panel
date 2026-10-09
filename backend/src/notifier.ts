@@ -230,6 +230,7 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'updates.security' && rule('updates')) void send(updatesSecurityText(e), false)
   else if (e.kind === 'updates.reboot' && rule('updates')) void send('🔁 <b>Нужна перезагрузка сервера</b> — обновлены ядро или системные библиотеки', false)
   else if (e.kind === 'updates.docker' && rule('updates')) void send(updatesDockerText(e), false)
+  else if (e.kind === 'torrents.flow' && rule('torrents')) void send(`${e.level === 'info' ? '✅' : e.level === 'warning' ? '⚠️' : '🔴'} ${esc(e.text)}`, e.level !== 'info')
   else if (e.kind === 'docker.update' && rule('updates')) void send(dockerUpdateText(e), e.level !== 'info')
   else if (e.kind === 'torrents.resumed' && rule('torrents')) void send(guardResumedText(e), false)
 }

@@ -29,6 +29,7 @@ import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
 import { startUpdates } from './services/updates.js'
 import { startDockerJobWatcher } from './services/dockerManage.js'
+import { startFlowWatcher } from './services/qbtUpdateFlow.js'
 import { killAllChildren } from './exec.js'
 import { externalPolicy } from './externalPolicy.js'
 import { externalEnabled, totpEnabled } from './security.js'
@@ -173,6 +174,7 @@ startNotifier(app.log)
 startDeadlines()
 startUpdates()
 startDockerJobWatcher()
+startFlowWatcher()
 startSpeedtest()
 startExchange(app.log)
 startAlertIngest(app.log, db)
