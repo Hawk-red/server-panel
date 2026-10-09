@@ -1,14 +1,12 @@
+import { BulkButtons } from '@/features/system/qbt-flow'
 import { useState } from 'react'
 import { Value } from '@/components/value'
 import { Meter } from '@/components/meter'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AxiosError } from 'axios'
-import { Pause, Play, TriangleAlert } from 'lucide-react'
-import { toast } from 'sonner'
+import { useQuery } from '@tanstack/react-query'
+import { TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatBps, formatDateTime } from '@/lib/format'
 import type { MetricsResponse, Range, TorrentsData } from '@/lib/types'
-import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { MetricChart, RANGE_LABELS } from '@/components/metric-chart'
@@ -46,22 +44,11 @@ function SpeedStats({ range }: { range: Range }) {
 }
 
 export function Torrents() {
-  const qc = useQueryClient()
   const [range, setRange] = useState<Range>('day')
-  const [confirm, setConfirm] = useState<'stop-all' | 'start-all' | null>(null)
   const { data } = useQuery({
     queryKey: ['torrents'],
     queryFn: async () => (await api.get<TorrentsData>('/torrents')).data,
     refetchInterval: 5_000,
-  })
-  const bulk = useMutation({
-    mutationFn: (a: 'stop-all' | 'start-all') => api.post(`/torrents/${a}`, {}),
-    onSuccess: (_d, a) => {
-      toast.success(a === 'stop-all' ? 'Все торренты поставлены на паузу' : 'Все торренты продолжены')
-      qc.invalidateQueries({ queryKey: ['torrents'] })
-    },
-    onError: (e) => toast.error((e instanceof AxiosError && e.response?.data?.message) || 'ошибка'),
-    onSettled: () => setConfirm(null),
   })
   const s = data?.summary.data
   const g = data?.guard.data
@@ -84,12 +71,7 @@ export function Torrents() {
           monitorId='qbittorrent'
         >
           <div className='flex flex-wrap gap-2'>
-            <Button size='sm' variant='outline' disabled={!s} onClick={() => setConfirm('stop-all')}>
-              <Pause /> Пауза всех
-            </Button>
-            <Button size='sm' variant='outline' disabled={!s} onClick={() => setConfirm('start-all')}>
-              <Play /> Продолжить все
-            </Button>
+            <BulkButtons disabled={!s} />
           </div>
           {data?.summary.error && <NoData reason={data.summary.error} />}
         </ServiceCard>
@@ -262,18 +244,6 @@ export function Torrents() {
   return (
     <Page title='Торренты' description='qBittorrent: состояние и статистика; добавлять торренты — в родном интерфейсе' layoutPage='torrents'>
       <SortableBlocks grid blocks={blocks} className='grid gap-4 lg:grid-cols-3' />
-      {confirm && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && !bulk.isPending && setConfirm(null)}
-          title={confirm === 'stop-all' ? 'Поставить все торренты на паузу?' : 'Продолжить все торренты?'}
-          desc={confirm === 'stop-all' ? 'Остановятся и закачки, и раздачи.' : 'Все торренты, включая поставленные на паузу вручную, продолжат работу.'}
-          confirmText={confirm === 'stop-all' ? 'Пауза всех' : 'Продолжить'}
-          destructive={confirm === 'stop-all'}
-          isLoading={bulk.isPending}
-          handleConfirm={() => bulk.mutate(confirm)}
-        />
-      )}
     </Page>
   )
 }

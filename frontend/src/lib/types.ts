@@ -438,6 +438,20 @@ export type DockerJobView = {
   lines: string[]
   offset: number
 }
+export type QbtFlow = {
+  id: string
+  phase: 'stopping' | 'updating' | 'resuming' | 'done' | 'error'
+  torrents: { hash: string; name: string; size: number; progress: number; state: string }[]
+  startedAt: number
+  finishedAt: number | null
+  jobId: string | null
+  jobStatus: 'queued' | 'running' | 'ok' | 'error' | 'rolledback' | 'failed' | null
+  jobSummary: string | null
+  stoppedCount: number
+  resumedCount: number | null
+  error: string | null
+}
+export type QbtStopPreview = { torrents: QbtFlow['torrents']; blockers: string[]; total: number }
 export type DockerUpdateEvent = { container: string; repo: string; oldDigest: string | null; newDigest: string; detectedAt: number }
 export type UpdatesSnapshot = {
   apt: AptStatus

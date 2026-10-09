@@ -9,6 +9,7 @@ import { formatRelative } from '@/lib/format'
 import type { DockerImageStatus, DockerJobView, UpdatesSnapshot } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { FoldButtons, useJobView } from './fold'
+import { BulkButtons, QbtFlowCard, StopAndUpdateDialog, flowActive, useQbtFlow } from './qbt-flow'
 import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -289,7 +290,22 @@ export function DockerImages({ docker, hidden, collapsed, onToggle, onHide }: { 
   const qc = useQueryClient()
   const { job, lines, restart } = useDockerJob()
   const [dialog, setDialog] = useState<{ d: DockerImageStatus; action: Action } | null>(null)
-  const busy = RUNNING(job)
+  const [stopDialog, setStopDialog] = useState<DockerImageStatus | null>(null)
+  const flowQ = useQbtFlow()
+  const flow = flowQ.data ?? null
+  const flowBusy = flowActive(flow)
+  const flowShown = flow && (flowBusy || (flow.finishedAt ?? 0) > Date.now() - 24 * 3600_000)
+  const busy = RUNNING(job) || flowBusy
+  // Процесс «остановить и обновить» закончился — обновить данные об образах и торрентах
+  const prevFlowPhase = useRef<string | null>(null)
+  useEffect(() => {
+    const ph = flow?.phase ?? null
+    if (prevFlowPhase.current && ['stopping', 'updating', 'resuming'].includes(prevFlowPhase.current) && (ph === 'done' || ph === 'error')) {
+      void qc.invalidateQueries({ queryKey: ['system-updates'] })
+      void qc.invalidateQueries({ queryKey: ['torrents'] })
+    }
+    prevFlowPhase.current = ph
+  }, [flow?.phase, qc])
   const newer = docker.filter((d) => d.upToDate === false).length
   const check = useMutation({
     mutationFn: async () => (await api.post<UpdatesSnapshot>('/system/updates/docker/check')).data,
@@ -363,16 +379,27 @@ export function DockerImages({ docker, hidden, collapsed, onToggle, onHide }: { 
                   <StatusOf d={d} />
                   {(canUpdate || d.rollback) && (
                     <div className='flex flex-wrap gap-2'>
-                      {canUpdate && (
-                        <Button size='sm' disabled={busy || !!d.lock} title={d.lock ? `Замок: ${d.lock}` : busy ? 'Дождитесь окончания текущей задачи' : undefined} onClick={() => setDialog({ d, action: 'update' })}>
-                          Обновить…
+                      {canUpdate && d.container === 'qbittorrent' && d.lock ? (
+                        <Button size='sm' disabled={busy} title={busy ? 'Дождитесь окончания текущей задачи' : `Замок: ${d.lock}`} onClick={() => setStopDialog(d)}>
+                          Остановить торренты и обновить…
                         </Button>
+                      ) : (
+                        canUpdate && (
+                          <Button size='sm' disabled={busy || !!d.lock} title={d.lock ? `Замок: ${d.lock}` : busy ? 'Дождитесь окончания текущей задачи' : undefined} onClick={() => setDialog({ d, action: 'update' })}>
+                            Обновить…
+                          </Button>
+                        )
                       )}
                       {d.rollback && (
                         <Button size='sm' variant='outline' disabled={busy} title={busy ? 'Дождитесь окончания текущей задачи' : `Вернуть ${d.rollback.version ?? 'прежнюю версию'}`} onClick={() => setDialog({ d, action: 'rollback' })}>
                           <Undo2 className='size-4' /> Откатить
                         </Button>
                       )}
+                    </div>
+                  )}
+                  {d.container === 'qbittorrent' && (
+                    <div className='flex flex-wrap gap-2'>
+                      <BulkButtons disabled={flowBusy} />
                     </div>
                   )}
                 </div>
@@ -382,7 +409,9 @@ export function DockerImages({ docker, hidden, collapsed, onToggle, onHide }: { 
         </CardContent>
         )}
       </Card>
+      {flowShown && flow && <QbtFlowCard flow={flow} />}
       {showJob && <DockerJobCard job={job} lines={lines} collapsed={logView.collapsed} onToggle={() => logView.setCollapsed(!logView.collapsed)} onHide={logView.hide} />}
+      {stopDialog && <StopAndUpdateDialog d={stopDialog} onClose={() => setStopDialog(null)} onStarted={restart} />}
       {dialog && <ActionDialog d={dialog.d} action={dialog.action} onClose={() => setDialog(null)} onStarted={restart} />}
     </div>
   )

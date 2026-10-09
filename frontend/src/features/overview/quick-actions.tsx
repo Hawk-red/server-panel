@@ -54,7 +54,7 @@ export function QuickActions() {
     done: 'qBittorrent перезапускается',
   }
   const pauseAction: Action = torrents?.allStopped
-    ? { id: 'resume', title: 'Продолжить все торренты?', desc: 'Все торренты на паузе будут запущены.', confirmText: 'Продолжить', run: () => api.post('/torrents/start-all', {}), done: 'Торренты запущены' }
+    ? { id: 'resume', title: 'Продолжить все торренты?', desc: 'Будут запущены торренты, которые остановила панель (остановленные вами вручную не тронем).', confirmText: 'Продолжить', run: () => api.post('/torrents/start-all', {}), done: 'Торренты запущены' }
     : { id: 'pause', title: 'Поставить все торренты на паузу?', desc: 'Все закачки и раздачи будут остановлены до тех пор, пока вы их не продолжите.', confirmText: 'Поставить на паузу', run: () => api.post('/torrents/stop-all', {}), done: 'Торренты поставлены на паузу' }
   const alertBotAction: Action = {
     id: 'restart-alert-bot',

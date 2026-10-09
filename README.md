@@ -183,6 +183,11 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
   каталог откладывается рядом как `….sp-before-restore-<ts>`), `require_mounts` / `require_paths` (смонтирован диск / каталог существует), `project` (имя compose-проекта, если оно не равно имени контейнера — как audio-streaming у jellyfin), `lock: qbittorrent` (закачки через WebUI API + `move-completed.sh`),
   `warning` / `rollback_warning` (тексты в диалогах), `health.checks` (http / tcp / dns), `danger` (пароль панели).
 - **Сверка compose с контейнером:** `python3 -I deploy/docker/compare-inspect.py <контейнер> <compose.yaml>` (только чтение).
+- **qBittorrent: торренты и обновление под замком.** «Остановить все / Запустить все» (страница «Торренты», карточка в «Обновлениях», быстрые действия)
+  останавливают только ещё работающие торренты и запоминают их хеши в panel.db; «Запустить все» возобновляет только их (остановленные вами вручную не трогаются).
+  «Остановить торренты и обновить…» (пароль панели): отказ при moving/checking*/move-completed.sh → остановка закачек, которые держат замок → обычное
+  обновление через помощника (его замок не ослаблен) → возобновление только запомненных; при ошибке или откате они тоже возобновляются. Состояние
+  (`qbt.updateFlow` в panel.db) восстанавливается после перезапуска панели. Код: `services/qbtUpdateFlow.ts`, `services/torrentControl.ts`, тесты — `qbtUpdateFlow.test.ts`.
 - **Снаружи** все маршруты закрыты (`externalPolicy`), статус задач — в `INTERNAL_ONLY_READ`. Кнопки «обновить все» нет.
 - Проверка без изменений: `sudo /usr/local/sbin/server-panel-docker update <имя> --dry-run`.
 
