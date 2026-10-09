@@ -1,0 +1,27 @@
+# Portainer CE — кандидат compose-файла, составленный по `docker inspect portainer` (09.10.2026).
+# Контейнер сейчас создан через `docker run` без compose. Этот файл НЕ используется, пока его не установит
+# deploy/docker/install-project.sh portainer (копия в /etc/server-panel/docker/portainer/, root, с хэшем в белом списке).
+# Обновляет его только root-помощник панели (раздел «Обновления»): pull + `up -d --no-deps`, без down и без -v.
+#
+# Совпадение с работающим контейнером (проверено docker compose config и сравнением с inspect):
+#   образ portainer/portainer-ce:latest, entrypoint и команда — из образа (в inspect Cmd пуст), restart=always,
+#   сеть — стандартный мост docker0 (не отдельная сеть проекта), порт 9000 → 9000 (8000 и 9443 наружу не публикуются),
+#   том portainer_data (внешний, уже существует — данные Portainer не затрагиваются), сокет Docker.
+name: portainer
+
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    network_mode: bridge
+    ports:
+      - "9000:9000"
+    volumes:
+      - portainer_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  portainer_data:
+    external: true
+    name: portainer_data

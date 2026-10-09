@@ -1,0 +1,15 @@
+{
+  "service": "portainer",
+  "container": "portainer",
+  "project": "portainer",
+  "image": "portainer/portainer-ce:latest",
+  "danger": true,
+  "warning": "Веб-интерфейс Portainer (порт 9000) будет недоступен на 10–30 секунд. Сами контейнеры продолжат работать.",
+  "health": {
+    "checks": [{ "type": "http", "url": "http://127.0.0.1:9000/api/system/status", "status": [200] }],
+    "timeout": 90,
+    "stable": 15
+  },
+  "backup": ["/var/lib/docker/volumes/portainer_data/_data"],
+  "min_free_gb": 1
+}

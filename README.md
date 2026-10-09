@@ -161,6 +161,26 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
 
 Панель присылает в Telegram сообщение о загрузке любого гостя (все пользователи, кроме `admin`): имя файла, размер и IP. Отключить гостя — Users → **Изменить** → **Профиль** → Status: Inactive. Забаненные за подбор пароля адреса видны в админке (IP Manager → IP Lists) и в `fail2ban-client status exchange`.
 
+## Обновление Docker-контейнеров из панели («Обновления» → «Docker-образы»)
+
+Панель показывает версии «было → станет» для всех восьми контейнеров (метки `org.opencontainers.image.version` образа и реестра,
+без pull; нет метки — дата сборки и короткий digest). Кнопка **«Обновить…»** есть только у контейнеров из белого списка помощника.
+
+- **Помощник:** `/usr/local/sbin/server-panel-docker update|rollback <имя> [--dry-run]` (исходник `deploy/server-panel-docker`,
+  sudoers `deploy/sudoers-server-panel-docker` — две точные команды). Установка: `sudo deploy/install-docker-helper.sh`.
+- **Белый список:** `/etc/server-panel/docker-projects.json` (root:root 644). Контейнер добавляется по одному:
+  `sudo deploy/docker/install-project.sh <имя>` (берёт `deploy/docker/<имя>/compose.yaml` + `project.json`, кладёт root-копию в
+  `/etc/server-panel/docker/<имя>/` и запоминает её SHA-256; изменённый файл помощник не примет). Убрать: `... --remove <имя>`.
+- **Алгоритм update:** flock → проверки и замки → `docker inspect` в JSON + тег `rollback-<ts>` на текущий образ + копии данных →
+  `compose pull` (контейнер ещё работает) → если образ не изменился, выход → `up -d --no-deps --pull never` (без down/-v/--remove-orphans;
+  контейнер от `docker run` переименовывается и после успеха удаляется) → проверка здоровья (работает, не перезапускается, HTTP/TCP/DNS,
+  N секунд подряд) → при провале автооткат на сохранённый образ. Работа идёт в юните `sp-docker-<id>` (systemd-run), панель можно перезапускать.
+- **Состояние:** `/var/lib/server-panel-docker/{jobs,state}` (читает panel), `inspect/` и `backups/` — только root. Журнал задачи — `jobs/<id>.log`.
+- **Замки:** qBittorrent — незавершённые закачки (проверяет панель) и работающий `move-completed.sh` (проверяет помощник).
+  Опасные контейнеры (portainer, adguardhome, qbittorrent, docker-socket-proxy) требуют повторного ввода пароля панели.
+- **Снаружи** все маршруты закрыты (`externalPolicy`), статус задач — в `INTERNAL_ONLY_READ`. Кнопки «обновить все» нет.
+- Проверка без изменений: `sudo /usr/local/sbin/server-panel-docker update <имя> --dry-run`.
+
 ## Если что-то не так
 
 | Симптом | Что проверить |

@@ -241,7 +241,7 @@ def prune_jobs():
 
 # ---------- выполнение команд ----------
 def docker_env():
-    env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "HOME": "/root"}
+    env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "HOME": TEST or "/root"}
     if TEST:  # тесты с подставным docker передают свои переменные
         env.update({k: v for k, v in os.environ.items() if k.startswith("FAKE_")})
     return env
