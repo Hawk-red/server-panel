@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 
 type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline'
-type Settings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
+type Settings = { chatId: number | null; enabled: boolean; digest: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
 type Status = {
   tokenSet: boolean
   tokenConflict: string | null
@@ -220,9 +220,18 @@ export function Notifications() {
                 <Input className='w-20 text-center font-mono' inputMode='numeric' maxLength={5} placeholder='ЧЧ:ММ' aria-label='начало тихих часов' value={form.quiet.from} onChange={(e) => setForm({ ...form, quiet: { ...form.quiet, from: e.target.value.replace(/[^\d:]/g, '') } })} />
                 <span>до</span>
                 <Input className='w-20 text-center font-mono' inputMode='numeric' maxLength={5} placeholder='ЧЧ:ММ' aria-label='конец тихих часов' value={form.quiet.to} onChange={(e) => setForm({ ...form, quiet: { ...form.quiet, to: e.target.value.replace(/[^\d:]/g, '') } })} />
-                {data.quietNow && <StatusBadge status='unknown' label={`сейчас тихие часы · в очереди ${data.queued}`} />}
+                {data.quietNow && <StatusBadge status='unknown' label={form.digest ? `сейчас тихие часы · в очереди ${data.queued}` : 'сейчас тихие часы · без звука'} />}
               </div>
-              <p className='text-xs text-muted-foreground'>В тихие часы обычные уведомления копятся и приходят одной сводкой в конце. «Всегда» — приходят сразу.</p>
+              <p className='text-xs text-muted-foreground'>
+                Время киевское. Все уведомления приходят сразу; в тихие часы — без звука. Если событий больше 20 в минуту, остальные собираются в одно сообщение.
+              </p>
+              <div className='flex items-start gap-3'>
+                <Switch checked={form.digest} onCheckedChange={(v) => setForm({ ...form, digest: v })} aria-label='Утренняя сводка' />
+                <div>
+                  <div>Утренняя сводка</div>
+                  <div className='text-xs text-muted-foreground'>Выключено: события в тихие часы приходят сразу, но без звука. Включено: копятся и приходят одной сводкой в конце тихих часов (важные — сразу).</div>
+                </div>
+              </div>
               <ul className='space-y-2'>
                 {(Object.keys(data.rules) as RuleId[]).map((id) => (
                   <li key={id} className='flex items-start gap-3'>

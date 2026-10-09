@@ -20,6 +20,7 @@ export async function notifyRoutes(app: FastifyInstance) {
           properties: {
             chatId: { type: ['integer', 'null'] },
             enabled: { type: 'boolean' },
+            digest: { type: 'boolean' },
             quiet: { type: 'object', required: ['from', 'to'], properties: { from: { type: 'string', pattern: '^\\d{2}:\\d{2}$' }, to: { type: 'string', pattern: '^\\d{2}:\\d{2}$' } } },
             rules: { type: 'object', additionalProperties: { type: 'boolean' } },
           },

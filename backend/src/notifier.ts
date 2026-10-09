@@ -1,7 +1,7 @@
 // Уведомления в Telegram (этап 10.1).
 // Правила: служба упала (всегда), диск > 90% / > 95% (всегда), перегрев CPU, новое устройство,
-// сертификат истекает < 14 дней, синк с ошибкой. Тихие часы: обычные уведомления копятся
-// и уходят одной сводкой в конце тихих часов. Без дублей: каждое условие — один раз при переходе
+// сертификат истекает < 14 дней, синк с ошибкой. Всё уходит сразу; в тихие часы (по Киеву) — без звука.
+// «Утренняя сводка» (накопление в тихие часы) оставлена, но по умолчанию выключена. Без дублей: каждое условие — один раз при переходе
 // порога, повтор только после возврата ниже порога с запасом (гистерезис).
 import type { FastifyBaseLogger } from 'fastify'
 import { getSnapshot } from './collector/index.js'
@@ -34,18 +34,22 @@ export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   updates: { title: 'Обновления системы: новые пакеты, безопасность, Docker-образы, перезагрузка', urgent: '' },
 }
 
-export type NotifySettings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; rules: Record<RuleId, boolean> }
+export type NotifySettings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; digest: boolean; rules: Record<RuleId, boolean> }
 
 const DEFAULTS: NotifySettings = {
   chatId: null,
   enabled: true,
-  quiet: { from: '23:00', to: '08:00' },
+  quiet: { from: '00:00', to: '09:00' },
+  digest: false, // «Утренняя сводка»: false — все события уходят сразу (в тихие часы без звука)
   rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true, torrents: true, updates: true },
 }
 
 export const getNotifySettings = (): NotifySettings => {
   const s = getSetting<Partial<NotifySettings>>('notify', {})
-  return { ...DEFAULTS, ...s, quiet: { ...DEFAULTS.quiet, ...s.quiet }, rules: { ...DEFAULTS.rules, ...s.rules } }
+  const quiet = { ...DEFAULTS.quiet, ...s.quiet }
+  // прежние тихие часы по умолчанию (23:00–08:00) заменены на 00:00–09:00; свои значения не трогаем
+  if (quiet.from === '23:00' && quiet.to === '08:00') Object.assign(quiet, DEFAULTS.quiet)
+  return { ...DEFAULTS, ...s, quiet, rules: { ...DEFAULTS.rules, ...s.rules } }
 }
 export const saveNotifySettings = (s: NotifySettings) => setSetting('notify', s)
 
@@ -57,8 +61,15 @@ function minutes(hhmm: string) {
   const [h, m] = hhmm.split(':').map(Number)
   return h * 60 + (m || 0)
 }
+// Тихие часы считаются по Киеву независимо от часового пояса сервера (учитывает летнее/зимнее время)
+export const QUIET_TZ = 'Europe/Kyiv'
+const kyivFmt = new Intl.DateTimeFormat('en-GB', { timeZone: QUIET_TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+export function kyivMinutes(now: Date) {
+  const p = kyivFmt.formatToParts(now)
+  return Number(p.find((x) => x.type === 'hour')!.value) * 60 + Number(p.find((x) => x.type === 'minute')!.value)
+}
 export function inQuietHours(now = new Date(), q = getNotifySettings().quiet) {
-  const cur = now.getHours() * 60 + now.getMinutes()
+  const cur = kyivMinutes(now)
   const from = minutes(q.from)
   const to = minutes(q.to)
   return from <= to ? cur >= from && cur < to : cur >= from || cur < to
@@ -115,35 +126,108 @@ function remember(entry: Sent) {
   setSetting('notify.sent', list.slice(0, 50))
 }
 
-// Сообщение о безопасности (внешний вход, блокировка IP) уходит сразу, минуя тихие часы
+// Сообщение о безопасности (внешний вход, блокировка IP) уходит сразу, минуя сводку
 export const notifySecurity = (text: string) => send(text, true)
 
-async function send(text: string, urgent: boolean) {
+// Всё уходит сразу. В тихие часы (по Киеву) — без звука (disable_notification). Лавину сводим в одно сообщение,
+// одинаковые подряд идущие сообщения не повторяем.
+export const BURST_LIMIT = 20 // сообщений в минуту
+export const BURST_WINDOW_MS = 60_000
+export const DEDUP_MS = 10 * 60_000
+const plain = (t: string) => t.replace(/<[^>]+>/g, '').replace(/\s*\n+\s*/g, ' · ')
+
+type Transport = (method: string, body: Record<string, unknown>) => Promise<unknown>
+let transport: Transport = tg
+let clock = () => Date.now()
+const burst = { start: 0, sent: 0, overflow: [] as string[], timer: undefined as ReturnType<typeof setTimeout> | undefined }
+let lastSent: { text: string; at: number } | null = null
+// только для тестов: подставной Telegram и часы
+export const __test = {
+  setup(t: Transport, c: () => number) {
+    transport = t
+    clock = c
+    burst.start = 0
+    burst.sent = 0
+    burst.overflow = []
+    clearTimeout(burst.timer)
+    burst.timer = undefined
+    lastSent = null
+  },
+  reset() {
+    transport = tg
+    clock = () => Date.now()
+    clearTimeout(burst.timer)
+    burst.timer = undefined
+  },
+}
+
+async function deliver(text: string, urgent: boolean) {
   const s = getNotifySettings()
-  if (!s.enabled || !s.chatId || !config.notifyToken) return
-  if (!urgent && inQuietHours()) {
-    const q = getSetting<Queued[]>('notify.queue', [])
-    q.push({ ts: Date.now(), text })
-    setSetting('notify.queue', q.slice(-100))
-    return
-  }
+  const silent = inQuietHours(new Date(clock()), s.quiet)
   try {
-    await tg('sendMessage', { chat_id: s.chatId, text, parse_mode: 'HTML', disable_web_page_preview: true })
-    remember({ ts: Date.now(), text, ok: true, urgent })
+    await transport('sendMessage', { chat_id: s.chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, disable_notification: silent })
+    remember({ ts: clock(), text, ok: true, urgent })
   } catch (e) {
-    remember({ ts: Date.now(), text, ok: false, urgent, error: errText(e) })
+    remember({ ts: clock(), text, ok: false, urgent, error: errText(e) })
     log?.warn({ err: errText(e) }, 'уведомление в Telegram не отправлено')
   }
 }
 
-// Сводка накопленного за тихие часы — одним сообщением
-async function flushQueue() {
-  if (inQuietHours()) return
+// Остаток минуты после лимита — одним сообщением
+export async function flushOverflow() {
+  clearTimeout(burst.timer)
+  burst.timer = undefined
+  const items = burst.overflow
+  if (!items.length) return
+  burst.overflow = []
+  burst.start = clock()
+  burst.sent = 1
+  const body = items.map(plain).join(' | ')
+  await deliver(`➕ <b>ещё ${items.length} ${items.length === 1 ? 'событие' : 'событий'}:</b> ${esc(body).slice(0, 3600)}`, false)
+}
+
+export async function send(text: string, urgent: boolean) {
+  const s = getNotifySettings()
+  if (!s.enabled || !s.chatId || !config.notifyToken) return
+  const now = clock()
+  // выключаемая «Утренняя сводка»: старое поведение — обычные события в тихие часы копятся
+  if (s.digest && !urgent && inQuietHours(new Date(now), s.quiet)) {
+    const q = getSetting<Queued[]>('notify.queue', [])
+    q.push({ ts: now, text })
+    setSetting('notify.queue', q.slice(-100))
+    return
+  }
+  if (lastSent && lastSent.text === text && now - lastSent.at < DEDUP_MS) {
+    lastSent.at = now
+    return
+  }
+  lastSent = { text, at: now }
+  if (now - burst.start >= BURST_WINDOW_MS) {
+    if (burst.overflow.length) await flushOverflow() // окно закончилось, а сводка ещё не ушла
+    else {
+      burst.start = now
+      burst.sent = 0
+    }
+  }
+  if (burst.sent >= BURST_LIMIT) {
+    burst.overflow.push(text)
+    if (!burst.timer) burst.timer = setTimeout(() => void flushOverflow().catch(() => {}), Math.max(1000, burst.start + BURST_WINDOW_MS - now))
+    return
+  }
+  burst.sent++
+  await deliver(text, urgent)
+}
+
+// Сводка накопленного за тихие часы — одним сообщением (только если «Утренняя сводка» включена;
+// при выключенной всё, что успело накопиться раньше, отправляется один раз сразу)
+export async function flushQueue() {
+  const s = getNotifySettings()
+  if (s.digest && inQuietHours()) return
   const q = getSetting<Queued[]>('notify.queue', [])
   if (!q.length) return
   setSetting('notify.queue', [])
-  const time = (t: number) => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  const text = [`🌙 <b>За тихие часы (${q.length})</b>`, '', ...q.map((x) => `${time(x.ts)} — ${x.text.replace(/<[^>]+>/g, '').replace(/\s*\n+\s*/g, ' · ')}`)].join('\n')
+  const time = (t: number) => new Date(t).toLocaleTimeString('ru-RU', { timeZone: QUIET_TZ, hour: '2-digit', minute: '2-digit' })
+  const text = [`🌙 <b>За тихие часы (${q.length})</b>`, '', ...q.map((x) => `${time(x.ts)} — ${plain(x.text)}`)].join('\n')
   await send(text.slice(0, 3900), true)
 }
 
