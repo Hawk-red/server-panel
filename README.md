@@ -180,7 +180,7 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
   Опасные контейнеры (portainer, adguardhome, qbittorrent, docker-socket-proxy) требуют повторного ввода пароля панели.
 - **Параметры проекта** (`deploy/docker/<имя>/project.json`): `backup` (каталоги для копии), `backup_stopped` (копия при остановленном контейнере, сразу
   перед пересозданием — для баз), `backup_required` / `backup_max_gb` / `backup_keep`, `rollback_restore_backup` (откат = образ + снимок; текущий
-  каталог откладывается рядом как `….sp-before-restore-<ts>`), `require_mounts`, `lock: qbittorrent` (закачки через WebUI API + `move-completed.sh`),
+  каталог откладывается рядом как `….sp-before-restore-<ts>`), `require_mounts` / `require_paths` (смонтирован диск / каталог существует), `project` (имя compose-проекта, если оно не равно имени контейнера — как audio-streaming у jellyfin), `lock: qbittorrent` (закачки через WebUI API + `move-completed.sh`),
   `warning` / `rollback_warning` (тексты в диалогах), `health.checks` (http / tcp / dns), `danger` (пароль панели).
 - **Сверка compose с контейнером:** `python3 -I deploy/docker/compare-inspect.py <контейнер> <compose.yaml>` (только чтение).
 - **Снаружи** все маршруты закрыты (`externalPolicy`), статус задач — в `INTERNAL_ONLY_READ`. Кнопки «обновить все» нет.

@@ -509,6 +509,10 @@ def check_locks(job, p, name):
     for m in p.get("require_mounts") or []:
         if not os.path.ismount(m):
             raise Fail(f"не смонтирован {m} — обновление отменено")
+    for d in p.get("require_paths") or []:
+        # compose без create_host_path: false создал бы пустой root-каталог вместо отсутствующего — проверяем заранее
+        if not os.path.exists(P(d)):
+            raise Fail(f"нет каталога {d} — обновление отменено")
     need = float(p.get("min_free_gb", 2))
     root = "/var/lib/docker" if os.path.isdir("/var/lib/docker") else "/"
     free = shutil.disk_usage(root).free / 1e9

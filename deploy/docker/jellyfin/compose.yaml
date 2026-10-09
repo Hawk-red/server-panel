@@ -1,39 +1,27 @@
-# Jellyfin — кандидат compose-файла, составленный по `docker inspect jellyfin` (09.10.2026).
-# Контейнер сейчас создан через `docker run`. Файл НЕ используется, пока его не установит
-# deploy/docker/install-project.sh jellyfin (корневая копия в /etc/server-panel/docker/jellyfin/, хэш в белом списке).
-# Обновляет его только root-помощник панели: снимок каталога настроек при остановленном контейнере → pull → up -d --no-deps.
+# Jellyfin — compose для обновления из панели, составлен по `docker inspect jellyfin` и сверен с сервисом jellyfin
+# из /home/macmini/audio-streaming/docker-compose.yml (09.10.2026). Описание — то же самое, только пути абсолютные.
 #
-# В environment — только то, что задавалось вручную. Остальное (JELLYFIN_*_DIR, HEALTHCHECK_URL, LANG, NVIDIA_*…) и healthcheck
-# приходят из образа — дублировать их в compose нельзя: при обновлении образа они должны меняться вместе с ним.
-# Каталог музыки смонтирован только для чтения и без автосоздания: нет каталога — контейнер не запускается.
+# Почему проект называется audio-streaming, а не jellyfin: в файле macmini этот сервис уже есть (вместе с minimserver и
+# bubbleupnpserver). Второй проект с тем же container_name дал бы конфликт («name already in use») при любом `docker compose up`
+# в папке macmini. В одном проекте контейнер принадлежит им обоим: `docker compose config --hash` у этого файла и у файла macmini
+# совпадает, поэтому `up` в их папке ничего не пересоздаёт. Помощник панели трогает только этот сервис (`up -d --no-deps jellyfin`).
 #
-# ВНИМАНИЕ: если в /home/macmini/audio-streaming/docker-compose.yml тоже описан сервис jellyfin, запускать
-# `docker compose up` в той папке после подключения нельзя (конфликт имени контейнера) — см. отчёт.
-name: jellyfin
+# Файл НЕ используется, пока его не установит deploy/docker/install-project.sh jellyfin (корневая копия в
+# /etc/server-panel/docker/jellyfin/, хэш в белом списке). Подключение контейнер не трогает.
+# Остальное окружение (JELLYFIN_*_DIR, HEALTHCHECK_URL, NVIDIA_*) и healthcheck приходят из образа.
+# Защита от пустых каталогов вместо compose-опции: require_paths в project.json (иначе хэш разошёлся бы с файлом macmini).
+name: audio-streaming
 
 services:
   jellyfin:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
-    restart: unless-stopped
     network_mode: host
+    restart: unless-stopped
     environment:
-      JELLYFIN_PublishedServerUrl: http://192.168.31.112:8096
-      TZ: Europe/Kyiv
+      - TZ=Europe/Kyiv
+      - JELLYFIN_PublishedServerUrl=http://192.168.31.112:8096
     volumes:
-      - type: bind
-        source: /home/macmini/audio-streaming/jellyfin-config
-        target: /config
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /home/macmini/audio-streaming/jellyfin-cache
-        target: /cache
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /mnt/flac-usb/music
-        target: /media/music
-        read_only: true
-        bind:
-          create_host_path: false
+      - /home/macmini/audio-streaming/jellyfin-config:/config
+      - /home/macmini/audio-streaming/jellyfin-cache:/cache
+      - /mnt/flac-usb/music:/media/music:ro
