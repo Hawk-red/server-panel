@@ -11,13 +11,12 @@ import { cn } from '@/lib/utils'
 import { Page } from '@/components/layout/page'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { NoData } from '@/components/no-data'
-import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { HomeLink } from '@/components/home-link'
+import { DockerImages } from './docker-images'
 
 type AptJobView = {
   id: string
@@ -314,9 +313,9 @@ export function Updates() {
           value={`${dockerUpdates}/${dockerChecked || docker.length}`}
           sub={
             dockerUpdates ? (
-              <HomeLink service='portainer' className='inline-flex items-center gap-1 text-info underline underline-offset-2'>
-                обновить в Portainer <ExternalLink className='size-3' />
-              </HomeLink>
+              <a href='#docker-images' className='inline-flex items-center gap-1 text-info underline underline-offset-2'>
+                смотреть версии <ExternalLink className='size-3' />
+              </a>
             ) : (
               'все актуальны'
             )
@@ -403,42 +402,9 @@ export function Updates() {
         </Card>
 
         {/* Docker-образы: плитки во всю ширину колонки */}
-        <Card className='gap-3 lg:col-span-2'>
-          <CardHeader>
-            <CardTitle className='flex items-center gap-2 text-sm font-medium'>
-              <Download className='size-4 text-info' /> Docker-образы
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='grid gap-2'>
-            {docker.map((d) => (
-              <div key={d.container} className='flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5'>
-                <div className='min-w-0'>
-                  <div className='truncate font-medium'>{d.container}</div>
-                  <div className='truncate font-mono text-[11px] text-muted-foreground'>{d.repo}</div>
-                  {d.imageCreated != null && <div className='text-[11px] text-muted-foreground'>собран {formatRelative(d.imageCreated)}</div>}
-                </div>
-                <div className='shrink-0'>
-                  {d.error ? (
-                    <StatusBadge status='unknown' label='ошибка проверки' />
-                  ) : d.upToDate === null ? (
-                    <StatusBadge status='unknown' label='не проверено' />
-                  ) : d.upToDate ? (
-                    <StatusBadge status='ok' label='актуально' />
-                  ) : (
-                    <StatusBadge status='warning' label='есть новее' />
-                  )}
-                </div>
-              </div>
-            ))}
-            <p className='pt-1 text-[11px] text-muted-foreground'>
-              Образы обновляются в{' '}
-              <HomeLink service='portainer' className='text-info underline underline-offset-2'>
-                Portainer
-              </HomeLink>{' '}
-              или командой docker pull с пересозданием контейнера. Панель их не трогает.
-            </p>
-          </CardContent>
-        </Card>
+        <div id='docker-images' className='scroll-mt-4 lg:col-span-2'>
+          <DockerImages docker={docker} />
+        </div>
       </div>
 
       {job && (

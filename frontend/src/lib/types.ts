@@ -402,12 +402,24 @@ export type AptHistoryEntry = { date: number; manual: boolean; packages: { name:
 export type DockerImageStatus = {
   container: string
   repo: string
+  registry: 'hub' | 'ghcr'
   localDigest: string | null
   remoteDigest: string | null
   upToDate: boolean | null
   imageCreated: number | null
+  remoteCreated: number | null
+  localVersion: string | null
+  remoteVersion: string | null
+  composeProject: string | null
   checkedAt: number | null
   error: string | null
+  managed: boolean
+  recreateBlock: string | null
+  lock: string | null
+  note: string | null
+  danger: boolean
+  warning: string | null
+  rollback: { version: string | null; at: number } | null
 }
 export type DockerUpdateEvent = { container: string; repo: string; oldDigest: string | null; newDigest: string; detectedAt: number }
 export type UpdatesSnapshot = {

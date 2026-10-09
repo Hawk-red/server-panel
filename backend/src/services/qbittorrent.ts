@@ -148,3 +148,11 @@ export async function spaceGuard() {
     lastPause: lastPause ? { at: ts ? Date.parse(ts.replace(' ', 'T')) : null, text: lastPause } : null,
   }
 }
+
+// Замок обновления контейнера: пока есть незавершённые закачки (или идёт перемещение/проверка), пересоздавать qBittorrent нельзя —
+// рестарт посреди копирования оставляет недокопированный файл. Возвращает причину замка или null.
+export async function updateLock(): Promise<string | null> {
+  const all = await json<Torrent[]>('/torrents/info')
+  const busy = all.filter((t) => t.state === 'moving' || /^checking/.test(t.state) || (t.progress < 1 && !/^(stopped|paused)/.test(t.state)))
+  return busy.length ? `идут закачки или проверка: ${busy.length}` : null
+}

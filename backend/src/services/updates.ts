@@ -22,8 +22,15 @@ import { run } from '../exec.js'
 import { http, httpJson } from '../http.js'
 import { emitEvent, type EventLevel } from '../events.js'
 import { getSetting, setSetting } from '../settings.js'
+import { CONTAINER_WARNINGS } from './docker.js'
+import { cachedMeta, localImageOf, RateLimited, remoteDigest, remoteMeta, storeMeta, type ImageMeta, type RegistryId } from './dockerRegistry.js'
+import { managedInfo } from './dockerManage.js'
+import { updateLock as qbUpdateLock } from './qbittorrent.js'
 
 const api = (path: string) => `${config.dockerProxy}${path}`
+
+// Контейнеры, для которых обновление требует повторного ввода пароля панели (даже если белый список не говорит об этом)
+const DANGEROUS = new Set(['portainer', 'adguardhome', 'qbittorrent', 'docker-socket-proxy'])
 
 // ---------- apt: доступные обновления ----------
 
@@ -181,84 +188,129 @@ export async function aptHistory(limit = 150): Promise<AptHistoryEntry[]> {
 
 // ---------- docker: доступные обновления ----------
 
+// «Живая» часть карточки (считается при выдаче, не кэшируется): подключён ли образ к кнопке «Обновить», замок и т. п.
+export type DockerLive = {
+  managed: boolean // контейнер в белом списке помощника — кнопка «Обновить» доступна
+  recreateBlock: string | null // почему пересоздать нельзя (нет compose / compose не подключён), если managed=false
+  lock: string | null // причина временного замка (например, идут закачки)
+  note: string | null // постоянная пометка
+  danger: boolean // нужно повторно ввести пароль панели
+  warning: string | null // что произойдёт при обновлении
+  rollback: { version: string | null; at: number } | null // доступен ли откат
+}
 export type DockerImageStatus = {
   container: string
   repo: string
+  registry: RegistryId
   localDigest: string | null
   remoteDigest: string | null
   upToDate: boolean | null
-  imageCreated: number | null
+  imageCreated: number | null // дата сборки запущенного образа
+  remoteCreated: number | null // дата сборки образа в реестре
+  localVersion: string | null // org.opencontainers.image.version запущенного образа
+  remoteVersion: string | null // то же у образа в реестре
+  composeProject: string | null // метка com.docker.compose.project контейнера
   checkedAt: number | null
   error: string | null
-}
+} & DockerLive
 export type DockerUpdateEvent = { container: string; repo: string; oldDigest: string | null; newDigest: string; detectedAt: number }
 
-// Только контейнеры из задачи — каждый на Docker Hub под :latest
-const DOCKER_TARGETS: Record<string, string> = {
-  portainer: 'portainer/portainer-ce',
-  adguardhome: 'adguard/adguardhome',
-  jellyfin: 'jellyfin/jellyfin',
-  qbittorrent: 'linuxserver/qbittorrent',
-  sftpgo: 'drakkan/sftpgo',
+// Все восемь контейнеров с образами. registry/path — где проверять (lscr.io — это ghcr.io)
+export const DOCKER_TARGETS: Record<string, { image: string; registry: RegistryId; path: string; tag: string }> = {
+  portainer: { image: 'portainer/portainer-ce', registry: 'hub', path: 'portainer/portainer-ce', tag: 'latest' },
+  adguardhome: { image: 'adguard/adguardhome', registry: 'hub', path: 'adguard/adguardhome', tag: 'latest' },
+  jellyfin: { image: 'jellyfin/jellyfin', registry: 'hub', path: 'jellyfin/jellyfin', tag: 'latest' },
+  qbittorrent: { image: 'linuxserver/qbittorrent', registry: 'hub', path: 'linuxserver/qbittorrent', tag: 'latest' },
+  sftpgo: { image: 'drakkan/sftpgo', registry: 'hub', path: 'drakkan/sftpgo', tag: 'latest' },
+  'docker-socket-proxy': { image: 'lscr.io/linuxserver/socket-proxy', registry: 'ghcr', path: 'linuxserver/socket-proxy', tag: 'latest' },
+  minimserver: { image: 'minimworld/minimserver', registry: 'hub', path: 'minimworld/minimserver', tag: 'latest' },
+  bubbleupnpserver: { image: 'nventiveux/docker-bubbleupnpserver', registry: 'hub', path: 'nventiveux/docker-bubbleupnpserver', tag: 'latest' },
 }
 
-const DOCKER_KEY = 'updates.docker.cache'
+const DOCKER_KEY = 'updates.docker.cache2'
 const DOCKER_LAST_DIGEST_KEY = 'updates.docker.lastDigest'
 const DOCKER_TRACKING_SINCE_KEY = 'updates.docker.trackingSince'
 const DOCKER_TTL_OK = 4 * 3600_000
 const DOCKER_TTL_ERR = 30 * 60_000
 
-type RawImage = { RepoTags: string[] | null; RepoDigests: string[] | null; Created: number }
-
-async function localImage(repo: string): Promise<{ digest: string | null; created: number | null }> {
-  const images = await httpJson<RawImage[]>(api('/images/json'))
-  const img = images.find((i) => (i.RepoTags ?? []).includes(`${repo}:latest`))
-  if (!img) return { digest: null, created: null }
-  return { digest: (img.RepoDigests ?? []).map((d) => d.split('@')[1]).find(Boolean) ?? null, created: img.Created * 1000 }
-}
-
-async function remoteDigest(repo: string): Promise<string> {
-  const { token } = await httpJson<{ token: string }>(`https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull`, { timeoutMs: 10_000 })
-  const res = await http(`https://registry-1.docker.io/v2/${repo}/manifests/latest`, {
-    method: 'HEAD',
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json' },
-    timeoutMs: 10_000,
-  })
-  const digest = res.headers.get('docker-content-digest')
-  if (!digest) throw new Error('реестр не вернул digest')
-  return digest
-}
+type RawContainerLite = { Names: string[]; ImageID: string; Labels: Record<string, string> | null }
+type Cached = Omit<DockerImageStatus, keyof DockerLive>
 
 const insertDockerEvent = db.prepare(`INSERT INTO docker_image_updates (container, repo, old_digest, new_digest, detected_at) VALUES (?, ?, ?, ?, ?)`)
 
-async function refreshDockerOne(container: string, repo: string): Promise<DockerImageStatus> {
+async function refreshDockerOne(container: string, ctr: RawContainerLite | undefined, prev: Cached | undefined): Promise<Cached> {
+  const t = DOCKER_TARGETS[container]
+  const base = { container, repo: t.image, registry: t.registry, composeProject: ctr?.Labels?.['com.docker.compose.project'] ?? null }
   try {
-    const [{ digest: localDigest, created }, remote] = await Promise.all([localImage(repo), remoteDigest(repo)])
+    if (!ctr) throw new Error('контейнер не найден')
+    const local = await localImageOf(config.dockerProxy, ctr.ImageID, t.image)
+    const remote = await remoteDigest(t.registry, t.path, t.tag)
+
+    // Метки новой версии: тот же digest — метки наши; иначе из кэша по digest или из config blob реестра.
+    // Сбой чтения меток не делает проверку ошибочной: «есть новее» известно по digest, версию просто не покажем.
+    let meta: ImageMeta = { version: local.version, created: local.created }
+    if (local.digest !== remote) {
+      meta = cachedMeta(remote) ?? { version: null, created: null }
+      if (!cachedMeta(remote)) {
+        try {
+          meta = await remoteMeta(t.registry, t.path, remote, local.arch)
+          storeMeta(remote, meta)
+        } catch (e) {
+          if (e instanceof RateLimited) throw e
+        }
+      }
+    }
 
     // Своя история (прошлого нет — отслеживаем с этого момента): замечаем смену ЛОКАЛЬНОГО digest,
     // то есть реальный pull на этом сервере, а не то, что upstream что-то выпустил
-    if (localDigest) {
+    if (local.digest) {
       if (getSetting<number | null>(DOCKER_TRACKING_SINCE_KEY, null) === null) setSetting(DOCKER_TRACKING_SINCE_KEY, Date.now())
       const lastMap = getSetting<Record<string, string>>(DOCKER_LAST_DIGEST_KEY, {})
       const prevLocal = lastMap[container]
-      if (prevLocal && prevLocal !== localDigest) insertDockerEvent.run(container, repo, prevLocal, localDigest, Date.now())
-      lastMap[container] = localDigest
+      if (prevLocal && prevLocal !== local.digest) insertDockerEvent.run(container, t.image, prevLocal, local.digest, Date.now())
+      lastMap[container] = local.digest
       setSetting(DOCKER_LAST_DIGEST_KEY, lastMap)
     }
 
-    return { container, repo, localDigest, remoteDigest: remote, upToDate: localDigest ? localDigest === remote : null, imageCreated: created, checkedAt: Date.now(), error: null }
+    return {
+      ...base,
+      localDigest: local.digest,
+      remoteDigest: remote,
+      upToDate: local.digest ? local.digest === remote : null,
+      imageCreated: local.created,
+      remoteCreated: meta.created,
+      localVersion: local.version,
+      remoteVersion: meta.version,
+      checkedAt: Date.now(),
+      error: null,
+    }
   } catch (e) {
-    return { container, repo, localDigest: null, remoteDigest: null, upToDate: null, imageCreated: null, checkedAt: Date.now(), error: (e as Error).message }
+    // Ошибка проверки: прежние версии и даты оставляем (чтобы карточка не пустела), но статус — «ошибка проверки»
+    return {
+      ...base,
+      localDigest: prev?.localDigest ?? null,
+      remoteDigest: prev?.remoteDigest ?? null,
+      upToDate: null,
+      imageCreated: prev?.imageCreated ?? null,
+      remoteCreated: prev?.remoteCreated ?? null,
+      localVersion: prev?.localVersion ?? null,
+      remoteVersion: prev?.remoteVersion ?? null,
+      checkedAt: Date.now(),
+      error: (e as Error).message,
+    }
   }
 }
 
-async function refreshDocker(): Promise<void> {
-  const cache = getSetting<Record<string, DockerImageStatus>>(DOCKER_KEY, {})
-  for (const [container, repo] of Object.entries(DOCKER_TARGETS)) {
+async function refreshDocker(force = false): Promise<void> {
+  const cache = getSetting<Record<string, Cached>>(DOCKER_KEY, {})
+  let ctrs: RawContainerLite[] | null = null
+  for (const container of Object.keys(DOCKER_TARGETS)) {
     const c = cache[container]
     const ttl = c && !c.error ? DOCKER_TTL_OK : DOCKER_TTL_ERR
-    if (c?.checkedAt && Date.now() - c.checkedAt < ttl) continue
-    cache[container] = await refreshDockerOne(container, repo)
+    if (!force && c?.checkedAt && Date.now() - c.checkedAt < ttl) continue
+    ctrs ??= await httpJson<RawContainerLite[]>(api('/containers/json?all=1')).catch(() => [])
+    const ctr = ctrs.find((x) => x.Names.some((n) => n.replace(/^\//, '') === container))
+    cache[container] = await refreshDockerOne(container, ctr, c)
     setSetting(DOCKER_KEY, cache) // сохраняем после каждого — сбой одного образа не теряет уже проверенные
   }
 }
@@ -269,10 +321,52 @@ export function upgradableNames(): Set<string> {
   return new Set((c?.packages ?? []).map((p) => p.name))
 }
 
-function getDockerStatus(): DockerImageStatus[] {
-  const cache = getSetting<Record<string, DockerImageStatus>>(DOCKER_KEY, {})
-  return Object.entries(DOCKER_TARGETS).map(
-    ([container, repo]) => cache[container] ?? { container, repo, localDigest: null, remoteDigest: null, upToDate: null, imageCreated: null, checkedAt: null, error: null }
+// Замок/пометки/признак «подключён к кнопке» — живые данные, в кэш проверки не попадают
+async function liveFor(container: string, c: Cached): Promise<DockerLive> {
+  const managed = await managedInfo(container)
+  let lock: string | null = null
+  let note: string | null = null
+  if (container === 'qbittorrent') {
+    note = 'обновление — только после завершения закачек'
+    try {
+      lock = await qbUpdateLock()
+    } catch {
+      lock = 'не удалось проверить закачки в qBittorrent'
+    }
+  }
+  const blockReason = c.composeProject ? 'compose-файл есть, но к панели не подключён' : 'нет compose-файла (контейнер создан через docker run)'
+  return {
+    managed: managed.managed,
+    recreateBlock: managed.managed ? null : blockReason,
+    lock,
+    note,
+    danger: managed.danger || DANGEROUS.has(container),
+    warning: managed.warning ?? CONTAINER_WARNINGS[container] ?? null,
+    rollback: managed.rollback,
+  }
+}
+
+async function getDockerStatus(): Promise<DockerImageStatus[]> {
+  const cache = getSetting<Record<string, Cached>>(DOCKER_KEY, {})
+  return Promise.all(
+    Object.entries(DOCKER_TARGETS).map(async ([container, t]) => {
+      const c: Cached = cache[container] ?? {
+        container,
+        repo: t.image,
+        registry: t.registry,
+        localDigest: null,
+        remoteDigest: null,
+        upToDate: null,
+        imageCreated: null,
+        remoteCreated: null,
+        localVersion: null,
+        remoteVersion: null,
+        composeProject: null,
+        checkedAt: null,
+        error: null,
+      }
+      return { ...c, ...(await liveFor(container, c)) }
+    })
   )
 }
 
@@ -364,10 +458,10 @@ export function diffUpdates(
 }
 
 // Сравниваем текущие данные (apt-кеш и Docker-кеш) с сохранённым состоянием и публикуем только изменения
-function notifyUpdateChanges(): void {
+async function notifyUpdateChanges(): Promise<void> {
   const c = getSetting<AptCache | null>(APT_KEY, null)
   if (!c || c.error) return // ошибка проверки — не считаем это «обновлений нет»
-  const docker = getDockerStatus()
+  const docker = await getDockerStatus()
   const cur = {
     apt: c.packages.map((p) => ({ name: p.name, security: p.security })),
     reboot: false, // подставляется ниже из флага reboot-required
@@ -384,6 +478,7 @@ function notifyUpdateChanges(): void {
 
 let busy = false
 export async function refreshUpdates(force = false): Promise<void> {
+  listCache = null
   if (busy) return
   busy = true
   try {
@@ -391,19 +486,38 @@ export async function refreshUpdates(force = false): Promise<void> {
     const ttl = aptCache && !aptCache.error ? APT_TTL_OK : APT_TTL_ERR
     if (force || !aptCache || Date.now() - aptCache.checkedAt > ttl) await refreshApt()
     await refreshDocker() // у каждого образа свой TTL внутри
-    notifyUpdateChanges()
+    await notifyUpdateChanges()
   } finally {
     busy = false
   }
 }
 
+// Кнопка «Проверить сейчас»: принудительная проверка только Docker-образов (apt не трогаем). Не чаще раза в 15 секунд.
+let lastManualCheck = 0
+export async function checkDockerNow(): Promise<boolean> {
+  if (busy || Date.now() - lastManualCheck < 15_000) return false
+  lastManualCheck = Date.now()
+  busy = true
+  try {
+    await refreshDocker(true)
+    await notifyUpdateChanges()
+  } finally {
+    busy = false
+    listCache = null
+  }
+  return true
+}
+
+export function invalidateUpdatesCache() {
+  listCache = null
+}
 let listCache: { at: number; data: UpdatesSnapshot } | null = null
 export async function listUpdates(): Promise<UpdatesSnapshot> {
   if (listCache && Date.now() - listCache.at < 60_000) return listCache.data
   if (!getSetting<AptCache | null>(APT_KEY, null)) void refreshUpdates().catch(() => {})
   const data: UpdatesSnapshot = {
     apt: await getAptStatus(),
-    docker: getDockerStatus(),
+    docker: await getDockerStatus(),
     dockerTrackingSince: getSetting<number | null>(DOCKER_TRACKING_SINCE_KEY, null),
     aptHistory: await aptHistory(),
     dockerHistory: dockerHistory(),

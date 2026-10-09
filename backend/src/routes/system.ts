@@ -16,7 +16,7 @@ import { run } from '../exec.js'
 import { staleBackups, backupsOverview } from '../services/backups.js'
 import { listDeadlines } from '../services/deadlines.js'
 import { fmtDur, internetStatus, lastPing } from '../services/internet.js'
-import { listUpdates, upgradableNames } from '../services/updates.js'
+import { checkDockerNow, listUpdates, upgradableNames } from '../services/updates.js'
 import { getAptJob, jobSlice, startAptJob } from '../services/aptJob.js'
 import { ACTIONS, CONTROLLABLE, controlUnit, failedUnits, listAutostart, listServices, type UnitAction } from '../system/units.js'
 
@@ -255,6 +255,12 @@ export async function systemRoutes(app: FastifyInstance) {
   })
 
   app.get('/api/system/updates', async () => listUpdates())
+  // «Проверить сейчас» для Docker-образов: опрос реестров (только чтение), не чаще раза в 15 секунд
+  app.post('/api/system/updates/docker/check', async (_req, reply) => {
+    const ran = await checkDockerNow()
+    if (!ran) return reply.code(429).send({ message: 'проверка уже идёт или была только что — подождите несколько секунд' })
+    return listUpdates()
+  })
 
   // Установка обновлений apt: только уже установленные пакеты из текущего списка (--only-upgrade) или dist-upgrade
   app.post<{ Body: { mode: 'selected' | 'all'; packages?: string[] } }>(
