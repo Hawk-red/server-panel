@@ -19,7 +19,7 @@ import { toast } from 'sonner'
 import { AxiosError } from 'axios'
 import { api } from '@/lib/api'
 import { formatBytes, formatRelative } from '@/lib/format'
-import { percentLevel, tempLevel } from '@/lib/levels'
+import { tempLevel } from '@/lib/levels'
 import type { DiskInfo, DiskIoHistorySnapshot, DiskIoRate, DiskIoSnapshot } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { NoData } from '@/components/no-data'
@@ -43,6 +43,9 @@ const IO_CHART_LEN = 80
 // и в тултипе — цвет гарантированно совпадает везде.
 const DISK_READ_COLOR = 'var(--rx)'
 const DISK_WRITE_COLOR = 'var(--disk-write)'
+// Пороги предупреждения по СВОБОДНОМУ месту, % от объёма (то же, что занято ≥80 % / ≥90 %).
+const FREE_WARN_PCT = 20
+const FREE_DANGER_PCT = 10
 
 // seed — история с сервера (/system/disks/io-history), забирается ОДИН раз при открытии раздела и сразу
 // заполняет график целиком; дальше live-опрос просто дописывает новые точки поверх неё.
@@ -473,10 +476,16 @@ type DiskCardProps = { d: DiskInfo; rate?: DiskIoRate; hist?: { read: number[]; 
 function DiskCard({ d, rate, hist }: DiskCardProps) {
   const health = diskHealth(d)
   const [show, setShow] = useState({ read: true, write: true })
-  const percentLvl = d.percent != null ? percentLevel(d.percent, 'higher-worse') : null
-  // Пт.1 + уточнение: без слова «занято» (гигантская цифра и так читается как занятое), процент — НЕ зелёный
-  // (зелёный оставлен только статусу «смонтирован»/«отлично»), разве что заполнение реально критично.
-  const percentColor = percentLvl === 'danger' ? 'text-danger-foreground' : percentLvl === 'warn' ? 'text-warn-foreground' : 'text-foreground'
+  const freePct = d.percent != null && Number.isFinite(d.percent) ? Math.max(0, Math.min(100, 100 - d.percent)) : null
+  // Процент — НЕ зелёный (зелёный оставлен только статусу «смонтирован»/«отлично»), цвет только при нехватке места.
+  const percentColor =
+    freePct == null
+      ? 'text-foreground'
+      : freePct <= FREE_DANGER_PCT
+        ? 'text-danger-foreground'
+        : freePct <= FREE_WARN_PCT
+          ? 'text-warn-foreground'
+          : 'text-foreground'
   return (
     <Card className={cn('gap-2.5 rounded-xl py-4', d.state === 'missing' && 'border-danger/50')}>
       <CardHeader className='flex flex-row items-start justify-between gap-2 px-4'>
@@ -512,19 +521,18 @@ function DiskCard({ d, rate, hist }: DiskCardProps) {
       </CardHeader>
       <CardContent className='space-y-2.5 px-4'>
         <MountBar d={d} />
-        {/* Блок «Состояние»: крупная цифра без подписи (и так читается как занятое), процент нейтральным
-            цветом рядом (не зелёным — зелёный занят статусом монтирования/здоровья), ниже бара — одна мелкая
-            серая строка со свободным местом */}
-        {d.percent != null && (
+        {/* Блок «Состояние»: крупная цифра — СВОБОДНОЕ место, рядом процент свободного (цвет — по нехватке места),
+            полоса показывает заполнение (занятое), ниже мелкой серой строкой «занято X из Y» */}
+        {freePct != null && (
           <div>
             <div className='flex items-baseline gap-2'>
-              <div className='text-3xl font-extrabold tabular-nums leading-none'>{formatBytes(d.used, 1)}</div>
-              <div className={cn('text-lg font-bold tabular-nums', percentColor)}>{Math.round(d.percent)}%</div>
+              <div className='text-3xl font-extrabold tabular-nums leading-none'>{formatBytes(d.free, 1)}</div>
+              <div className='text-xs text-muted-foreground'>свободно</div>
+              <div className={cn('text-lg font-bold tabular-nums', percentColor)}>{Math.round(freePct)}%</div>
             </div>
             <Meter value={d.percent} direction='higher-worse' className='mt-1.5 h-1.5' label={`Заполнение ${d.mount ?? d.device}`} />
-            {/* Ровно как в уточнении: одна мелкая серая строка, без слова «занято» — цифра выше и так им является */}
             <div className='mt-1 text-xs text-muted-foreground'>
-              {formatBytes(d.free)} свободно из {formatBytes(d.size)}
+              занято {formatBytes(d.used)} из {formatBytes(d.size)}
             </div>
           </div>
         )}
