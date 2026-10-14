@@ -24,6 +24,7 @@ import { networkRoutes } from './routes/network.js'
 import { notifyRoutes } from './routes/notify.js'
 import { startNotifier } from './notifier.js'
 import { startAlertIngest } from './services/alertEvents.js'
+import { checkBootEvent } from './services/boot.js'
 import { startDeadlines } from './services/deadlines.js'
 import { startExchange } from './services/exchange.js'
 import { startSpeedtest } from './services/speedtest.js'
@@ -166,11 +167,14 @@ process.on('SIGINT', () => void shutdown('SIGINT'))
 if (!config.passwordHash) app.log.warn('PANEL_PASSWORD_HASH не задан — вход невозможен, запустите set-password')
 
 await app.listen({ host: config.host, port: config.port })
+// Событие о перезагрузке: синхронная часть (boot id, последняя метка метрик) выполняется здесь, до первого замера коллектора;
+// подписка уведомлений уже есть к моменту записи события (журнал читается асинхронно)
+startNotifier(app.log)
+void checkBootEvent(app.log)
 // Коллектор стартует после API: его сбои не влияют на запуск сервера
 startCollector(app.log)
 startDiskIoCollector(app.log)
 startDetectors(app.log)
-startNotifier(app.log)
 startDeadlines()
 startUpdates()
 startDockerJobWatcher()
