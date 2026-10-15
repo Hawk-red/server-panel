@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildPaletteItems, filterPaletteItems, paletteFilter, type PaletteData } from './palette.ts'
 import type { Device, MediaData, NetworkData } from './types.ts'
+import { sidebarData } from '../components/layout/data/sidebar-data.ts'
 
 // Моки: устройство «Marantz NR1604» из «Сети и устройств» и данные страницы «Медиа» (ресивер не в сети)
 const marantz = { mac: 'aa:bb:cc:00:00:94', ip: '192.168.31.94', vendor: 'D&M Holdings Inc.', hostname: 'Marantz', name: 'Marantz NR1604', type: 'media', location: null, note: null } as unknown as Device
@@ -62,5 +63,55 @@ describe('фильтр cmdk: вызов filter(value, search, keywords)', () => 
     assert.equal(paletteFilter('device:aa', 'plex', kw), 0) // другой запрос подряд — матчер пересоздаётся
     assert.ok(paletteFilter('device:aa', 'марантз', kw) > 0)
     assert.equal(paletteFilter('device:aa', '', kw), 1)
+  })
+})
+
+// Разделы боковой панели так, как их отдаёт палитра: value = заголовок, keywords = [группа, адрес]
+const navItems = sidebarData.navGroups.flatMap((g) => g.items.map((it) => ({ title: it.title, keywords: [g.title, String(it.url)] })))
+const nav = (q: string) =>
+  navItems
+    .map((it) => ({ it, s: paletteFilter(it.title, q, it.keywords) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.it.title)
+
+describe('палитра ⌘K: разделы и порядок выдачи', () => {
+  it('«ssh» — только «SSH и доступ» (раньше «ыыр» фонетически находился внутри «Сервисы»)', () => {
+    assert.deepEqual(nav('ssh'), ['SSH и доступ'])
+    assert.deepEqual(nav('SSH'), ['SSH и доступ'])
+  })
+  it('двухбуквенный ключ не даёт совпадения по подстроке в другом алфавите', () => {
+    assert.equal(paletteFilter('Медиа', 'ssh', ['Сервисы', '/media']), 0)
+    assert.equal(paletteFilter('Медиа', 'ыыр', ['Сервисы', '/media']), 0)
+  })
+  it('раскладка и транслит разделов работают', () => {
+    assert.equal(nav('ssh')[0], 'SSH и доступ')
+    assert.equal(nav('ыыр')[0], 'SSH и доступ') // «ssh» в русской раскладке
+    assert.equal(nav('торренты')[0], 'Торренты')
+    assert.equal(nav('torrenty')[0], 'Торренты')
+    assert.equal(nav('docker')[0], 'Docker')
+  })
+  it('точное или по началу слова в названии выше фонетики, опечаток и совпадений по описанию', () => {
+    const exact = paletteFilter('media:x', 'jelly', ['Jelly bean', 'описание'])
+    const prefixInTitle = paletteFilter('media:x', 'jelly', ['Jellyfin', ''])
+    const phonetic = paletteFilter('media:x', 'джелли', ['Jellyfin', ''])
+    const descOnly = paletteFilter('media:x', 'jelly', ['Другое', 'jellyfin описание'])
+    const typo = paletteFilter('media:x', 'jellyfen', ['Jellyfin', ''])
+    assert.ok(exact > 2 && prefixInTitle > 2)
+    for (const lower of [phonetic, descOnly, typo]) assert.ok(prefixInTitle > lower, `${prefixInTitle} > ${lower}`)
+  })
+  it('группа с лучшим совпадением получает наибольшую оценку (cmdk ставит группы по максимуму)', () => {
+    const items = buildPaletteItems({ ...data, services: [{ unit: 'ssh.service', description: 'OpenBSD Secure Shell server' } as never] })
+    const best = (g: string) => Math.max(0, ...items.filter((i) => i.group === g).map((i) => paletteFilter(i.id, 'ssh', i.keywords)))
+    assert.ok(best('services') > 2)
+    assert.equal(best('media'), 0)
+    assert.ok(best('services') > Math.max(...navItems.map((n) => paletteFilter(n.title, 'ssh', n.keywords)).filter((s) => s < 2), 0))
+  })
+  it('прежние запросы находят то же', () => {
+    for (const q of ['marantz', 'марантз', 'vfhfynp']) assert.ok(titles(q).includes('media:Marantz NR1604'), q)
+    assert.ok(titles('ipad', { network: { ...network, devices: [{ ...other, name: 'iPad Алины' } as Device] } }).includes('devices:iPad Алины'))
+    assert.ok(titles('hummingbird', { network: { ...network, devices: [{ ...other, name: 'Колибри', hostname: 'Hummingbird' } as Device] } }).length > 0)
+    assert.ok(titles('хаммингберд', { network: { ...network, devices: [{ ...other, name: null, hostname: 'Hummingbird' } as Device] } }).length > 0)
+    assert.ok(titles('hummingbird', { network: { ...network, devices: [{ ...other, name: 'Хаммингберд' } as Device] } }).length > 0)
   })
 })

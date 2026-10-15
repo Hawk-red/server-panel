@@ -97,14 +97,19 @@ export function prepare(text: string): Prepared {
 
 // ---------- оценка совпадения ----------
 
-const TIER = { exact: 1, prefix: 0.9, substr: 0.75, phExact: 0.65, phPrefix: 0.6, phSubstr: 0.5, fuzzy: 0.3 }
+export const TIER = { exact: 1, prefix: 0.9, substr: 0.75, phExact: 0.65, phPrefix: 0.6, phSubstr: 0.5, fuzzy: 0.3 }
 
 type Variant = { token: string; key: string }
+
+// Алфавит слова: фонетика нужна только между разными алфавитами («марантз» ⇄ marantz). Внутри одного алфавита она даёт лишь шум:
+// «ssh» после смены раскладки — «ыыр», его ключ «er» нашёлся бы внутри «Сервисы» (servese).
+const scriptOf = (w: string) => (/\p{Script=Latin}/u.test(w) ? 'lat' : /\p{Script=Cyrillic}/u.test(w) ? 'cyr' : 'other')
 
 // Лучшая оценка одного слова запроса (с вариантами раскладки) по подготовленному тексту; 0 = не найдено
 function tokenScore(variants: Variant[], p: Prepared): number {
   let best = 0
   for (const { token, key } of variants) {
+    const st = scriptOf(token)
     for (let i = 0; i < p.tokens.length && best < TIER.exact; i++) {
       const w = p.tokens[i]
       let s = 0
@@ -112,10 +117,14 @@ function tokenScore(variants: Variant[], p: Prepared): number {
       else if (w.startsWith(token)) s = TIER.prefix
       else if (w.includes(token)) s = TIER.substr
       if (s < TIER.phSubstr && key.length >= 2) {
-        const k = p.keys[i]
-        if (k === key) s = Math.max(s, TIER.phExact)
-        else if (k.startsWith(key)) s = Math.max(s, TIER.phPrefix)
-        else if (k.includes(key)) s = Math.max(s, TIER.phSubstr)
+        const sw = scriptOf(w)
+        if (sw !== 'other' && st !== 'other' && sw !== st) {
+          const k = p.keys[i]
+          // ключ из двух букв годится только для точного совпадения; префикс и подстрока — от трёх
+          if (k === key) s = Math.max(s, TIER.phExact)
+          else if (key.length >= 3 && k.startsWith(key)) s = Math.max(s, TIER.phPrefix)
+          else if (key.length >= 3 && k.includes(key)) s = Math.max(s, TIER.phSubstr)
+        }
       }
       if (s === 0 && key.length >= 5) {
         const k = p.keys[i]

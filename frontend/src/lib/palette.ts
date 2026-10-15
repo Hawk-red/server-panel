@@ -1,6 +1,6 @@
 // Данные для палитры ⌘K: плоский список элементов из ответов страниц (общий кеш запросов) и фильтр для cmdk.
 // Вынесено из компонента, чтобы покрыть тестом ровно то, что вызывает cmdk: filter(value, search, keywords).
-import { createMatcher, type Matcher } from './search.ts'
+import { createMatcher, TIER, type Matcher } from './search.ts'
 import type { DiskInfo, DockerData, MediaData, NetworkData, ServiceRow, TorrentsData } from './types.ts'
 
 export type PaletteGroup = 'torrents' | 'docker' | 'services' | 'disks' | 'devices' | 'media'
@@ -78,10 +78,24 @@ function matcherFor(search: string): Matcher {
   return lastMatcher
 }
 
-// Сигнатура cmdk: filter(value, search, keywords) → 0…1. Берём search из аргумента, а не из состояния компонента:
+// Заголовок элемента: у элементов палитры value — служебный id (`torrent:…`), заголовок первым в keywords; у разделов value — сам заголовок
+const ID_VALUE = /^(torrent|container|image|service|disk|device|media):/
+const titleOf = (value: string, keywords?: string[]) => (ID_VALUE.test(value) ? (keywords?.[0] ?? '') : value)
+
+// Сигнатура cmdk: filter(value, search, keywords) → оценка > 0 (0 — скрыть). Берём search из аргумента, а не из состояния компонента:
 // cmdk фильтрует сразу при вводе, до перерисовки, и замыкание на состояние отставало бы на одну букву.
+// Порядок (cmdk сортирует по оценке и элементы, и группы — по лучшему элементу группы):
+//   1) точное совпадение или начало слова в НАЗВАНИИ — выше всего (2 + оценка);
+//   2) остальное — оценка по всем полям (название, описание, ключевые слова), совпадение в названии даёт +0.1.
+// Так «ssh» ставит «SSH и доступ» первым, а фонетика, опечатки и совпадения только по описанию идут ниже.
 export function paletteFilter(value: string, search: string, keywords?: string[]): number {
-  return matcherFor(search)(value, ...(keywords ?? []))
+  if (search.trim() === '') return 1
+  const m = matcherFor(search)
+  const all = m(value, ...(keywords ?? []))
+  if (all === 0) return 0
+  const t = m(titleOf(value, keywords))
+  if (t >= TIER.prefix) return 2 + t
+  return all + (t > 0 ? 0.1 : 0)
 }
 
 // То же без cmdk, для тестов: элементы, видимые при запросе, по убыванию оценки
