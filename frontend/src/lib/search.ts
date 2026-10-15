@@ -44,6 +44,13 @@ const CYR: Record<string, string> = {
   э: 'e', ю: 'yu', я: 'ya', є: 'e', і: 'i', ї: 'yi', ґ: 'g',
 }
 
+// Простая транслитерация (без классов гласных) — для коротких слов: сравнивается только на точное равенство
+export function translit(norm: string): string {
+  let t = ''
+  for (const ch of norm) t += ch in CYR ? CYR[ch] : ch
+  return t
+}
+
 // Кириллица → латиница → «фонетический» ключ: слова, звучащие похоже, дают один и тот же ключ.
 // Гласные сведены в два класса (a/o/u → a, e/i/y → e), согласные — по звуку (ts/tz → Z, ch → C, sh/sch → S, zh/dzh/j → J, kh → h, c/q → k …),
 // повторы схлопнуты. Ключ нужен для поиска «марантз» ⇄ marantz и «хаммингберд» ⇄ hummingbird, точность сознательно ниже обычной.
@@ -97,9 +104,11 @@ export function prepare(text: string): Prepared {
 
 // ---------- оценка совпадения ----------
 
+const SHORT = 3 // слова запроса до этой длины ищутся без фонетики и опечаток
+
 export const TIER = { exact: 1, prefix: 0.9, substr: 0.75, phExact: 0.65, phPrefix: 0.6, phSubstr: 0.5, fuzzy: 0.3 }
 
-type Variant = { token: string; key: string }
+type Variant = { token: string; key: string; tr: string }
 
 // Алфавит слова: фонетика нужна только между разными алфавитами («марантз» ⇄ marantz). Внутри одного алфавита она даёт лишь шум:
 // «ssh» после смены раскладки — «ыыр», его ключ «er» нашёлся бы внутри «Сервисы» (servese).
@@ -108,7 +117,7 @@ const scriptOf = (w: string) => (/\p{Script=Latin}/u.test(w) ? 'lat' : /\p{Scrip
 // Лучшая оценка одного слова запроса (с вариантами раскладки) по подготовленному тексту; 0 = не найдено
 function tokenScore(variants: Variant[], p: Prepared): number {
   let best = 0
-  for (const { token, key } of variants) {
+  for (const { token, key, tr } of variants) {
     const st = scriptOf(token)
     for (let i = 0; i < p.tokens.length && best < TIER.exact; i++) {
       const w = p.tokens[i]
@@ -116,9 +125,13 @@ function tokenScore(variants: Variant[], p: Prepared): number {
       if (w === token) s = TIER.exact
       else if (w.startsWith(token)) s = TIER.prefix
       else if (w.includes(token)) s = TIER.substr
-      if (s < TIER.phSubstr && key.length >= 2) {
-        const sw = scriptOf(w)
-        if (sw !== 'other' && st !== 'other' && sw !== st) {
+      const sw = scriptOf(w)
+      const cross = sw !== 'other' && st !== 'other' && sw !== st
+      if (token.length <= SHORT) {
+        // короткие слова (1–3 символа): без фонетики и опечаток; кросс-алфавит — только точная простая транслитерация
+        if (s === 0 && cross && tr.length >= 2 && translit(w) === tr) s = TIER.phExact
+      } else if (s < TIER.phSubstr && key.length >= 2) {
+        if (cross) {
           const k = p.keys[i]
           // ключ из двух букв годится только для точного совпадения; префикс и подстрока — от трёх
           if (k === key) s = Math.max(s, TIER.phExact)
@@ -126,7 +139,7 @@ function tokenScore(variants: Variant[], p: Prepared): number {
           else if (key.length >= 3 && k.includes(key)) s = Math.max(s, TIER.phSubstr)
         }
       }
-      if (s === 0 && key.length >= 5) {
+      if (s === 0 && token.length > SHORT && key.length >= 5) {
         const k = p.keys[i]
         if (within1(key, k) || [key.length - 1, key.length, key.length + 1].some((n) => n > 0 && n <= k.length && within1(key, k.slice(0, n)))) s = TIER.fuzzy
       }
@@ -146,8 +159,8 @@ export function createMatcher(query: string): Matcher {
   const swapped = tokenize(normalize(swapLayout(query)))
   const useSwap = swapped.length === direct.length && swapped.join(' ') !== direct.join(' ')
   const words = direct.map((token, i): Variant[] => {
-    const v: Variant[] = [{ token, key: phoneticKey(token) }]
-    if (useSwap) v.push({ token: swapped[i], key: phoneticKey(swapped[i]) })
+    const v: Variant[] = [{ token, key: phoneticKey(token), tr: translit(token) }]
+    if (useSwap) v.push({ token: swapped[i], key: phoneticKey(swapped[i]), tr: translit(swapped[i]) })
     return v
   })
   return (...fields) => {

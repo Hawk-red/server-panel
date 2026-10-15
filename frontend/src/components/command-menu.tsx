@@ -57,65 +57,88 @@ export function CommandMenu() {
     [setOpen]
   )
 
+  // Порядок групп при поиске задаём сами: разделы меню и данные — один список, группа с лучшим баллом первой
+  // (не полагаемся на перестановку DOM внутри cmdk). Без запроса порядок прежний: разделы, затем данные.
+  const q = query.trim()
+  const score = (value: string, keywords: string[]) => (q ? paletteFilter(value, q, keywords) : 0)
+  const groups = [
+    ...sidebarData.navGroups.map((group) => ({
+      key: `nav:${group.title}`,
+      score: Math.max(
+        0,
+        ...group.items.flatMap((navItem) =>
+          navItem.url
+            ? [score(navItem.title, [group.title, String(navItem.url)])]
+            : (navItem.items ?? []).map((sub) => score(`${navItem.title} ${sub.title}`, [group.title, String(sub.url)]))
+        )
+      ),
+      node: (
+        <CommandGroup key={group.title} heading={group.title}>
+          {group.items.map((navItem, i) => {
+            if (navItem.url)
+              return (
+                <CommandItem
+                  key={`${navItem.url}-${i}`}
+                  value={navItem.title}
+                  keywords={[group.title, String(navItem.url)]}
+                  onSelect={() => {
+                    runCommand(() => navigate({ to: navItem.url }))
+                  }}
+                >
+                  <div className='flex size-4 items-center justify-center'>
+                    <ArrowRight className='size-2 text-muted-foreground/80' />
+                  </div>
+                  {navItem.title}
+                </CommandItem>
+              )
+
+            return navItem.items?.map((subItem, i) => (
+              <CommandItem
+                key={`${navItem.title}-${subItem.url}-${i}`}
+                value={`${navItem.title} ${subItem.title}`}
+                keywords={[group.title, String(subItem.url)]}
+                onSelect={() => {
+                  runCommand(() => navigate({ to: subItem.url }))
+                }}
+              >
+                <div className='flex size-4 items-center justify-center'>
+                  <ArrowRight className='size-2 text-muted-foreground/80' />
+                </div>
+                {navItem.title} <ChevronRight /> {subItem.title}
+              </CommandItem>
+            ))
+          })}
+        </CommandGroup>
+      ),
+    })),
+    ...(Object.keys(GROUP_HEADING) as PaletteGroup[]).map((g) => {
+      const rows = items.filter((it) => it.group === g)
+      return {
+        key: `data:${g}`,
+        score: Math.max(0, ...rows.map((it) => score(it.id, it.keywords))),
+        node:
+          rows.length === 0 ? null : (
+            <CommandGroup key={g} heading={GROUP_HEADING[g]}>
+              {rows.map((it) => (
+                <CommandItem key={it.id} value={it.id} keywords={it.keywords} onSelect={() => runCommand(() => navigate({ to: it.to, search: it.search as never }))}>
+                  <ArrowRight className='text-muted-foreground/80' />
+                  <span className='truncate'>{it.title}</span>
+                  {it.subtitle && <span className='ms-auto truncate text-xs text-muted-foreground'>{it.subtitle}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ),
+      }
+    }),
+  ].sort((a, b) => b.score - a.score) // sort стабильный: при пустом запросе (все 0) порядок прежний
+
   return (
     <CommandDialog modal open={open} onOpenChange={changeOpen} filter={paletteFilter}>
       <CommandInput placeholder='Раздел, торрент, служба, контейнер, диск…' value={query} onValueChange={setQuery} />
       <CommandList>
         <ScrollArea type='hover' className='h-72 pe-1'>
           <CommandEmpty>{loading ? 'Загружаю данные…' : 'Ничего не найдено.'}</CommandEmpty>
-          {sidebarData.navGroups.map((group) => (
-            <CommandGroup key={group.title} heading={group.title}>
-              {group.items.map((navItem, i) => {
-                if (navItem.url)
-                  return (
-                    <CommandItem
-                      key={`${navItem.url}-${i}`}
-                      value={navItem.title}
-                      keywords={[group.title, String(navItem.url)]}
-                      onSelect={() => {
-                        runCommand(() => navigate({ to: navItem.url }))
-                      }}
-                    >
-                      <div className='flex size-4 items-center justify-center'>
-                        <ArrowRight className='size-2 text-muted-foreground/80' />
-                      </div>
-                      {navItem.title}
-                    </CommandItem>
-                  )
-
-                return navItem.items?.map((subItem, i) => (
-                  <CommandItem
-                    key={`${navItem.title}-${subItem.url}-${i}`}
-                    value={`${navItem.title} ${subItem.title}`}
-                    keywords={[group.title, String(subItem.url)]}
-                    onSelect={() => {
-                      runCommand(() => navigate({ to: subItem.url }))
-                    }}
-                  >
-                    <div className='flex size-4 items-center justify-center'>
-                      <ArrowRight className='size-2 text-muted-foreground/80' />
-                    </div>
-                    {navItem.title} <ChevronRight /> {subItem.title}
-                  </CommandItem>
-                ))
-              })}
-            </CommandGroup>
-          ))}
-          {(Object.keys(GROUP_HEADING) as PaletteGroup[]).map((g) => {
-            const rows = items.filter((it) => it.group === g)
-            if (rows.length === 0) return null
-            return (
-              <CommandGroup key={g} heading={GROUP_HEADING[g]}>
-                {rows.map((it) => (
-                  <CommandItem key={it.id} value={it.id} keywords={it.keywords} onSelect={() => runCommand(() => navigate({ to: it.to, search: it.search as never }))}>
-                    <ArrowRight className='text-muted-foreground/80' />
-                    <span className='truncate'>{it.title}</span>
-                    {it.subtitle && <span className='ms-auto truncate text-xs text-muted-foreground'>{it.subtitle}</span>}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )
-          })}
+          {groups.map((b) => b.node)}
           <CommandSeparator />
           <CommandGroup heading='Тема'>
             <CommandItem value='Тема светлая' keywords={['light', 'theme']} onSelect={() => runCommand(() => setTheme('light'))}>

@@ -74,3 +74,21 @@ describe('ранг: фонетическое совпадение выше оп�
     assert.ok(searchScore('хаммингберд', 'hummingbird') >= 0.6)
   })
 })
+
+describe('короткие слова (1–3 символа)', () => {
+  it('без фонетики и опечаток: только слово, начало, подстрока и точная транслитерация', () => {
+    assert.equal(searchScore('ssh', 'Сервисы'), 0)
+    assert.equal(searchScore('ыыр', 'Сервисы'), 0)
+    assert.equal(searchScore('ssh', 'ресивер'), 0)
+    assert.equal(searchScore('ssh', 'sch'), 0) // опечатка/фонетика
+    assert.equal(searchScore('ssh', 'SSH и доступ'), 1)
+    assert.ok(searchScore('ssh', 'sshd') >= 0.9)
+    assert.ok(searchScore('ai', 'Локальный AI') === 1)
+    assert.ok(searchScore('кот', 'kot') > 0) // точная транслитерация
+    assert.equal(searchScore('кот', 'kit'), 0) // «классы гласных» не работают
+  })
+  it('от 4 символов поведение прежнее', () => {
+    assert.ok(searchScore('марантз', 'Marantz') > 0)
+    assert.ok(searchScore('хаммингберд', 'hummingbird') > 0)
+  })
+})
