@@ -17,7 +17,7 @@ import { certificate } from './services/sites.js'
 import { getSetting, setSetting } from './settings.js'
 import type { DiskInfo } from './system/disks.js'
 
-export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload' | 'torrents' | 'updates' | 'boot'
+export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'internet' | 'backup' | 'deadline' | 'upload' | 'torrents' | 'updates' | 'boot' | 'mount'
 
 export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   unit: { title: 'Служба упала (и снова поднялась)', urgent: 'падение — всегда, даже в тихие часы' },
@@ -33,6 +33,7 @@ export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   torrents: { title: 'Торренты на паузу или возобновлены защитой диска', urgent: 'пауза — всегда, даже в тихие часы' },
   updates: { title: 'Обновления системы: новые пакеты, безопасность, Docker-образы, перезагрузка', urgent: '' },
   boot: { title: 'Сервер перезагружен или включился после аварийного отключения', urgent: '' },
+  mount: { title: 'USB-диск не смонтировался при загрузке или смонтирован с опозданием (контейнеры упали)', urgent: 'диск не смонтирован — срочно, даже в тихие часы' },
 }
 
 export type NotifySettings = { chatId: number | null; enabled: boolean; quiet: { from: string; to: string }; digest: boolean; rules: Record<RuleId, boolean> }
@@ -42,7 +43,7 @@ const DEFAULTS: NotifySettings = {
   enabled: true,
   quiet: { from: '00:00', to: '09:00' },
   digest: false, // «Утренняя сводка»: false — все события уходят сразу (в тихие часы без звука)
-  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true, torrents: true, updates: true, boot: true },
+  rules: { unit: true, disk: true, temp: true, device: true, cert: true, sync: true, internet: true, backup: true, deadline: true, upload: true, torrents: true, updates: true, boot: true, mount: true },
 }
 
 export const getNotifySettings = (): NotifySettings => {
@@ -318,6 +319,8 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'torrents.flow' && rule('torrents')) void send(`${e.level === 'info' ? '✅' : e.level === 'warning' ? '⚠️' : '🔴'} ${esc(e.text)}`, e.level !== 'info')
   else if (e.kind === 'docker.update' && rule('updates')) void send(dockerUpdateText(e), e.level !== 'info')
   else if (e.kind === 'server.boot' && rule('boot')) void send(`${(e.details as { crash?: boolean } | undefined)?.crash ? '⚠️' : '🔄'} <b>${esc(e.text)}</b>`, false)
+  else if (e.kind === 'mount.late' && rule('mount')) void send(`⚠️ <b>${esc(e.text)}</b>`, false)
+  else if (e.kind === 'mount.failed' && rule('mount')) void send(`🔴 <b>${esc(e.text)}</b>`, true)
   else if (e.kind === 'torrents.resumed' && rule('torrents')) void send(guardResumedText(e), false)
 }
 

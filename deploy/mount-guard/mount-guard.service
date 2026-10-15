@@ -1,0 +1,20 @@
+[Unit]
+Description=Mount guard: USB-диски (hdd1tb, uploads1, uploads2) по UUID после загрузки
+Documentation=file:///opt/server-panel/deploy/mount-guard/README.md
+# Только порядок запуска (After), без Requires/Wants/RequiresMountsFor: Docker (в нём AdGuardHome — DNS сети)
+# от сторожа и от дисков НЕ зависит и стартует как раньше.
+After=local-fs.target docker.service
+ConditionPathExists=/usr/local/sbin/mount-guard.sh
+
+[Service]
+# simple, а не oneshot: сторож ждёт диски до 3 минут и не должен задерживать достижение multi-user.target
+Type=simple
+ExecStart=/usr/local/sbin/mount-guard.sh
+# с запасом к WAIT_SECONDS (180) + проверка контейнеров
+TimeoutStartSec=420
+Nice=10
+# Песочницу (PrivateTmp/ProtectHome/ProtectSystem) намеренно НЕ включаем: она создаёт отдельное пространство
+# имён монтирования, и тома, смонтированные сторожем, могли бы не стать видимыми остальной системе.
+
+[Install]
+WantedBy=multi-user.target

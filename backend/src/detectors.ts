@@ -3,7 +3,7 @@
 import { open, stat } from 'node:fs/promises'
 import type { FastifyBaseLogger } from 'fastify'
 import { getSnapshot } from './collector/index.js'
-import { emitEvent, pruneEvents } from './events.js'
+import { emitEvent, pruneEvents, type ServerEvent } from './events.js'
 import { percentLevel } from './levels.js'
 import { listContainers } from './services/docker.js'
 import { lastSync } from './services/sites.js'
@@ -143,19 +143,20 @@ function guardLine(line: string) {
   }
 }
 
-async function guardLog() {
-  const st = await stat(GUARD_LOG).catch(() => null)
+// Чтение лога по приращению (позиция и inode в settings): новые полные строки отдаём в onLine
+async function tailLog(file: string, posKey: string, onLine: (line: string) => void) {
+  const st = await stat(file).catch(() => null)
   if (!st) return
-  const saved = getSetting<{ ino: number; pos: number } | null>(GUARD_POS_KEY, null)
+  const saved = getSetting<{ ino: number; pos: number } | null>(posKey, null)
   // Первый запуск или новый файл (ротация): только запоминаем конец, историю не пересылаем
   if (!saved || saved.ino !== st.ino) {
-    setSetting(GUARD_POS_KEY, { ino: st.ino, pos: st.size })
+    setSetting(posKey, { ino: st.ino, pos: st.size })
     return
   }
   // Усечённый файл читаем с начала
   const from = st.size < saved.pos ? 0 : saved.pos
   if (st.size === from) return
-  const fh = await open(GUARD_LOG, 'r')
+  const fh = await open(file, 'r')
   try {
     const len = Math.min(st.size - from, 1024 * 1024)
     const buf = Buffer.alloc(len)
@@ -164,15 +165,50 @@ async function guardLog() {
     const end = buf.lastIndexOf(0x0a)
     if (end < 0) return
     const chunk = buf.subarray(0, end).toString('utf8')
-    for (const line of chunk.split('\n')) guardLine(line.trim())
-    setSetting(GUARD_POS_KEY, { ino: st.ino, pos: from + end + 1 })
+    for (const line of chunk.split('\n')) onLine(line.trim())
+    setSetting(posKey, { ino: st.ino, pos: from + end + 1 })
   } finally {
     await fh.close()
   }
 }
 
+const guardLog = () => tailLog(GUARD_LOG, GUARD_POS_KEY, guardLine)
+
+// mount-guard (deploy/mount-guard): при загрузке монтирует USB-диски и пишет в свой лог строки вида
+// «2026-10-16 12:00:00 EVENT mount.late disk=hdd1tb containers=qbittorrent,sftpgo action=none».
+const MOUNT_LOG = '/var/log/mount-guard.log'
+const MOUNT_POS_KEY = 'detectors.mountGuardLogPos'
+const MOUNT_LINE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) EVENT (mount\.late|mount\.failed) (.*)$/
+
+export function mountGuardEvent(line: string): ServerEvent | null {
+  const m = line.match(MOUNT_LINE)
+  if (!m) return null
+  const [, when, kind, rest] = m
+  const kv = Object.fromEntries(rest.split(/\s+/).map((x) => x.split('=') as [string, string]).filter((x) => x[1] !== undefined))
+  const ts = Date.parse(when.replace(' ', 'T'))
+  const disk = kv.disk ?? '?'
+  if (kind === 'mount.failed') {
+    const why = kv.reason === 'no-device' ? 'устройство не появилось' : 'mount не удался'
+    return { kind, level: 'error', text: `Диск ${disk} не смонтирован при загрузке (${why})`, target: disk, details: { disk, mnt: kv.mnt, reason: kv.reason }, ts }
+  }
+  const containers = (kv.containers ?? '').split(',').filter(Boolean)
+  const started = (kv.started ?? '').split(',').filter((x) => x && x !== 'none')
+  const text =
+    kv.action === 'started'
+      ? `Диск ${disk} смонтирован с опозданием; запущены контейнеры: ${started.join(', ') || 'ни один'} (из ${containers.join(', ')})`
+      : `Диск ${disk} смонтирован с опозданием, контейнеры ${containers.join(', ')} не запущены — запустите вручную`
+  return { kind, level: 'warning', text, target: disk, details: { disk, containers, action: kv.action, started }, ts }
+}
+
+async function mountGuardLog() {
+  await tailLog(MOUNT_LOG, MOUNT_POS_KEY, (line) => {
+    const e = mountGuardEvent(line)
+    if (e) emitEvent(e)
+  })
+}
+
 async function tick() {
-  for (const [name, fn] of Object.entries({ units, disks, containers, fail2ban, sync, guardLog })) {
+  for (const [name, fn] of Object.entries({ units, disks, containers, fail2ban, sync, guardLog, mountGuardLog })) {
     try {
       await fn()
     } catch (e) {

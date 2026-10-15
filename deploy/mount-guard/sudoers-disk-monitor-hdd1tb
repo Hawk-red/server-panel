@@ -1,0 +1,2 @@
+# Нужно disk-monitor.sh (cron пользователя hawk): перемонтировать hdd1tb так же, как uploads1/uploads2. Больше ничего.
+hawk ALL=(root) NOPASSWD: /usr/bin/mount /mnt/hdd1tb
