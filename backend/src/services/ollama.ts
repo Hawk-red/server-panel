@@ -8,7 +8,7 @@ export const OLLAMA_MODEL = 'qwen2.5-coder:14b'
 // Контекст задаём явно: без параметра Ollama грузит модель с 4096 токенами и молча обрезает историю.
 // KV-кэш на 8192 токена для этой модели — около 1.5 ГБ RAM сверх весов.
 export const OLLAMA_NUM_CTX = 8192
-const OLLAMA = new URL('http://127.0.0.1:11434')
+const OLLAMA = new URL(process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434') // переопределение нужно только тестам
 const SHORT_TIMEOUT_MS = 2000
 
 // Короткие служебные запросы к API (статус): таймаут есть, чтобы страница не зависала, если Ollama выключена

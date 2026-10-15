@@ -31,17 +31,19 @@ type AiSettings = {
 }
 
 type Stats = { tokens: number; tokensPerSec: number; seconds: number }
-type Msg = { role: 'user' | 'assistant'; content: string; stopped?: boolean; error?: string; stats?: Stats }
-
-// Строка из NDJSON-потока Ollama (/api/chat, stream: true)
-type ChatEvent = {
-  message?: { content?: string }
-  done?: boolean
-  error?: string
-  eval_count?: number
-  eval_duration?: number
-  total_duration?: number
+// Сообщение из базы на сервере
+type ServerMsg = {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  status: 'generating' | 'done' | 'stopped' | 'error'
+  error: string | null
+  stats: Stats | null
 }
+type ChatState = { generating: boolean; startedAt: number | null; messages: ServerMsg[] }
+
+// Строка живого NDJSON-потока (формат Ollama); итог ответа всё равно берётся с сервера
+type ChatEvent = { message?: { content?: string }; error?: string }
 
 const SERVICE_STATUS: Record<string, { status: Status; label: string }> = {
   active: { status: 'ok', label: 'запущена' },
@@ -162,13 +164,42 @@ export function AiChat() {
   const running = status?.service.active === 'active'
   const svc = SERVICE_STATUS[status?.service.active ?? ''] ?? { status: 'unknown' as Status, label: status?.service.active ?? 'нет данных' }
 
-  const [messages, setMessages] = useState<Msg[]>([])
+  // Диалог живёт на сервере: ответ дописывается, даже если вкладка уснула. Пока идёт генерация — опрос раз в 2 с,
+  // при возврате на вкладку (visibilitychange / focus) — немедленный перезапрос.
+  const chatQ = useQuery({
+    queryKey: ['ai-chat'],
+    queryFn: async () => (await api.get<ChatState>('/ai/chat')).data,
+    refetchInterval: (q) => (q.state.data?.generating ? 2000 : false),
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  })
+  const serverMessages = chatQ.data?.messages ?? []
+  const generating = chatQ.data?.generating ?? false
+
   const [input, setInput] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [startedAt, setStartedAt] = useState(0)
+  const [live, setLive] = useState<string | null>(null) // текст из живого потока активной вкладки
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
-  const abortRef = useRef<AbortController | null>(null)
+  const streamRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const refetchChat = chatQ.refetch
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refetchChat()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      streamRef.current?.abort() // закрывается только просмотр потока; генерация на сервере идёт дальше
+    }
+  }, [refetchChat])
+
+  const streaming = generating || sending
+  const startedAt = chatQ.data?.startedAt ?? now
 
   // Таймер ожидания: пока модель думает, видно, сколько идёт запрос
   useEffect(() => {
@@ -177,48 +208,46 @@ export function AiChat() {
     return () => clearInterval(t)
   }, [streaming])
 
+  // Сервер отвечает про последнее сообщение; живой текст показываем, пока он не короче серверного
+  const messages: ServerMsg[] = serverMessages.map((m, i) =>
+    i === serverMessages.length - 1 && m.status === 'generating' && live !== null && live.length >= m.content.length ? { ...m, content: live } : m
+  )
+
+  const lastContent = messages[messages.length - 1]?.content
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages])
-
-  // Меняет только последнее (ассистентское) сообщение
-  const patchLast = (patch: Partial<Msg>) =>
-    setMessages((prev) => {
-      const copy = [...prev]
-      copy[copy.length - 1] = { ...copy[copy.length - 1], ...patch }
-      return copy
-    })
+  }, [messages.length, lastContent])
 
   async function send() {
     const text = input.trim()
     if (!text || streaming || !running) return
-    const history: Msg[] = [...messages, { role: 'user', content: text }]
-    setMessages([...history, { role: 'assistant', content: '' }])
     setInput('')
-    setStreaming(true)
-    setStartedAt(Date.now())
+    setSendError(null)
+    setSending(true)
+    setLive('')
     setNow(Date.now())
 
-    // fetch, а не axios: у axios глобальный таймаут 15 с, а ответ может идти 10+ минут
+    // fetch, а не axios: у axios глобальный таймаут 15 с, а ответ может идти 10+ минут.
+    // Это лишь «окно» в генерацию: обрыв соединения её не отменяет, сообщения уже сохранены на сервере.
     const ctrl = new AbortController()
-    abortRef.current = ctrl
-    let answer = ''
+    streamRef.current = ctrl
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         signal: ctrl.signal,
-        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }),
+        body: JSON.stringify({ text }),
       })
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as { message?: string } | null
         throw new Error(j?.message ?? `ошибка ${res.status}`)
       }
+      await refetchChat() // вопрос уже в базе: показываем его и пустой ответ
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let buf = ''
-      let stats: Stats | undefined
+      let answer = ''
       for (;;) {
         const { value, done } = await reader.read()
         if (done) break
@@ -229,31 +258,37 @@ export function AiChat() {
           buf = buf.slice(nl + 1)
           if (!line) continue
           const ev = JSON.parse(line) as ChatEvent
-          if (ev.error) throw new Error(ev.error)
           const piece = ev.message?.content
           if (piece) {
             answer += piece
-            patchLast({ content: answer })
-          }
-          if (ev.done) {
-            const tokens = ev.eval_count ?? 0
-            stats = {
-              tokens,
-              tokensPerSec: ev.eval_duration ? tokens / (ev.eval_duration / 1e9) : 0,
-              seconds: (ev.total_duration ?? 0) / 1e9,
-            }
+            setLive(answer)
           }
         }
       }
-      patchLast({ content: answer, stats })
     } catch (e) {
-      if (ctrl.signal.aborted) patchLast({ content: answer, stopped: true })
-      else patchLast({ content: answer, error: (e as Error).message })
+      if (!ctrl.signal.aborted) {
+        // Поток оборвался (сеть, сон вкладки) — это не конец: ответ продолжает генерироваться на сервере и подхватится опросом
+        const msg = (e as Error).message
+        if (!/network|fetch|aborted|terminated|load failed/i.test(msg)) setSendError(msg)
+      }
     } finally {
-      abortRef.current = null
-      setStreaming(false)
+      streamRef.current = null
+      setSending(false)
+      setLive(null)
+      void refetchChat()
       statusQ.refetch()
     }
+  }
+
+  async function stop() {
+    await api.post('/ai/chat/stop').catch(() => null)
+    void refetchChat()
+  }
+
+  async function clearChat() {
+    await api.delete('/ai/chat').catch(() => null)
+    setSendError(null)
+    void refetchChat()
   }
 
   const elapsed = streaming ? now - startedAt : 0
@@ -265,7 +300,7 @@ export function AiChat() {
       ? status?.loaded
         ? 'модель обрабатывает запрос…'
         : 'модель загружается в память и обрабатывает запрос (первый ответ после простоя идёт дольше)…'
-      : 'модель печатает…'
+      : 'модель печатает… (ответ сохраняется на сервере, вкладку можно закрыть)'
 
   return (
     <Page title='Локальный AI' description='Ollama на этом сервере: модель работает локально, данные не уходят наружу'>
@@ -342,7 +377,7 @@ export function AiChat() {
                 size='sm'
                 variant='ghost'
                 disabled={streaming || messages.length === 0}
-                onClick={() => setMessages([])}
+                onClick={() => void clearChat()}
               >
                 <Eraser /> Очистить
               </Button>
@@ -364,11 +399,11 @@ export function AiChat() {
                       : 'rounded-lg border bg-card px-3 py-2 text-sm break-words whitespace-pre-wrap'
                   }
                 >
-                  {m.content || (m.role === 'assistant' && streaming && i === messages.length - 1 ? '…' : '')}
-                  {m.stopped && <span className='ml-2 text-xs text-muted-foreground'>[остановлено]</span>}
+                  {m.content || (m.role === 'assistant' && m.status === 'generating' ? '…' : '')}
+                  {m.status === 'stopped' && <span className='ml-2 text-xs text-muted-foreground'>[остановлено]</span>}
                   {m.error && <div className='mt-2 text-xs text-danger-foreground'>⚠ {m.error}</div>}
                 </div>
-                {m.stats && (
+                {m.stats && m.stats.tokens > 0 && (
                   <div className='mt-1 px-1 text-xs text-muted-foreground'>
                     {m.stats.tokens} токенов · {m.stats.tokensPerSec.toFixed(1)} ток/с · {m.stats.seconds.toFixed(0)} с
                   </div>
@@ -379,6 +414,7 @@ export function AiChat() {
           </div>
 
           <div className='space-y-2 border-t p-3'>
+            {sendError && <div className='text-xs text-danger-foreground'>⚠ {sendError}</div>}
             {streaming && (
               <div className='flex items-center justify-between text-xs text-muted-foreground'>
                 <span className='flex items-center gap-2'>
@@ -404,7 +440,7 @@ export function AiChat() {
                 className='max-h-64 min-h-16 resize-y'
               />
               {streaming ? (
-                <Button variant='destructive' onClick={() => abortRef.current?.abort()}>
+                <Button variant='destructive' onClick={() => void stop()}>
                   <Square /> Стоп
                 </Button>
               ) : (

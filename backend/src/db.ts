@@ -119,6 +119,27 @@ const migrations: string[] = [
   );
   `,
   ALERT_EVENTS_DDL,
+  `
+  -- Локальный AI: диалоги живут на сервере, генерация не зависит от открытой вкладки
+  CREATE TABLE ai_sessions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE ai_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL,              -- user | assistant
+    content    TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'done', -- generating | done | stopped | error
+    error      TEXT,
+    stats      TEXT,                        -- JSON {tokens, tokensPerSec, seconds}
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX ai_messages_session ON ai_messages (session_id, id);
+  `,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number

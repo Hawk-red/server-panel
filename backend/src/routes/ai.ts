@@ -3,10 +3,10 @@ import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
 import { getSetting, setSetting } from '../settings.js'
 import { AI_DEFAULT_CONTEXT, AI_DEFAULT_PROMPT } from '../services/ai-defaults.js'
+import * as aiChat from '../services/aiChat.js'
 import * as ollama from '../services/ollama.js'
 
 const MAX_TEXT = 8000
-const MAX_MESSAGES = 100
 const MAX_MESSAGE_CHARS = 20000
 
 type AiSettings = { promptEnabled: boolean; prompt: string; contextEnabled: boolean; context: string }
@@ -31,6 +31,7 @@ function systemMessage(s: AiSettings): string | null {
 const who = (ip: string) => ({ ip, user: 'admin' })
 
 export async function aiRoutes(app: FastifyInstance) {
+  aiChat.recoverStale() // после перезапуска панели «генерирующиеся» ответы из прошлого процесса помечаются ошибкой
   app.addHook('preHandler', requireAuth)
 
   app.get('/api/ai/status', async () => {
@@ -96,57 +97,26 @@ export async function aiRoutes(app: FastifyInstance) {
     }
   )
 
-  // Потоковый чат. Тело ответа Ollama (NDJSON) идёт в браузер насквозь, без буферизации.
-  app.post<{ Body: { messages: { role: 'user' | 'assistant'; content: string }[] } }>(
+  // Состояние диалога: вся история и идущий (возможно, ещё генерируемый) ответ. Фронт опрашивает его при открытии страницы,
+  // при возврате на вкладку и пока генерация идёт.
+  app.get('/api/ai/chat', async (_req, reply) => {
+    reply.header('Cache-Control', 'no-store')
+    return aiChat.getState()
+  })
+
+  // Новый вопрос. Сообщения сохраняются сразу, генерация идёт на сервере до конца независимо от клиента.
+  // Ответ — живой NDJSON-поток (формат Ollama) для активной вкладки; обрыв соединения генерацию НЕ отменяет.
+  app.post<{ Body: { text: string } }>(
     '/api/ai/chat',
     {
-      // История диалога может быть больше глобального лимита 64 КБ
-      bodyLimit: 2 * 1024 * 1024,
-      schema: {
-        body: {
-          type: 'object',
-          required: ['messages'],
-          properties: {
-            messages: {
-              type: 'array',
-              minItems: 1,
-              maxItems: MAX_MESSAGES,
-              items: {
-                type: 'object',
-                required: ['role', 'content'],
-                properties: {
-                  role: { type: 'string', enum: ['user', 'assistant'] },
-                  content: { type: 'string', maxLength: MAX_MESSAGE_CHARS },
-                },
-              },
-            },
-          },
-        },
-      },
+      bodyLimit: 256 * 1024,
+      schema: { body: { type: 'object', required: ['text'], properties: { text: { type: 'string', minLength: 1, maxLength: MAX_MESSAGE_CHARS } } } },
     },
     async (req, reply) => {
-      const sys = systemMessage(readSettings())
-      const messages = [...(sys ? [{ role: 'system', content: sys }] : []), ...req.body.messages]
-
-      let up: Awaited<ReturnType<typeof ollama.chatStream>>
-      try {
-        up = await ollama.chatStream({ model: ollama.OLLAMA_MODEL, messages, stream: true, options: { num_ctx: ollama.OLLAMA_NUM_CTX } })
-      } catch {
-        return reply.code(503).send({ message: 'Ollama не запущена — нажмите «Запустить» выше' })
-      }
-
-      if (up.res.statusCode !== 200) {
-        let body = ''
-        up.res.setEncoding('utf8')
-        for await (const chunk of up.res) body += chunk
-        let text = ''
-        try {
-          text = (JSON.parse(body) as { error?: string }).error ?? ''
-        } catch {
-          text = body.slice(0, 300)
-        }
-        return reply.code(502).send({ message: text || `Ollama ответила кодом ${up.res.statusCode}` })
-      }
+      const text = req.body.text.trim()
+      if (!text) return reply.code(400).send({ message: 'пустое сообщение' })
+      const r = aiChat.start(text, systemMessage(readSettings()))
+      if (!r.ok) return reply.code(409).send({ message: 'Модель ещё отвечает на предыдущий вопрос' })
 
       // Отдаём поток сами: onSend-хуки Fastify для hijacked-ответа не работают, заголовки ставим явно
       reply.hijack()
@@ -157,13 +127,20 @@ export async function aiRoutes(app: FastifyInstance) {
         'X-Content-Type-Options': 'nosniff',
         'X-Accel-Buffering': 'no',
       })
-
-      // Браузер закрыл вкладку или нажал «Стоп» — отменяем генерацию в Ollama, чтобы не занимать CPU
-      reply.raw.on('close', () => {
-        if (!reply.raw.writableFinished) up.req.destroy()
-      })
-      up.res.on('error', () => reply.raw.destroy())
-      up.res.pipe(reply.raw)
+      reply.raw.flushHeaders() // заголовки уходят сразу: клиент понимает, что вопрос принят и сохранён
+      if (!aiChat.subscribe(reply.raw)) reply.raw.end()
     }
   )
+
+  // Единственный способ отменить генерацию — явная кнопка «Стоп»
+  app.post('/api/ai/chat/stop', async (req) => {
+    const stopped = aiChat.stop()
+    if (stopped) audit({ ...who(req.clientIp), action: 'ai.chat.stop', result: 'ok' })
+    return { stopped }
+  })
+
+  app.delete('/api/ai/chat', async (_req, reply) => {
+    if (!aiChat.clearChat()) return reply.code(409).send({ message: 'Идёт генерация — сначала нажмите «Стоп»' })
+    return { ok: true }
+  })
 }
