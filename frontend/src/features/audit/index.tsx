@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Loader2, Server, UserRound } from 'lucide-react'
@@ -88,6 +88,11 @@ function Journal() {
   const [level, setLevel] = useState('all')
   const [period, setPeriod] = useState('all')
   const [q, setQ] = useState('')
+  const [qSent, setQSent] = useState('') // запрос к серверу уходит после паузы в наборе, а не на каждую букву
+  useEffect(() => {
+    const t = setTimeout(() => setQSent(q.trim()), 300)
+    return () => clearTimeout(t)
+  }, [q])
   const [page, setPage] = useState(0)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const reset = () => setPage(0)
@@ -98,7 +103,7 @@ function Journal() {
     queryFn: async () => (await api.get<{ kinds: { type: string; kind: string; n: number }[] }>('/audit/facets')).data,
   })
   const { data, isError } = useQuery({
-    queryKey: ['audit', type, kind, level, period, q, page],
+    queryKey: ['audit', type, kind, level, period, qSent, page],
     queryFn: async () =>
       (
         await api.get<{ total: number; rows: FeedRow[] }>('/audit', {
@@ -109,7 +114,7 @@ function Journal() {
             kind: kind === 'all' ? undefined : kind,
             level: level === 'all' ? undefined : level,
             from: period === 'all' ? undefined : Date.now() - PERIODS[period],
-            q: q || undefined,
+            q: qSent || undefined,
           },
         })
       ).data,

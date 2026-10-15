@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown } from 'lucide-react'
 import { api } from '@/lib/api'
+import { createMatcher } from '@/lib/search'
 import type { Autostart as AutostartData } from '@/lib/types'
 import { NoData } from '@/components/no-data'
 import { StatusBadge } from '@/components/status-badge'
@@ -20,7 +21,8 @@ export function Autostart() {
     refetchInterval: 60_000,
   })
   if (isError) return <NoData reason='не удалось получить список' />
-  const filter = (s: string) => s.toLowerCase().includes(q.toLowerCase())
+  const m = createMatcher(q)
+  const filter = (s: string) => !q.trim() || m(s) > 0
   const units = (data?.units ?? []).filter((u) => filter(u.unit)).sort((a, b) => a.unit.localeCompare(b.unit))
   const main = units.filter((u) => !u.background)
   const background = units.filter((u) => u.background)

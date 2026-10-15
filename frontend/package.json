@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "../backend/node_modules/.bin/tsx --test src/lib/search.test.ts",
     "preview": "vite preview",
     "format:check": "prettier --check .",
     "format": "prettier --write .",

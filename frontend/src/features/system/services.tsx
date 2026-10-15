@@ -6,6 +6,7 @@ import { AxiosError } from 'axios'
 import { ChevronDown, OctagonX, Play, RotateCw, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { createMatcher } from '@/lib/search'
 import type { ServiceRow } from '@/lib/types'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { NoData } from '@/components/no-data'
@@ -113,7 +114,8 @@ export function Services() {
   })
 
   if (isError) return <NoData reason='не удалось получить список служб' />
-  const f = (s: ServiceRow) => !q || `${s.unit} ${s.description}`.toLowerCase().includes(q.toLowerCase())
+  const m = createMatcher(q)
+  const f = (s: ServiceRow) => !q.trim() || m(s.unit, s.description) > 0
   const rows = (data ?? []).filter(f)
   const main = rows.filter((s) => !s.background)
   const background = rows.filter((s) => s.background)

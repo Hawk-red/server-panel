@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import type { Device, NetworkData } from '@/lib/types'
+import { createMatcher } from '@/lib/search'
 import { cn } from '@/lib/utils'
 import { Page } from '@/components/layout/page'
 import { StatusBadge } from '@/components/status-badge'
@@ -183,7 +184,7 @@ export function Network({ initialDevice }: { initialDevice?: string } = {}) {
 
   const all = data?.devices ?? []
   const devices = useMemo(() => {
-    const s = q.toLowerCase()
+    const m = createMatcher(q)
     const types = groups.size ? TYPE_GROUPS.filter((g) => groups.has(g.id)).flatMap((g) => g.types) : null
     const byConn = conn.size === 1
     return all.filter(
@@ -191,7 +192,7 @@ export function Network({ initialDevice }: { initialDevice?: string } = {}) {
         (!byConn || (conn.has('online') ? d.online : !d.online)) &&
         (!unknownOnly || !d.known) &&
         (!types || types.includes(d.type)) &&
-        (!s || [d.name, d.hostname, d.vendor, d.ip, d.mac, d.location, d.note].some((x) => x?.toLowerCase().includes(s)))
+        (!q.trim() || m(d.name, d.hostname, d.vendor, d.ip, d.mac, d.location, d.note) > 0)
     )
   }, [all, conn, unknownOnly, groups, q])
 
