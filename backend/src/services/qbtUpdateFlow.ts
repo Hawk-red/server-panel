@@ -5,10 +5,9 @@
 //   4. после любого исхода (успех, ошибка, откат) возобновляем ТОЛЬКО запомненные торренты.
 // Состояние хранится в panel.db: если панель перезапустилась посреди процесса, при старте торренты возвращаются в прежний вид.
 // Ничего не удаляется. Зависимости (qBittorrent, помощник, часы) подменяются в тестах.
+import { readdir, readFile } from 'node:fs/promises'
 import { emitEvent } from '../events.js'
 import { getSetting, setSetting } from '../settings.js'
-import { config } from '../config.js'
-import { http } from '../http.js'
 import { getDockerJob, isManaged, runningDockerJob, startDockerJob, StartError, type DockerJob } from './dockerManage.js'
 import * as qbt from './qbittorrent.js'
 import { rememberStopped } from './torrentControl.js'
@@ -54,11 +53,41 @@ export type FlowDeps = {
   resumeWaitMs: number
 }
 
-// Идёт ли в контейнере move-completed.sh: GET /containers/qbittorrent/top через docker-socket-proxy
-async function realMoveRunning(): Promise<boolean> {
-  const res = await http(`${config.dockerProxy}/containers/qbittorrent/top`, { timeoutMs: 6000 })
-  const top = (await res.json()) as { Processes?: string[][] }
-  return (top.Processes ?? []).some((row) => row.join(' ').includes('move-completed'))
+// Идёт ли move-completed.sh. Процессы контейнера видны в /proc хоста (общий pid-namespace), поэтому читаем /proc/*/cmdline:
+// docker-socket-proxy запрещает GET /containers/*/top (ALLOW_TOP=0 → 403), а включать его ради этой проверки не нужно.
+// Не удалось проверить = понятная причина в тексте ошибки (её показывает диалог).
+export async function realMoveRunning(procDir = '/proc'): Promise<boolean> {
+  let entries: string[]
+  try {
+    entries = await readdir(procDir)
+  } catch (e) {
+    throw new Error(`не удалось прочитать список процессов ${procDir}: ${errReason(e)}`)
+  }
+  let readable = 0
+  let denied = 0
+  for (const pid of entries) {
+    if (!/^\d+$/.test(pid)) continue
+    let raw: string
+    try {
+      raw = await readFile(`${procDir}/${pid}/cmdline`, 'utf8')
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EACCES') denied++ // процесс мог и просто завершиться (ENOENT/ESRCH) — не считаем
+      continue
+    }
+    readable++
+    const args = raw.split('\0')
+    // «bash /scripts/move-completed.sh …» или сам скрипт как argv[0]; чужие процессы с этим словом в аргументах (grep, node) не считаются
+    if (args.slice(0, 2).some((a) => a.endsWith('/move-completed.sh'))) return true
+  }
+  if (readable === 0 || denied > readable) {
+    throw new Error(`нет прав на чтение ${procDir}/<pid>/cmdline (прочитано ${readable}, отказано ${denied}; проверьте hidepid у /proc)`)
+  }
+  return false
+}
+
+const errReason = (e: unknown) => {
+  const code = (e as NodeJS.ErrnoException)?.code
+  return code === 'EACCES' ? 'нет прав на чтение' : code === 'ENOENT' ? 'путь не найден' : e instanceof Error ? e.message : String(e)
 }
 
 export const realDeps: FlowDeps = {
@@ -94,8 +123,8 @@ export async function previewFlow(d: FlowDeps = realDeps) {
   if (bad.length) blockers.push(`идут перенос или проверка файлов: ${bad.map((t) => t.name).slice(0, 3).join(', ')}${bad.length > 3 ? '…' : ''}`)
   try {
     if (await d.moveRunning()) blockers.push('работает move-completed.sh (перенос завершённой закачки)')
-  } catch {
-    blockers.push('не удалось проверить, работает ли move-completed.sh')
+  } catch (e) {
+    blockers.push(`не удалось проверить, работает ли move-completed.sh: ${(e as Error).message}`)
   }
   const fl = getFlow()
   if (flowActive(fl)) blockers.push('такой процесс уже идёт')
@@ -121,8 +150,8 @@ export async function startFlow(ip: string, d: FlowDeps = realDeps): Promise<Flo
   let moving: boolean
   try {
     moving = await d.moveRunning()
-  } catch {
-    throw new FlowError('отказ: не удалось проверить, работает ли move-completed.sh', 502)
+  } catch (e) {
+    throw new FlowError(`отказ: не удалось проверить, работает ли move-completed.sh: ${(e as Error).message}`, 502)
   }
   if (moving) throw new FlowError('отказ: работает move-completed.sh (перенос завершённой закачки) — повторите после его окончания')
 

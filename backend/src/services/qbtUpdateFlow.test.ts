@@ -216,6 +216,20 @@ describe('Остановить торренты и обновить', () => {
     await assert.rejects(m.flow.startFlow('ip', deps()), /не удалось проверить/)
     assert.equal(calls.length, 0)
   })
+  it('realMoveRunning: находит скрипт в cmdline, игнорирует чужие процессы, говорит точную причину', async () => {
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    const dir = mkdtempSync(path.join(tmpdir(), 'proc-test-'))
+    const proc = (pid: string, cmd: string[]) => {
+      mkdirSync(path.join(dir, pid))
+      writeFileSync(path.join(dir, pid, 'cmdline'), cmd.join('\0') + '\0')
+    }
+    proc('10', ['grep', 'move-completed.sh'])
+    proc('11', ['/usr/bin/node', 'server.js'])
+    assert.equal(await m.flow.realMoveRunning(dir), false)
+    proc('12', ['/bin/bash', '/scripts/move-completed.sh', '/downloads-tmp/X', 'X'])
+    assert.equal(await m.flow.realMoveRunning(dir), true)
+    await assert.rejects(m.flow.realMoveRunning(path.join(dir, 'нет')), /не удалось прочитать список процессов.*путь не найден/)
+  })
   it('предпросмотр показывает, что остановится и что мешает, и ничего не меняет', async () => {
     torrents.push(mk(5, 'MOVE', 1, 'moving'))
     const p = await m.flow.previewFlow(deps())
