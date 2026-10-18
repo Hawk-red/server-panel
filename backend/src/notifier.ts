@@ -21,7 +21,7 @@ export type RuleId = 'unit' | 'disk' | 'temp' | 'device' | 'cert' | 'sync' | 'in
 
 export const RULES: Record<RuleId, { title: string; urgent: string }> = {
   unit: { title: 'Служба упала (и снова поднялась)', urgent: 'падение — всегда, даже в тихие часы' },
-  disk: { title: 'Диск заполнен > 90%', urgent: '> 95% — всегда, даже в тихие часы' },
+  disk: { title: 'Диск заполнен > 90%, мало места (сторож торрентов: < 20, 10, 5 ГБ)', urgent: '> 95% и < 10 ГБ — всегда, даже в тихие часы' },
   temp: { title: 'Перегрев CPU > 85 °C', urgent: '' },
   device: { title: 'Новое неизвестное устройство в сети', urgent: '' },
   cert: { title: 'Сертификат api.pulsdev.net истекает < 14 дней', urgent: '' },
@@ -300,6 +300,13 @@ function guardResumedText(e: ServerEvent) {
   return `▶ Торренты возобновлены: место освободилось, свободно ${d?.freeGb ?? '?'} ГБ на ${esc(d?.path ?? '—')}`
 }
 
+// Режим «только уведомления» сторожа: предупреждение о нехватке места, торренты не остановлены
+export function lowSpaceText(e: ServerEvent) {
+  const d = e.details as GuardDetails | undefined
+  const where = d?.path?.startsWith('/mnt/hdd1tb') ? 'на HDD 1TB' : 'на SSD'
+  return `⚠️ Мало места ${where}: ${d?.freeGb ?? '?'} ГБ. Торренты НЕ остановлены (автоостановка выключена). При 0 ГБ возможны сбои баз данных и сервисов`
+}
+
 function onServerEvent(e: ServerEvent) {
   if (e.kind === 'unit.failed' && rule('unit')) void send(`🔴 <b>Служба упала:</b> ${esc(e.target ?? '')}`, true)
   else if (e.kind === 'unit.recovered' && rule('unit')) void send(`🟢 Служба снова работает: ${esc(e.target ?? '')}`, false)
@@ -322,6 +329,8 @@ function onServerEvent(e: ServerEvent) {
   else if (e.kind === 'mount.late' && rule('mount')) void send(`⚠️ <b>${esc(e.text)}</b>`, false)
   else if (e.kind === 'mount.failed' && rule('mount')) void send(`🔴 <b>${esc(e.text)}</b>`, true)
   else if (e.kind === 'torrents.resumed' && rule('torrents')) void send(guardResumedText(e), false)
+  // Нехватка места при выключенной автоостановке: правило «disk»; на ≤ 10 ГБ — срочно (в тихие часы тоже), одинаковый текст в течение 10 минут схлопывается в send()
+  else if (e.kind === 'disk.lowspace' && rule('disk')) void send(lowSpaceText(e), ((e.details as GuardDetails | undefined)?.thresholdGb ?? 99) <= 10)
 }
 
 // Диск: mount + модель/метка + тип носителя, занято/свободно в ГБ (не только проценты)

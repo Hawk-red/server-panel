@@ -113,9 +113,32 @@ async function sync() {
 const GUARD_LOG = '/var/log/torrent-move.log'
 const GUARD_POS_KEY = 'detectors.guardLogPos'
 const GUARD_PAUSE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) LOW SPACE \((\d+)G < (\d+)G\) on (\S+) - torrents paused$/
+// Режим «только уведомления» (STOP_TORRENTS=no): сторож предупреждает при переходе через пороги, торренты не останавливает
+const GUARD_WARN = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) LOW SPACE WARNING \((\d+)G < (\d+)G\) on (\S+) - torrents NOT paused$/
 const GUARD_RESUME = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) SPACE OK \((\d+)G >= (\d+)G\) on (\S+) - torrents resumed$/
 
+export function guardWarnEvent(line: string): ServerEvent | null {
+  const m = line.match(GUARD_WARN)
+  if (!m) return null
+  const [, when, free, min, path] = m
+  const freeGb = Number(free)
+  const thresholdGb = Number(min)
+  return {
+    kind: 'disk.lowspace',
+    level: thresholdGb <= 10 ? 'error' : 'warning',
+    text: `Мало места: свободно ${freeGb} ГБ на ${path}, порог ${thresholdGb} ГБ. Торренты НЕ остановлены (автоостановка выключена)`,
+    target: path,
+    details: { freeGb, thresholdGb, path },
+    ts: Date.parse(when.replace(' ', 'T')),
+  }
+}
+
 function guardLine(line: string) {
+  const w = guardWarnEvent(line)
+  if (w) {
+    emitEvent(w)
+    return
+  }
   const p = line.match(GUARD_PAUSE)
   if (p) {
     const [, when, free, min, path] = p
