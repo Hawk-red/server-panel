@@ -107,7 +107,8 @@ export async function readNetCounters(): Promise<NetCounters> {
   return out
 }
 
-export type DiskIoCounters = Record<string, { readSectors: number; writeSectors: number }>
+// ops — сумма завершённых операций (чтения + записи + discard + flush): ловит активность без передачи данных
+export type DiskIoCounters = Record<string, { readSectors: number; writeSectors: number; ops: number }>
 
 // Только целые диски (sda, nvme0n1, vda, mmcblk0) — разделы (sda1, nvme0n1p1) пропускаем
 const DISK_DEV_RE = /^(sd[a-z]+|nvme\d+n\d+|vd[a-z]+|mmcblk\d+)$/
@@ -117,7 +118,9 @@ export async function readDiskIoCounters(): Promise<DiskIoCounters> {
   for (const line of (await readFile('/proc/diskstats', 'utf8')).split('\n')) {
     const f = line.trim().split(/\s+/)
     if (f.length < 10 || !DISK_DEV_RE.test(f[2])) continue
-    out[f[2]] = { readSectors: Number(f[5]), writeSectors: Number(f[9]) }
+    // поля discard (f[14..17]) и flush (f[18..19]) есть с ядра 4.18/5.5 — на старых просто NaN→0
+    const n = (i: number) => Number(f[i]) || 0
+    out[f[2]] = { readSectors: Number(f[5]), writeSectors: Number(f[9]), ops: n(3) + n(7) + n(14) + n(18) }
   }
   return out
 }

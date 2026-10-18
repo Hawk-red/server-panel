@@ -4,6 +4,7 @@ export type Smart = {
   temperature: number | null
   powerOnHours: number | null
   checkedAt: number
+  powerCheckUnsupported?: boolean
   error?: string
 }
 
@@ -23,9 +24,19 @@ export type DiskInfo = {
   inFstab: boolean
   state: 'mounted' | 'stale' | 'missing' | 'unmounted'
   smart: Smart | null
+  rotational: boolean | null
+  power: 'ssd' | 'active' | 'standby' | 'unknown'
 }
 
-export type DiskIoRate = { readBps: number; writeBps: number }
+// readBps/writeBps — последняя точка; *Avg — среднее за 15 с (для плашек); *Peak — пик за 2 мин (горизонт графика)
+export type DiskIoRate = {
+  readBps: number
+  writeBps: number
+  readAvgBps?: number
+  writeAvgBps?: number
+  readPeakBps?: number
+  writePeakBps?: number
+}
 export type DiskIoSnapshot = { ts: number; disks: Record<string, DiskIoRate> }
 export type DiskIoPoint = { ts: number; readBps: number; writeBps: number }
 export type DiskIoHistorySnapshot = Record<string, DiskIoPoint[]>

@@ -8,6 +8,7 @@ import {
   CircleX,
   Plug,
   Clock,
+  Info,
   type LucideIcon,
   Moon,
   RefreshCw,
@@ -20,6 +21,7 @@ import { AxiosError } from 'axios'
 import { api } from '@/lib/api'
 import { formatBytes, formatRelative } from '@/lib/format'
 import { tempLevel } from '@/lib/levels'
+import { niceCeil } from '@/lib/chart-scale'
 import type { DiskInfo, DiskIoHistorySnapshot, DiskIoRate, DiskIoSnapshot } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { NoData } from '@/components/no-data'
@@ -148,12 +150,19 @@ function diskHealth(d: DiskInfo): { level: PillLevel; icon: LucideIcon; label: s
   if (!s) return { level: 'unknown', icon: ShieldQuestion, label: 'Нет данных', title: 'SMART ещё не опрашивался' }
   if (s.status === 'failing') return { level: 'danger', icon: CircleAlert, label: 'Критично', title: 'SMART: диск неисправен' }
   if (s.status === 'standby') {
-    return {
-      level: 'unknown',
-      icon: Moon,
-      label: 'Спит',
-      title: 'Диск в энергосбережении — SMART намеренно не опрошен, чтобы не изнашивать его. Это не значит, что диск проверен и здоров.',
+    // «Спит» — только если сервер подтвердил: HDD, smartctl сказал standby И ввода-вывода давно нет (d.power).
+    // Иначе кэшированный «standby» устарел или неприменим (SSD, USB-мост без ATA CHECK POWER STATUS).
+    if (d.power === 'standby') {
+      return {
+        level: 'unknown',
+        icon: Moon,
+        label: 'Спит',
+        title: 'Диск в энергосбережении — SMART намеренно не опрошен, чтобы не изнашивать его. Это не значит, что диск проверен и здоров.',
+      }
     }
+    if (d.power === 'ssd') return { level: 'unknown', icon: ShieldQuestion, label: 'SSD', title: 'SSD не засыпает; SMART обновится при следующем опросе' }
+    if (d.power === 'active') return { level: 'unknown', icon: ShieldQuestion, label: 'Активен', title: 'Диск работает (есть ввод-вывод); SMART обновится при следующем опросе' }
+    return { level: 'unknown', icon: ShieldQuestion, label: 'Неизвестно', title: 'Состояние питания определить нельзя: диск не поддерживает ATA CHECK POWER STATUS или мало данных' }
   }
   if (s.status === 'unavailable') return { level: 'unknown', icon: ShieldQuestion, label: 'Нет данных', title: s.error ?? 'SMART недоступен' }
   if (s.temperature != null) {
@@ -171,20 +180,24 @@ function checkedAgoShort(ts: number) {
 }
 
 // Пт.3: голый «0 Б/с» неинформативен — ниже порога шума показываем серое «Простой», выше — крупно и цветом потока
-const IO_IDLE_THRESHOLD = 1024 // Б/с
+const IO_IDLE_THRESHOLD = 4 * 1024 // Б/с — тот же порог, что IDLE_THRESHOLD_BPS на сервере
 
 // Пт.2.2: плашка — одновременно и показатель, и легенда графика (та же заливка цветом сверху, что и линия),
 // и переключатель — клик скрывает/показывает соответствующую линию на графике (стандарт для мониторинга).
 function SpeedTile({
   label,
   value,
+  peak,
+  hint,
   color,
   icon: Icon,
   active,
   onToggle,
 }: {
   label: string
-  value: number
+  value: number // среднее за окно ~15 с (а не последняя точка), иначе между всплесками записи плашка мигает «Простой»
+  peak?: number // пик за 2 мин — всплески не теряются
+  hint?: string
   color: string
   icon: LucideIcon
   active: boolean
@@ -203,6 +216,12 @@ function SpeedTile({
       <div className='flex items-center gap-1.5 text-xs font-medium text-muted-foreground'>
         <Icon className='size-3.5 shrink-0' style={!active || idle ? undefined : { color }} />
         {label}
+        {active && peak != null && peak >= IO_IDLE_THRESHOLD && (
+          <span className='ml-auto inline-flex items-center gap-0.5 font-normal tabular-nums' title={hint ?? 'Максимум за последние 2 минуты (замеры по 1,5 с)'}>
+            пик {formatBytes(peak)}/с
+            {hint && <Info className='size-3 shrink-0' />}
+          </span>
+        )}
       </div>
       {!active ? (
         <div className='mt-0.5 text-lg font-bold text-muted-foreground'>Скрыто</div>
@@ -244,7 +263,8 @@ function IoChart({
   const [hover, setHover] = useState<number | null>(null)
   const smoothRead = movingAverage(read, 12)
   const smoothWrite = movingAverage(write, 12)
-  const max = Math.max(1, ...(showRead ? smoothRead : []), ...(showWrite ? smoothWrite : []))
+  // Верх шкалы — «круглое» число над максимумом сглаженной линии (подписи на оси читаемы, линия не упирается в потолок)
+  const max = niceCeil(Math.max(1, ...(showRead ? smoothRead : []), ...(showWrite ? smoothWrite : [])))
   const toPoints = (arr: number[]) => arr.map((v, i) => ({ x: (i / Math.max(1, arr.length - 1)) * 100, y: 100 - (v / max) * 100 }))
   const readPts = toPoints(smoothRead)
   const writePts = toPoints(smoothWrite)
@@ -329,7 +349,9 @@ function IoChart({
             {showWrite && <div style={{ color: DISK_WRITE_COLOR }}>запись {formatBytes(write[hover])}/с</div>}
           </div>
         )}
-        {/* подпись у нулевой линии */}
+        {/* шкала: верх, середина и ноль; подписи общие для чтения и записи (одна шкала на оба потока) */}
+        <span className='pointer-events-none absolute left-0 top-0 rounded-sm bg-card/70 px-0.5 text-[10px] leading-none text-muted-foreground'>{formatBytes(max, 0)}/с</span>
+        <span className='pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 rounded-sm bg-card/70 px-0.5 text-[10px] leading-none text-muted-foreground'>{formatBytes(max / 2, 1).replace(/[.,]0 /, " ")}/с</span>
         <span className='pointer-events-none absolute -bottom-0.5 left-0 text-[10px] text-muted-foreground'>0</span>
       </div>
       <div className='mt-1.5 flex justify-between text-[10px] text-muted-foreground'>
@@ -359,9 +381,13 @@ function DiskTechGridV2({ d }: { d: DiskInfo }) {
     <Pill level='danger' icon={CircleAlert}>
       неисправен
     </Pill>
-  ) : s.status === 'standby' ? (
+  ) : s.status === 'standby' && d.power === 'standby' ? (
     <Pill level='unknown' icon={Moon} title='Диск спит — SMART намеренно не опрошен, чтобы не будить лишний раз. Это не значит, что диск проверен и здоров.'>
       Спит
+    </Pill>
+  ) : s.status === 'standby' ? (
+    <Pill level='unknown' icon={ShieldQuestion} title='Свежих данных SMART нет (последний ответ устарел) — обновятся при следующем опросе'>
+      {d.power === 'unknown' ? 'неизвестно' : 'не опрошен'}
     </Pill>
   ) : (
     <Pill level='unknown' icon={ShieldQuestion} title={s.error}>
@@ -546,7 +572,8 @@ function DiskCard({ d, rate, hist }: DiskCardProps) {
               <div className='grid grid-cols-2 gap-2'>
                 <SpeedTile
                   label='Чтение'
-                  value={rate.readBps}
+                  value={rate.readAvgBps ?? rate.readBps}
+                  peak={rate.readPeakBps}
                   color={DISK_READ_COLOR}
                   icon={ArrowDown}
                   active={show.read}
@@ -554,7 +581,9 @@ function DiskCard({ d, rate, hist }: DiskCardProps) {
                 />
                 <SpeedTile
                   label='Запись'
-                  value={rate.writeBps}
+                  value={rate.writeAvgBps ?? rate.writeBps}
+                  peak={rate.writePeakBps}
+                  hint='Пик за 2 минуты. Linux копит запись в памяти и сбрасывает пачками, поэтому линия ступенчатая'
                   color={DISK_WRITE_COLOR}
                   icon={ArrowUp}
                   active={show.write}

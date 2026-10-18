@@ -1,12 +1,16 @@
 import { readFile } from 'node:fs/promises'
 import { type ExecError, run, sudo } from '../exec.js'
 import { readFsUsage } from '../collector/sources.js'
+import { getDiskIdleMs } from './disk-io.js'
+import { derivePowerState, isPowerCheckUnsupported, isStandbyOutput, type PowerState } from './disk-power.js'
 
 export type Smart = {
   status: 'ok' | 'failing' | 'standby' | 'unavailable'
   temperature: number | null
   powerOnHours: number | null
   checkedAt: number
+  // диск (обычно USB-мост) не умеет ATA CHECK POWER STATUS: «спит или нет» узнать нельзя
+  powerCheckUnsupported?: boolean
   error?: string
 }
 
@@ -27,6 +31,10 @@ export type DiskInfo = {
   // stale — точка смонтирована, но диск не отвечает (ошибки I/O): чтение статистики не удалось
   state: 'mounted' | 'stale' | 'missing' | 'unmounted'
   smart: Smart | null
+  // /sys/block/<dev>/queue/rotational: true — HDD, false — SSD, null — не определить
+  rotational: boolean | null
+  // Итоговое состояние питания (см. disk-power.ts): 'standby' только при подтверждении и отсутствии ввода-вывода
+  power: PowerState
 }
 
 type LsblkNode = {
@@ -71,17 +79,19 @@ async function querySmart(disk: string): Promise<Smart> {
     stdout = err.stdout ?? ''
     errText = `${err.stderr ?? ''} ${err.message ?? ''}`
   }
-  if (/STANDBY|SLEEP/i.test(stdout + errText)) {
+  const unsupported = isPowerCheckUnsupported(stdout + errText)
+  if (!unsupported && isStandbyOutput(stdout + errText)) {
     return { status: 'standby', temperature: null, powerOnHours: null, checkedAt: Date.now() }
   }
   try {
     const smart = parseSmart(JSON.parse(stdout))
+    if (unsupported) smart.powerCheckUnsupported = true
     if (smart.status !== 'unavailable' || smart.temperature !== null) return smart
     errText ||= 'диск не отдаёт SMART'
   } catch {
     errText ||= 'некорректный ответ smartctl'
   }
-  return { status: 'unavailable', temperature: null, powerOnHours: null, checkedAt: Date.now(), error: shortError(errText) }
+  return { status: 'unavailable', temperature: null, powerOnHours: null, checkedAt: Date.now(), error: shortError(errText), ...(unsupported && { powerCheckUnsupported: true }) }
 }
 
 function shortError(text: string) {
@@ -111,6 +121,15 @@ export function cachedSmart(disk: string): Smart | null {
   return smartCache.get(disk) ?? null
 }
 
+async function readRotational(disk: string): Promise<boolean | null> {
+  try {
+    const v = (await readFile(`/sys/block/${disk.replace(/^\/dev\//, '')}/queue/rotational`, 'utf8')).trim()
+    return v === '1' ? true : v === '0' ? false : null
+  } catch {
+    return null
+  }
+}
+
 export async function listDisks(): Promise<DiskInfo[]> {
   const out = await run('/usr/bin/lsblk', ['-J', '-b', '-o', 'NAME,PATH,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL,LABEL,UUID,TRAN'])
   const tree = JSON.parse(out).blockdevices as LsblkNode[]
@@ -121,6 +140,8 @@ export async function listDisks(): Promise<DiskInfo[]> {
   for (const disk of tree) {
     if (disk.type !== 'disk') continue
     const parts = disk.children?.length ? disk.children : [disk]
+    const smart = cachedSmart(disk.path)
+    const rotational = await readRotational(disk.name)
     for (const p of parts) {
       if (!p.fstype || p.fstype === 'swap') continue
       const fsEntry = fstab.find((f) => f.spec === `UUID=${p.uuid}` || f.spec === p.path || f.mount === p.mountpoint)
@@ -144,7 +165,14 @@ export async function listDisks(): Promise<DiskInfo[]> {
         percent: usage?.percent ?? null,
         inFstab: Boolean(fsEntry),
         state: p.mountpoint ? (usage ? 'mounted' : 'stale') : 'unmounted',
-        smart: cachedSmart(disk.path),
+        smart,
+        rotational,
+        power: derivePowerState({
+          rotational,
+          smartStatus: smart?.status ?? null,
+          powerCheckUnsupported: smart?.powerCheckUnsupported ?? false,
+          idleMs: getDiskIdleMs(disk.name),
+        }),
       })
     }
   }
@@ -168,6 +196,8 @@ export async function listDisks(): Promise<DiskInfo[]> {
       inFstab: true,
       state: 'missing',
       smart: null,
+      rotational: null,
+      power: 'unknown',
     })
   }
   return result
