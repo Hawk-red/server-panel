@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { Globe, Pause, Play, Speaker } from 'lucide-react'
+import { ExternalLink, Globe, Pause, Play, Speaker } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelative } from '@/lib/format'
 import type { MediaData } from '@/lib/types'
+import { RECEIVER_LINK_GROUPS } from '@/lib/receiver-links'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
@@ -115,7 +116,7 @@ export function Media() {
             <Speaker className='size-10 shrink-0 text-muted-foreground' />
             <div className='min-w-0 flex-1'>
               <CardTitle className='text-base'>Marantz NR1604</CardTitle>
-              <p className='text-xs text-muted-foreground'>AV-ресивер, 192.168.31.94</p>
+              <p className='text-xs text-muted-foreground'>AV-ресивер{mz?.data ? `, ${mz.data.host}` : ''}</p>
             </div>
             {mz?.error ? (
               <StatusBadge status='unknown' />
@@ -140,6 +141,25 @@ export function Media() {
                 <Globe /> Открыть веб-интерфейс
               </HomeLink>
             </Button>
+            <div className='space-y-2'>
+              <div className='text-xs font-medium'>Настройки ресивера</div>
+              {RECEIVER_LINK_GROUPS.map((g) => (
+                <div key={g.title} className='flex flex-wrap items-center gap-1'>
+                  <span className='w-full text-[11px] text-muted-foreground sm:w-auto sm:pr-1'>{g.title}:</span>
+                  {g.links.map((l) => (
+                    <HomeLink
+                      key={l.path}
+                      service='marantz'
+                      path={l.path}
+                      rel='noopener noreferrer'
+                      className='inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs hover:bg-muted'
+                    >
+                      {l.label} <ExternalLink className='size-3' />
+                    </HomeLink>
+                  ))}
+                </div>
+              ))}
+            </div>
             <p className='text-xs text-muted-foreground'>Веб-интерфейс ресивера открывается только из домашней сети.</p>
           </CardContent>
         </Card>
