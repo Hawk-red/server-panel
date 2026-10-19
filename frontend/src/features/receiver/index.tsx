@@ -156,16 +156,16 @@ export function ReceiverPage() {
           <CardContent className={body}>
             <Title>Громкость</Title>
             <div className='flex flex-1 items-stretch justify-between gap-3'>
-              <Button variant='outline' className='h-full min-h-16 w-20 rounded-2xl' aria-label='Тише' disabled={disabled} {...downHold} style={touch}>
+              <Button variant='outline' className='h-full min-h-16 w-16 shrink-0 rounded-2xl' aria-label='Тише' disabled={disabled} {...downHold} style={touch}>
                 <Minus className='size-8' />
               </Button>
-              <div className='flex flex-col items-center justify-center text-center'>
-                <div className='text-3xl font-bold tabular-nums' aria-live='polite'>
+              <div className='flex min-w-0 flex-col items-center justify-center text-center'>
+                <div className='whitespace-nowrap text-2xl font-bold tabular-nums' aria-live='polite'>
                   {formatDb(st?.volume ?? null)}
                 </div>
                 <div className='text-xs text-muted-foreground'>громкость</div>
               </div>
-              <Button variant='outline' className='h-full min-h-16 w-20 rounded-2xl' aria-label='Громче' disabled={disabled} {...upHold} style={touch}>
+              <Button variant='outline' className='h-full min-h-16 w-16 shrink-0 rounded-2xl' aria-label='Громче' disabled={disabled} {...upHold} style={touch}>
                 <Plus className='size-8' />
               </Button>
             </div>
@@ -206,7 +206,7 @@ export function ReceiverPage() {
                   <Button
                     key={i.code}
                     variant={active ? 'default' : 'outline'}
-                    className={cn('h-full min-h-12 min-w-0 justify-start gap-2 rounded-2xl px-3 text-base', active && 'bg-sky-700 text-white hover:bg-sky-800 dark:bg-sky-600 dark:hover:bg-sky-500')}
+                    className={cn('h-full min-h-12 min-w-0 justify-start gap-1.5 rounded-2xl px-2 text-sm', active && 'bg-sky-700 text-white hover:bg-sky-800 dark:bg-sky-600 dark:hover:bg-sky-500')}
                     aria-pressed={active}
                     disabled={disabled || pending !== null}
                     onClick={() => {
@@ -215,7 +215,7 @@ export function ReceiverPage() {
                     }}
                     style={touch}
                   >
-                    {busy ? <Loader2 className='animate-spin' /> : <span className='text-xl' aria-hidden>{inputIcon(i.name)}</span>}
+                    {busy ? <Loader2 className='animate-spin' /> : <span className='shrink-0 text-lg' aria-hidden>{inputIcon(i.name)}</span>}
                     <span className='truncate'>{i.name}</span>
                   </Button>
                 )
