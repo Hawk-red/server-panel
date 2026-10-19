@@ -5,6 +5,7 @@ import * as adguard from '../services/adguard.js'
 import * as docker from '../services/docker.js'
 import * as media from '../services/media.js'
 import * as qbt from '../services/qbittorrent.js'
+import * as receiver from '../services/receiver.js'
 import { panelStoppedInfo, startPanelStopped, stopAllTorrents } from '../services/torrentControl.js'
 import { getSetting, setSetting } from '../settings.js'
 
@@ -82,6 +83,37 @@ export async function serviceRoutes(app: FastifyInstance) {
       minimserver: { container: minim },
       bubbleupnpserver: { container: bubble },
       marantz,
+    }
+  })
+
+  // Marantz по telnet: чтение состояния и запись параметров из белого списка (receiver.WRITABLE)
+  const receiverFail = (e: unknown, reply: import('fastify').FastifyReply) => {
+    const err = e as receiver.ReceiverError
+    const code = err.code === 'bad' ? 400 : err.code === 'standby' ? 409 : err.code === 'busy' ? 503 : 502
+    return reply.code(code).send({ message: err.message, code: err.code ?? 'offline' })
+  }
+  app.get('/api/receiver', async (_req, reply) => {
+    try {
+      return await receiver.getState()
+    } catch (e) {
+      return receiverFail(e, reply)
+    }
+  })
+  app.post<{ Params: { key: string }; Body: { value?: unknown } }>('/api/receiver/:key', async (req, reply) => {
+    const { key } = req.params
+    const value = typeof req.body?.value === 'string' ? req.body.value : ''
+    try {
+      receiver.validate(key, value)
+    } catch (e) {
+      return receiverFail(e, reply)
+    }
+    try {
+      const r = await receiver.setValue(key, value)
+      audit({ ...who(req), action: 'receiver.set', target: key, result: 'ok', details: { command: r.command, from: r.before, to: r.after } })
+      return r.state
+    } catch (e) {
+      audit({ ...who(req), action: 'receiver.set', target: key, result: 'error', details: { value, message: (e as Error).message } })
+      return receiverFail(e, reply)
     }
   })
 
