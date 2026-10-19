@@ -144,7 +144,7 @@ export function ReceiverPage() {
   // Шесть блоков управления — кирпичики одной высоты (grid, общий min-height); ссылки — на всю ширину под ними.
   const dim = cn('transition-opacity', disabled && 'pointer-events-none opacity-50')
   const brick = 'md:min-h-[26rem]'
-  const card = 'h-full gap-3 py-5'
+  const card = 'h-full gap-3 pb-5 pt-7'
   const body = 'flex flex-1 flex-col gap-3'
   const blocks: Block[] = [
     {
