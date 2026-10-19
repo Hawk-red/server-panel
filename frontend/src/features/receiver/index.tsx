@@ -108,6 +108,8 @@ function useHoldButton(fire: () => void) {
 
 const touch = { touchAction: 'manipulation' } as const
 
+const Title = ({ children }: { children: React.ReactNode }) => <h2 className='text-sm font-medium'>{children}</h2>
+
 export function ReceiverPage() {
   const { q, pending, send, patch } = useRemote()
   const st = q.data
@@ -138,70 +140,41 @@ export function ReceiverPage() {
   const disabled = !on
   const muteOn = st?.mute === true
 
-  // Блоки страницы: порядок по умолчанию — как здесь; сохранённый порядок применяет SortableBlocks (layout.receiver)
+  // Блоки страницы: порядок по умолчанию — как здесь; сохранённый порядок применяет SortableBlocks (layout.receiver).
+  // Шесть блоков управления — кирпичики одной высоты (grid, общий min-height); ссылки — на всю ширину под ними.
   const dim = cn('transition-opacity', disabled && 'pointer-events-none opacity-50')
+  const brick = 'md:min-h-[26rem]'
+  const card = 'h-full gap-3 py-5'
+  const body = 'flex flex-1 flex-col gap-3'
   const blocks: Block[] = [
-    {
-      id: 'power',
-      title: 'Питание и статус',
-      node: (
-        <Card className='py-3'>
-          <CardContent className='space-y-3'>
-            <div className='flex items-center gap-3'>
-              <div className='min-w-0 flex-1'>
-                <div className='truncate text-base font-semibold'>Marantz NR1604</div>
-                <div className='flex items-center gap-1.5 text-xs text-muted-foreground' role='status'>
-                  <span className={cn('inline-block size-2 rounded-full', connection.cls)} aria-hidden /> {connection.label}
-                  {st?.power === 'STANDBY' && ' · выключен'}
-                </div>
-              </div>
-              <Button
-                size='icon'
-                aria-label={on ? 'Выключить ресивер' : 'Включить ресивер'}
-                aria-pressed={on}
-                disabled={!st || pending === 'PWON' || pending === 'PWSTANDBY'}
-                className={cn('size-14 shrink-0 rounded-full', on ? 'bg-emerald-700 text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500' : 'bg-muted text-muted-foreground hover:bg-muted/80')}
-                onClick={() => {
-                  buzz()
-                  if (on) setConfirmOff(true)
-                  else void send('PWON')
-                }}
-              >
-                {pending === 'PWON' || pending === 'PWSTANDBY' ? <Loader2 className='size-6 animate-spin' /> : <Power className='size-6' />}
-              </Button>
-            </div>
-            {err && <p className='rounded-md border border-destructive/40 p-3 text-sm text-destructive'>{err.message}</p>}
-            {st?.power === 'STANDBY' && <p className='rounded-md border p-3 text-sm text-muted-foreground'>Ресивер выключен. Нажмите кнопку питания, чтобы включить.</p>}
-          </CardContent>
-        </Card>
-      ),
-    },
     {
       id: 'volume',
       title: 'Громкость',
+      className: brick,
       node: (
-        <Card className={dim} aria-disabled={disabled}>
-          <CardContent className='space-y-3'>
-            <div className='flex items-center justify-between gap-3'>
-              <Button variant='outline' className='size-16 rounded-2xl' aria-label='Тише' disabled={disabled} {...downHold} style={touch}>
-                <Minus className='size-7' />
+        <Card className={cn(card, dim)} aria-disabled={disabled}>
+          <CardContent className={body}>
+            <Title>Громкость</Title>
+            <div className='flex flex-1 items-stretch justify-between gap-3'>
+              <Button variant='outline' className='h-full min-h-16 w-20 rounded-2xl' aria-label='Тише' disabled={disabled} {...downHold} style={touch}>
+                <Minus className='size-8' />
               </Button>
-              <div className='text-center'>
+              <div className='flex flex-col items-center justify-center text-center'>
                 <div className='text-3xl font-bold tabular-nums' aria-live='polite'>
                   {formatDb(st?.volume ?? null)}
                 </div>
                 <div className='text-xs text-muted-foreground'>громкость</div>
               </div>
-              <Button variant='outline' className='size-16 rounded-2xl' aria-label='Громче' disabled={disabled} {...upHold} style={touch}>
-                <Plus className='size-7' />
+              <Button variant='outline' className='h-full min-h-16 w-20 rounded-2xl' aria-label='Громче' disabled={disabled} {...upHold} style={touch}>
+                <Plus className='size-8' />
               </Button>
             </div>
-            <div className='relative h-2 rounded-full bg-muted' role='img' aria-label={`Уровень ${formatDb(st?.volume ?? null)}, потолок ${formatDb(st?.maxVolume ?? null)}`}>
+            <div className='relative h-2 shrink-0 rounded-full bg-muted' role='img' aria-label={`Уровень ${formatDb(st?.volume ?? null)}, потолок ${formatDb(st?.maxVolume ?? null)}`}>
               <div className='h-full rounded-full bg-primary transition-[width] duration-200' style={{ width: `${levelFraction(st?.volume ?? null) * 100}%` }} />
               {st && <div className='absolute -top-1 h-4 w-0.5 rounded bg-red-600' style={{ left: `${levelFraction(st.maxVolume) * 100}%` }} title='Потолок громкости' />}
             </div>
             <Button
-              className={cn('h-14 w-full rounded-2xl text-base font-semibold', muteOn ? 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500' : 'border-red-600/50 text-red-700 dark:text-red-300')}
+              className={cn('h-14 w-full shrink-0 rounded-2xl text-base font-semibold', muteOn ? 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500' : 'border-red-600/50 text-red-700 dark:text-red-300')}
               variant={muteOn ? 'default' : 'outline'}
               aria-pressed={muteOn}
               disabled={disabled || pending === 'MUON' || pending === 'MUOFF'}
@@ -219,12 +192,13 @@ export function ReceiverPage() {
     {
       id: 'inputs',
       title: 'Входы',
+      className: brick,
       node: (
-        <Card className={dim} aria-disabled={disabled}>
-          <CardContent className='space-y-2'>
-            <h2 className='text-sm font-medium'>Входы</h2>
+        <Card className={cn(card, dim)} aria-disabled={disabled}>
+          <CardContent className={body}>
+            <Title>Входы</Title>
             {inputs.length === 0 && on && <p className='text-xs text-muted-foreground'>Список входов недоступен.</p>}
-            <div className='grid grid-cols-2 gap-2 sm:grid-cols-3'>
+            <div className='grid flex-1 auto-rows-fr grid-cols-2 gap-2'>
               {inputs.map((i) => {
                 const active = curInput === i.code
                 const busy = pending === `SI${i.code}`
@@ -232,7 +206,7 @@ export function ReceiverPage() {
                   <Button
                     key={i.code}
                     variant={active ? 'default' : 'outline'}
-                    className={cn('h-16 justify-start gap-2 rounded-2xl px-3 text-base', active && 'bg-sky-700 text-white hover:bg-sky-800 dark:bg-sky-600 dark:hover:bg-sky-500')}
+                    className={cn('h-full min-h-12 min-w-0 justify-start gap-2 rounded-2xl px-3 text-base', active && 'bg-sky-700 text-white hover:bg-sky-800 dark:bg-sky-600 dark:hover:bg-sky-500')}
                     aria-pressed={active}
                     disabled={disabled || pending !== null}
                     onClick={() => {
@@ -254,18 +228,19 @@ export function ReceiverPage() {
     {
       id: 'modes',
       title: 'Режимы звука',
+      className: brick,
       node: (
-        <Card className={dim} aria-disabled={disabled}>
-          <CardContent className='space-y-2'>
-            <h2 className='text-sm font-medium'>Режим звука</h2>
-            <div className='grid grid-cols-2 gap-2 sm:grid-cols-5'>
-              {MODES.map((m) => {
+        <Card className={cn(card, dim)} aria-disabled={disabled}>
+          <CardContent className={body}>
+            <Title>Режим звука</Title>
+            <div className='grid flex-1 auto-rows-fr grid-cols-2 gap-2'>
+              {MODES.map((m, idx) => {
                 const active = curMode === m.cmd
                 return (
                   <Button
                     key={m.cmd}
                     variant='outline'
-                    className={cn('h-14 rounded-2xl border-2 text-base font-semibold', active ? m.on : m.off)}
+                    className={cn('h-full min-h-12 rounded-2xl border-2 text-base font-semibold', idx === MODES.length - 1 && MODES.length % 2 === 1 && 'col-span-2', active ? m.on : m.off)}
                     aria-pressed={active}
                     disabled={disabled || pending !== null}
                     onClick={async () => {
@@ -280,7 +255,7 @@ export function ReceiverPage() {
                 )
               })}
             </div>
-            {st?.mode && <p className='text-xs text-muted-foreground'>Сейчас: {st.mode}</p>}
+            <p className='text-xs text-muted-foreground'>{st?.mode ? `Сейчас: ${st.mode}` : ' '}</p>
           </CardContent>
         </Card>
       ),
@@ -288,11 +263,12 @@ export function ReceiverPage() {
     {
       id: 'quick',
       title: 'Быстрый выбор',
+      className: brick,
       node: (
-        <Card className={dim} aria-disabled={disabled}>
-          <CardContent className='space-y-2'>
-            <h2 className='text-sm font-medium'>Быстрый выбор</h2>
-            <div className='grid grid-cols-3 gap-2'>
+        <Card className={cn(card, dim)} aria-disabled={disabled}>
+          <CardContent className={body}>
+            <Title>Быстрый выбор</Title>
+            <div className='grid flex-1 auto-rows-fr grid-cols-1 gap-2'>
               {[1, 2, 3].map((n) => {
                 const cmd = `MSQUICK${n}`
                 const active = lastQuick === cmd
@@ -300,7 +276,7 @@ export function ReceiverPage() {
                   <Button
                     key={n}
                     variant={active ? 'default' : 'outline'}
-                    className='h-12 rounded-xl'
+                    className='h-full min-h-12 rounded-2xl text-base'
                     aria-pressed={active}
                     disabled={disabled || pending !== null}
                     onClick={async () => {
@@ -323,42 +299,64 @@ export function ReceiverPage() {
     {
       id: 'nav',
       title: 'Навигация',
+      className: brick,
       node: (
-        <Card className={dim} aria-disabled={disabled}>
-          <CardContent className='space-y-3'>
-            <h2 className='text-sm font-medium'>Меню</h2>
-            <div className='flex flex-wrap items-center justify-center gap-4'>
-              <div className='grid size-56 shrink-0 grid-cols-3 grid-rows-3 place-items-center rounded-full border bg-muted/50 p-2 sm:size-64'>
-                <span />
-                <Button variant='ghost' className='size-16 rounded-full' aria-label='Вверх' disabled={disabled} {...holdUp} style={touch}>
-                  <ChevronUp className='size-8' />
-                </Button>
-                <span />
-                <Button variant='ghost' className='size-16 rounded-full' aria-label='Влево' disabled={disabled} {...holdLeft} style={touch}>
-                  <ChevronLeft className='size-8' />
-                </Button>
-                <Button
-                  className='size-16 rounded-full text-base font-bold'
-                  aria-label='OK'
-                  disabled={disabled}
-                  onClick={() => {
-                    buzz()
-                    void send('MNENT', { quiet: true })
-                  }}
-                  style={touch}
-                >
-                  OK
-                </Button>
-                <Button variant='ghost' className='size-16 rounded-full' aria-label='Вправо' disabled={disabled} {...holdRight} style={touch}>
-                  <ChevronRight className='size-8' />
-                </Button>
-                <span />
-                <Button variant='ghost' className='size-16 rounded-full' aria-label='Вниз' disabled={disabled} {...holdDown} style={touch}>
-                  <ChevronDown className='size-8' />
-                </Button>
-                <span />
+        <Card className={card}>
+          <CardContent className={body}>
+            <div className='flex items-start justify-between gap-3'>
+              <div className='min-w-0'>
+                <Title>Меню</Title>
+                {st?.power === 'STANDBY' && <p className='text-xs text-muted-foreground'>Ресивер выключен</p>}
               </div>
-              <div className='flex flex-col gap-2'>
+              <Button
+                size='icon'
+                aria-label={on ? 'Выключить ресивер' : 'Включить ресивер'}
+                aria-pressed={on}
+                disabled={!st || pending === 'PWON' || pending === 'PWSTANDBY'}
+                className={cn('size-12 shrink-0 rounded-full', on ? 'bg-emerald-700 text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500' : 'bg-muted text-muted-foreground hover:bg-muted/80')}
+                onClick={() => {
+                  buzz()
+                  if (on) setConfirmOff(true)
+                  else void send('PWON')
+                }}
+              >
+                {pending === 'PWON' || pending === 'PWSTANDBY' ? <Loader2 className='size-6 animate-spin' /> : <Power className='size-6' />}
+              </Button>
+            </div>
+            <div className={cn('flex flex-1 flex-col justify-between gap-3', dim)} aria-disabled={disabled}>
+              <div className='flex flex-1 items-center justify-center'>
+                <div className='grid size-48 shrink-0 grid-cols-3 grid-rows-3 place-items-center rounded-full border bg-muted/50 p-1'>
+                  <span />
+                  <Button variant='ghost' className='size-14 rounded-full' aria-label='Вверх' disabled={disabled} {...holdUp} style={touch}>
+                    <ChevronUp className='size-7' />
+                  </Button>
+                  <span />
+                  <Button variant='ghost' className='size-14 rounded-full' aria-label='Влево' disabled={disabled} {...holdLeft} style={touch}>
+                    <ChevronLeft className='size-7' />
+                  </Button>
+                  <Button
+                    className='size-14 rounded-full text-base font-bold'
+                    aria-label='OK'
+                    disabled={disabled}
+                    onClick={() => {
+                      buzz()
+                      void send('MNENT', { quiet: true })
+                    }}
+                    style={touch}
+                  >
+                    OK
+                  </Button>
+                  <Button variant='ghost' className='size-14 rounded-full' aria-label='Вправо' disabled={disabled} {...holdRight} style={touch}>
+                    <ChevronRight className='size-7' />
+                  </Button>
+                  <span />
+                  <Button variant='ghost' className='size-14 rounded-full' aria-label='Вниз' disabled={disabled} {...holdDown} style={touch}>
+                    <ChevronDown className='size-7' />
+                  </Button>
+                  <span />
+                </div>
+              </div>
+              <div className='grid grid-cols-4 gap-2'>
                 {[
                   { label: 'Назад', icon: <Undo2 />, run: () => send('MNRTN', { quiet: true }) },
                   {
@@ -375,7 +373,7 @@ export function ReceiverPage() {
                   <Button
                     key={b.label}
                     variant='outline'
-                    className='h-12 w-28 justify-start gap-2 rounded-xl'
+                    className='h-14 min-w-0 flex-col gap-0.5 rounded-xl px-1 text-[11px]'
                     disabled={disabled}
                     onClick={() => {
                       buzz()
@@ -395,11 +393,14 @@ export function ReceiverPage() {
     {
       id: 'sound',
       title: 'Звук и настройки',
+      className: brick,
       node: (
-        <Card>
-          <CardContent className='space-y-2'>
-            <h2 className='text-sm font-medium'>Звук и настройки</h2>
-            <ReceiverControls online />
+        <Card className={card}>
+          <CardContent className={body}>
+            <Title>Звук и настройки</Title>
+            <div className='flex flex-1 flex-col justify-center'>
+              <ReceiverControls online />
+            </div>
           </CardContent>
         </Card>
       ),
@@ -407,7 +408,7 @@ export function ReceiverPage() {
     {
       id: 'links',
       title: 'Настройки ресивера (ссылки)',
-      className: 'lg:col-span-2',
+      className: 'col-span-full',
       node: (
         <Card>
           <CardContent>
@@ -418,10 +419,26 @@ export function ReceiverPage() {
     },
   ]
 
+  const header = (
+    <div>
+      <div className='flex items-center gap-2 text-sm' role='status'>
+        <span>Marantz NR1604</span>
+        <span className='text-muted-foreground' aria-hidden>
+          ·
+        </span>
+        <span className='inline-flex items-center gap-1.5'>
+          <span className={cn('inline-block size-2 rounded-full', connection.cls)} aria-hidden /> {connection.label}
+          {st?.power === 'STANDBY' && ' · выключен'}
+        </span>
+      </div>
+      {err && <p className='mt-1 text-xs text-destructive'>{err.message}</p>}
+    </div>
+  )
+
   return (
-    <Page title='Ресивер' description='Marantz NR1604' layoutPage={RECEIVER_LAYOUT_PAGE}>
+    <Page title='Ресивер' description={header} layoutPage={RECEIVER_LAYOUT_PAGE}>
       <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
-        <SortableBlocks grid blocks={blocks} className='grid items-start gap-4 lg:grid-cols-2' />
+        <SortableBlocks grid stable blocks={blocks} className='grid gap-4 md:grid-cols-2 xl:grid-cols-3' />
       </div>
 
       <ConfirmDialog

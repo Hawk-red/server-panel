@@ -17,7 +17,7 @@ import { Main } from './main'
 
 type PageProps = {
   title: string
-  description?: string
+  description?: React.ReactNode
   actions?: React.ReactNode
   children?: React.ReactNode
   /** Идентификатор страницы с перетаскиваемыми блоками (SortableBlocks): в шапке появляется кнопка «Изменить порядок» */
@@ -65,7 +65,7 @@ export function Page({ title, description, actions, children, layoutPage }: Page
                 {title}
               </h1>
               {description && (
-                <p className='text-muted-foreground'>{description}</p>
+                <div className='text-muted-foreground'>{description}</div>
               )}
             </div>
             {/* Телефон: «⋯» стоит в строке заголовка, а не отдельной строкой под описанием */}

@@ -1,16 +1,27 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { RECEIVER_BLOCKS, RECEIVER_LAYOUT_PAGE } from './receiver-layout.ts'
+import { applyOrder } from './layout-order.ts'
+import { RECEIVER_BLOCKS, RECEIVER_GRID_BLOCKS, RECEIVER_LAYOUT_PAGE } from './receiver-layout.ts'
 import { sidebarData } from '../components/layout/data/sidebar-data.ts'
 
 const here = (p: string) => new URL(p, import.meta.url)
 
 describe('страница «Ресивер»: блоки', () => {
   it('порядок по умолчанию и уникальные id, допустимые серверу (a-z0-9-, до 40)', () => {
-    assert.deepEqual(RECEIVER_BLOCKS.map((b) => b.id), ['power', 'volume', 'inputs', 'modes', 'quick', 'nav', 'sound', 'links'])
+    assert.deepEqual(RECEIVER_BLOCKS.map((b) => b.id), ['volume', 'inputs', 'modes', 'quick', 'nav', 'sound', 'links'])
     assert.equal(new Set(RECEIVER_BLOCKS.map((b) => b.id)).size, RECEIVER_BLOCKS.length)
     for (const b of RECEIVER_BLOCKS) assert.match(b.id, /^[a-z0-9-]{1,40}$/)
+  })
+  it('блока power нет: 6 блоков сетки и блок ссылок последним', () => {
+    assert.ok(!RECEIVER_BLOCKS.some((b) => b.id === 'power'))
+    assert.deepEqual(RECEIVER_GRID_BLOCKS.map((b) => b.id), ['volume', 'inputs', 'modes', 'quick', 'nav', 'sound'])
+    assert.equal(RECEIVER_BLOCKS.at(-1)?.id, 'links')
+    assert.ok(!/id: 'power'/.test(readFileSync(here('../features/receiver/index.tsx'), 'utf8')))
+  })
+  it('старый сохранённый порядок с power не ломается: power игнорируется, остальные на местах', () => {
+    const r = applyOrder(RECEIVER_BLOCKS.map((b) => ({ id: b.id })), ['power', 'nav', 'volume', 'links']).map((b) => b.id)
+    assert.deepEqual(r, ['nav', 'volume', 'links', 'inputs', 'modes', 'quick', 'sound'])
   })
   it('ключ порядка — receiver (на сервере layout.receiver) и проходит проверку имени страницы', () => {
     assert.equal(RECEIVER_LAYOUT_PAGE, 'receiver')

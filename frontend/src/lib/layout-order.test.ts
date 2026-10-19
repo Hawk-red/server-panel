@@ -1,38 +1,37 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { applyOrder, moveItem } from './layout-order.ts'
-import { RECEIVER_BLOCKS } from './receiver-layout.ts'
 
-const blocks = RECEIVER_BLOCKS.map((b) => ({ id: b.id }))
+const blocks = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id) => ({ id }))
 const ids = (l: { id: string }[]) => l.map((b) => b.id)
 
 describe('порядок блоков: applyOrder', () => {
   it('без сохранённого порядка — порядок по умолчанию', () => {
-    assert.deepEqual(ids(applyOrder(blocks, [])), ['power', 'volume', 'inputs', 'modes', 'quick', 'nav', 'sound', 'links'])
+    assert.deepEqual(ids(applyOrder(blocks, [])), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'])
   })
   it('сохранённый порядок применяется (загрузка)', () => {
-    assert.deepEqual(ids(applyOrder(blocks, ['links', 'power'])).slice(0, 3), ['links', 'power', 'volume'])
+    assert.deepEqual(ids(applyOrder(blocks, ['h', 'a'])).slice(0, 3), ['h', 'a', 'b'])
   })
   it('неизвестные ключи игнорируются', () => {
-    const r = ids(applyOrder(blocks, ['ghost', 'nav', 'removed-block', 'power']))
-    assert.deepEqual(r.slice(0, 2), ['nav', 'power'])
+    const r = ids(applyOrder(blocks, ['ghost', 'f', 'removed-block', 'a']))
+    assert.deepEqual(r.slice(0, 2), ['f', 'a'])
     assert.equal(r.length, blocks.length)
     assert.ok(!r.includes('ghost'))
   })
   it('новый блок, которого нет в сохранённом порядке, встаёт в конец', () => {
-    const saved = ['links', 'nav', 'power'] // «будущий» блок ещё не сохранён
+    const saved = ['h', 'f', 'a'] // «будущий» блок ещё не сохранён
     const future = [...blocks, { id: 'new-block' }]
     const r = ids(applyOrder(future, saved))
     assert.equal(r.at(-1), 'new-block')
-    assert.deepEqual(r.slice(0, 3), ['links', 'nav', 'power'])
+    assert.deepEqual(r.slice(0, 3), ['h', 'f', 'a'])
   })
   it('сброс (пустой список) возвращает порядок по умолчанию', () => {
-    assert.deepEqual(ids(applyOrder(blocks, ['links', 'nav'])).slice(0, 2), ['links', 'nav'])
+    assert.deepEqual(ids(applyOrder(blocks, ['h', 'f'])).slice(0, 2), ['h', 'f'])
     assert.deepEqual(ids(applyOrder(blocks, [])), ids(blocks))
   })
   it('не меняет исходный список', () => {
     const before = ids(blocks)
-    applyOrder(blocks, ['links'])
+    applyOrder(blocks, ['h'])
     assert.deepEqual(ids(blocks), before)
   })
 })
@@ -50,6 +49,6 @@ describe('порядок блоков: moveItem (сохранение после
   })
   it('сохранённый после переноса порядок восстанавливается через applyOrder', () => {
     const moved = moveItem(ids(blocks), 7, 0)
-    assert.equal(ids(applyOrder(blocks, moved))[0], 'links')
+    assert.equal(ids(applyOrder(blocks, moved))[0], 'h')
   })
 })

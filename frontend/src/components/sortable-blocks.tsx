@@ -19,13 +19,13 @@ export const blockId = (prefix: string, raw: string) => `${prefix}-${raw}`.toLow
 
 type LayoutResponse = { order: string[] }
 
-function Item({ block, editing, index, count, onMove }: { block: Block; editing: boolean; index: number; count: number; onMove: (from: number, to: number) => void }) {
+function Item({ block, editing, stable, index, count, onMove }: { block: Block; editing: boolean; stable: boolean; index: number; count: number; onMove: (from: number, to: number) => void }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: block.id, disabled: !editing })
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn('min-w-0', block.className, editing && 'relative rounded-xl pt-4 outline-2 outline-offset-2 outline-dashed outline-info/60', isDragging && 'z-30 opacity-80')}
+      className={cn('min-w-0', block.className, editing && 'relative rounded-xl outline-2 outline-offset-2 outline-dashed outline-info/60', editing && !stable && 'pt-4', isDragging && 'z-30 opacity-80')}
     >
       {/* В режиме изменения содержимое «заморожено»: нажатия и фокус не проходят внутрь, чтобы блок можно было схватить в любом месте */}
       <div className={cn('h-full [&>*]:h-full', editing && 'pointer-events-none select-none')} inert={editing}>
@@ -62,7 +62,8 @@ function Item({ block, editing, index, count, onMove }: { block: Block; editing:
  * Блоки страницы с порядком, который можно менять перетаскиванием (мышью, пальцем, стрелками ▲▼ или с клавиатуры).
  * Порядок хранится на сервере (общий для всех устройств). Работает внутри <Page layoutPage='…'>: кнопка режима — в шапке.
  */
-export function SortableBlocks({ blocks, className, grid = false }: { blocks: Block[]; className?: string; grid?: boolean }) {
+/** stable — рамки и подписи режима изменения не меняют размеры блоков и промежутки (сетка не «прыгает») */
+export function SortableBlocks({ blocks, className, grid = false, stable = false }: { blocks: Block[]; className?: string; grid?: boolean; stable?: boolean }) {
   const edit = useLayoutEdit()
   const qc = useQueryClient()
   const page = edit?.page ?? ''
@@ -110,9 +111,9 @@ export function SortableBlocks({ blocks, className, grid = false }: { blocks: Bl
       )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={ids} strategy={grid ? rectSortingStrategy : verticalListSortingStrategy}>
-          <div className={cn(!className && 'space-y-4', className, editing && 'gap-y-9 sm:gap-y-9')}>
+          <div className={cn(!className && 'space-y-4', className, editing && !stable && 'gap-y-9 sm:gap-y-9')}>
             {ordered.map((b, i) => (
-              <Item key={b.id} block={b} editing={editing} index={i} count={ordered.length} onMove={move} />
+              <Item key={b.id} block={b} editing={editing} stable={stable} index={i} count={ordered.length} onMove={move} />
             ))}
           </div>
         </SortableContext>
