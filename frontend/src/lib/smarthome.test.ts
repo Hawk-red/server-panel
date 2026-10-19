@@ -5,13 +5,14 @@ import { sidebarData } from '../components/layout/data/sidebar-data.ts'
 import { applyOrder } from './layout-order.ts'
 import { buildPaletteItems, filterPaletteItems } from './palette.ts'
 import {
+  devicesByGroup, groupBlockId, groupLayoutPage, groupSummary, HA_STATUS_TEXT,
   addressFields, ALL_ROOMS, deviceBlockId, emptyForm, filterByRoom, NO_ROOM, openUrl, roomsOf, SMARTHOME_LAYOUT_PAGE, statusLabel, summaryText, toPayload, validateForm,
   type DeviceForm, type SmartDevice,
 } from './smarthome.ts'
 
 const here = (p: string) => new URL(p, import.meta.url)
 const st = (state: SmartDevice['status']['state'], latencyMs: number | null = null): SmartDevice['status'] => ({ state, checkedAt: 1, latencyMs, detail: null })
-const dev = (o: Partial<SmartDevice>): SmartDevice => ({ id: 1, name: 'Лампа', kind: 'ping', room: null, icon: 'lamp', host: '192.168.31.50', port: null, url: null, notes: null, enabled: true, status: st('online', 5), ...o })
+const dev = (o: Partial<SmartDevice>): SmartDevice => ({ source: 'manual', haDeviceId: null, haMissing: false, ha: null, groupKey: null, groupId: 'g1', hidden: false, id: 1, name: 'Лампа', kind: 'ping', room: null, icon: 'lamp', host: '192.168.31.50', port: null, url: null, notes: null, enabled: true, status: st('online', 5), ...o })
 const form = (o: Partial<DeviceForm>): DeviceForm => ({ ...emptyForm(), name: 'Лампа', kind: 'ping', host: '192.168.31.50', ...o })
 
 describe('меню и поиск', () => {
@@ -121,5 +122,61 @@ describe('страница', () => {
     assert.match(src, /Добавьте первое устройство/)
     assert.match(src, /ConfirmDialog/)
     assert.match(src, /Добавить устройство/)
+  })
+})
+
+describe('блоки-группы и Home Assistant', () => {
+  const ha = (o: Partial<SmartDevice>, tone: 'on' | 'off' | 'neutral' | 'unavailable' = 'neutral', available = true) =>
+    dev({ source: 'homeassistant', kind: 'homeassistant', haDeviceId: 'abc', ha: { manufacturer: 'M', model: 'X', integration: 'tuya', area: null, available, summary: { text: 't', tone, extras: [] } }, status: st(available ? 'online' : 'offline'), ...o })
+
+  it('ключи порядка допустимы серверу: блоки — страница smarthome, карточки группы — своя страница до 30 символов', () => {
+    for (const id of ['room-a1b2c3d4', 'int-sonoff', 'int-other', 'c-abc123', 'int-' + 'x'.repeat(14)]) {
+      assert.match(groupBlockId(id), /^[a-z0-9-]{1,40}$/, id)
+      assert.match(groupLayoutPage(id), /^[a-z0-9-]{1,30}$/, id)
+    }
+    assert.notEqual(groupLayoutPage('int-sonoff'), SMARTHOME_LAYOUT_PAGE)
+  })
+  it('устройства раскладываются по группам; пустая группа остаётся', () => {
+    const m = devicesByGroup([dev({ id: 1, groupId: 'a' }), dev({ id: 2, groupId: 'b' }), dev({ id: 3, groupId: 'a' })], [{ id: 'a' }, { id: 'b' }, { id: 'c' }])
+    assert.deepEqual([m.get('a')!.map((d) => d.id), m.get('b')!.map((d) => d.id), m.get('c')!.length], [[1, 3], [2], 0])
+  })
+  it('счётчик группы: «N устройств · M в сети · K включено»', () => {
+    assert.equal(groupSummary([ha({ id: 1 }, 'on'), ha({ id: 2 }, 'off'), ha({ id: 3 }, 'neutral', false)]), '3 устройства · 2 в сети · 1 включено')
+    assert.equal(groupSummary([ha({ id: 1 }, 'off')]), '1 устройство · 1 в сети')
+    assert.equal(groupSummary([]), '0 устройств · 0 в сети')
+  })
+  it('подписи состояния HA и «не найдено в HA»', () => {
+    assert.equal(statusLabel(st('online'), 'homeassistant'), 'доступно')
+    assert.equal(statusLabel(st('offline'), 'homeassistant'), 'недоступно')
+    assert.equal(statusLabel({ ...st('unknown'), detail: 'не найдено в HA' }, 'homeassistant'), 'не найдено в HA')
+    assert.equal(statusLabel(st('online', 7)), 'в сети · 7 мс')
+  })
+  it('у устройства HA нет обычной кнопки «Открыть» (своя — «Открыть в HA»)', () => assert.equal(openUrl({ source: 'homeassistant', kind: 'homeassistant', url: null, host: null, port: null }), null))
+  it('сообщения об ошибках HA', () => {
+    assert.match(HA_STATUS_TEXT.unauthorized, /401/)
+    assert.match(HA_STATUS_TEXT.unavailable, /недоступен/)
+  })
+  const idx = readFileSync(here('../features/smarthome/index.tsx'), 'utf8')
+  const card = readFileSync(here('../features/smarthome/device-card.tsx'), 'utf8')
+  const group = readFileSync(here('../features/smarthome/group-section.tsx'), 'utf8')
+  it('плашка «Подключите Home Assistant»: путь и команда без токена', () => {
+    assert.match(idx, /Подключите Home Assistant/)
+    assert.match(idx, /Долгосрочные токены доступа/)
+    assert.match(idx, /set-secret\.js HA_TOKEN/)
+    assert.match(idx, /backend\/\.env/)
+    assert.ok(!/eyJ[A-Za-z0-9_-]{10,}/.test(idx))
+  })
+  it('меню карточки: переименовать, переместить в группу, скрыть; «Открыть в HA»', () => {
+    for (const t of ['Переименовать', 'Переместить в группу…', 'Скрыть', 'Открыть в HA']) assert.ok(card.includes(t), t)
+    assert.match(idx, /config\/devices\/device\//)
+  })
+  it('группы: раскрывающиеся, свой ключ порядка карточек, два уровня перетаскивания', () => {
+    assert.match(group, /aria-expanded/)
+    assert.match(group, /pageKey=\{groupLayoutPage/)
+    assert.match(idx, /Порядок групп/)
+    assert.match(idx, /Порядок карточек/)
+  })
+  it('страница ничего не управляет: нет вызовов сервисов HA', () => {
+    for (const src of [idx, card, group]) assert.ok(!/services\/(light|switch|lock|cover|climate)|turn_on|turn_off|call_service/.test(src))
   })
 })

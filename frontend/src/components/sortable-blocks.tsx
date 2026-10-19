@@ -62,12 +62,14 @@ function Item({ block, editing, stable, index, count, onMove }: { block: Block; 
  * Блоки страницы с порядком, который можно менять перетаскиванием (мышью, пальцем, стрелками ▲▼ или с клавиатуры).
  * Порядок хранится на сервере (общий для всех устройств). Работает внутри <Page layoutPage='…'>: кнопка режима — в шапке.
  */
-/** stable — рамки и подписи режима изменения не меняют размеры блоков и промежутки (сетка не «прыгает») */
-export function SortableBlocks({ blocks, className, grid = false, stable = false }: { blocks: Block[]; className?: string; grid?: boolean; stable?: boolean }) {
+/** stable — рамки и подписи режима изменения не меняют размеры блоков и промежутки (сетка не «прыгает»);
+ *  pageKey — свой ключ порядка (вложенные списки: карточки внутри блока); banner=false — без панели режима (она у внешнего списка);
+ *  sortable=false — список не перетаскивается, но порядок применяется */
+export function SortableBlocks({ blocks, className, grid = false, stable = false, pageKey, banner = true, sortable = true }: { blocks: Block[]; className?: string; grid?: boolean; stable?: boolean; pageKey?: string; banner?: boolean; sortable?: boolean }) {
   const edit = useLayoutEdit()
   const qc = useQueryClient()
-  const page = edit?.page ?? ''
-  const editing = Boolean(edit?.editing)
+  const page = pageKey ?? edit?.page ?? ''
+  const editing = sortable && Boolean(edit?.editing)
   const key = ['layout', page]
 
   const { data } = useQuery({ queryKey: key, queryFn: async () => (await api.get<LayoutResponse>(`/layout/${page}`)).data, enabled: Boolean(page), staleTime: 5 * 60_000 })
@@ -98,7 +100,7 @@ export function SortableBlocks({ blocks, className, grid = false, stable = false
 
   return (
     <>
-      {editing && edit && (
+      {editing && edit && banner && (
         <div className='mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-info/50 bg-info/10 px-3 py-2 text-sm'>
           <span className='me-auto'>Режим изменения порядка: перетащите блок за любое место, либо используйте стрелки ▲▼ на блоке.</span>
           <Button type='button' size='sm' variant='outline' onClick={() => save.mutate([])} disabled={!data?.order.length}>

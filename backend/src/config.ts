@@ -49,6 +49,8 @@ export const config = {
   dockerProxy: env.DOCKER_PROXY ?? 'http://127.0.0.1:2375',
   qbt: { url: env.QBT_URL ?? 'http://127.0.0.1:8090', user: env.QBT_USER ?? '', password: env.QBT_PASSWORD ?? '' },
   adguard: { url: env.ADGUARD_URL ?? 'http://127.0.0.1:3000', user: env.ADGUARD_USER ?? '', password: env.ADGUARD_PASSWORD ?? '' },
+  // Home Assistant: только чтение (реестр устройств и состояния). Токен — Long-Lived Access Token, лежит в .env, на фронт не уходит
+  ha: { url: env.HA_URL ?? 'http://127.0.0.1:8123', token: env.HA_TOKEN ?? '' },
   jellyfin: { url: env.JELLYFIN_URL ?? 'http://127.0.0.1:8096', apiKey: env.JELLYFIN_API_KEY ?? '' },
   // Веб-интерфейс ресивера — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP
   // maxVolume — потолок громкости пульта по шкале ресивера MVxx (60 = −20 dB: абсолютная шкала, dB = MV − 80)

@@ -6,7 +6,7 @@ import readline from 'node:readline/promises'
 import { ENV_FILE } from '../config.js'
 import { registryTokens } from '../services/bots.js'
 
-const ALLOWED = ['QBT_USER', 'QBT_PASSWORD', 'ADGUARD_USER', 'ADGUARD_PASSWORD', 'JELLYFIN_API_KEY', 'NOTIFY_BOT_TOKEN']
+const ALLOWED = ['QBT_USER', 'QBT_PASSWORD', 'ADGUARD_USER', 'ADGUARD_PASSWORD', 'JELLYFIN_API_KEY', 'NOTIFY_BOT_TOKEN', 'HA_TOKEN']
 const key = process.argv[2]
 if (!key || !ALLOWED.includes(key)) {
   console.error(`Укажите ключ: ${ALLOWED.join(', ')}`)
@@ -29,6 +29,11 @@ rl.close()
 process.stdout.write('\n')
 if (!value || /[\r\n]/.test(value)) {
   console.error('Пустое или некорректное значение.')
+  process.exit(1)
+}
+
+if (key === 'HA_TOKEN' && !/^[A-Za-z0-9._-]{40,}$/.test(value)) {
+  console.error('Это не похоже на Long-Lived Access Token Home Assistant (длинная строка из букв, цифр, точек и дефисов). Ничего не записано.')
   process.exit(1)
 }
 

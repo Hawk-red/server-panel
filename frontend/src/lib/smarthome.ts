@@ -31,6 +31,8 @@ export type IconId = (typeof ICONS)[number]['id']
 export const DEFAULT_ROOMS = ['Гостиная', 'Кухня', 'Спальня', 'Прихожая']
 
 export type DeviceStatus = { state: 'online' | 'offline' | 'unknown' | 'disabled' | 'checking'; checkedAt: number | null; latencyMs: number | null; detail: string | null }
+export type HaSummary = { text: string; tone: 'on' | 'off' | 'neutral' | 'unavailable'; extras: { label: string; value: string; unit: string | null }[] }
+export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary }
 export type SmartDevice = {
   id: number
   name: string
@@ -43,6 +45,42 @@ export type SmartDevice = {
   notes: string | null
   enabled: boolean
   status: DeviceStatus
+  source: 'manual' | 'homeassistant'
+  haDeviceId: string | null
+  haMissing: boolean
+  ha: HaInfo | null
+  groupKey: string | null
+  groupId: string
+  hidden: boolean
+}
+
+export type Accent = 'info' | 'ok' | 'warn' | 'brand' | 'indigo' | 'volume'
+export type GroupIcon = 'home' | 'plug' | 'cloud' | 'folder' | 'box'
+export type Group = { id: string; name: string; accent: Accent; icon: GroupIcon; custom: boolean }
+export type HaConnection = { configured: boolean; status: 'ok' | 'pending' | 'no-token' | 'unavailable' | 'unauthorized' | 'error'; message: string | null; syncedAt: number | null }
+export type SmartHomeData = { devices: SmartDevice[]; hidden: SmartDevice[]; groups: Group[]; ha: HaConnection; now: number }
+
+// Порядок блоков хранится под ключом страницы, порядок карточек внутри блока — под своим ключом (на сервере: layout.<ключ>, до 30 символов)
+export const groupBlockId = (groupId: string) => `g-${groupId}`
+export const groupLayoutPage = (groupId: string) => `${SMARTHOME_LAYOUT_PAGE}-${groupId}`.slice(0, 30)
+
+export function devicesByGroup(devices: SmartDevice[], groups: Pick<Group, 'id'>[]): Map<string, SmartDevice[]> {
+  const m = new Map<string, SmartDevice[]>(groups.map((g) => [g.id, []]))
+  for (const d of devices) m.get(d.groupId)?.push(d)
+  return m
+}
+
+// «N устройств · M в сети» и, если есть, «K включено»
+export function groupSummary(devices: SmartDevice[]): string {
+  const online = devices.filter((d) => d.status.state === 'online').length
+  const on = devices.filter((d) => d.ha?.summary.tone === 'on').length
+  return `${devices.length} ${plural(devices.length, 'устройство', 'устройства', 'устройств')} · ${online} в сети${on > 0 ? ` · ${on} включено` : ''}`
+}
+
+export const HA_STATUS_TEXT: Record<Exclude<HaConnection['status'], 'ok' | 'pending' | 'no-token'>, string> = {
+  unavailable: 'Home Assistant недоступен',
+  unauthorized: 'Home Assistant отклонил токен (401)',
+  error: 'Ошибка Home Assistant',
 }
 
 export const deviceBlockId = (id: number) => `dev-${id}` // допустимо серверу: ^[a-z0-9-]{1,40}$
@@ -79,14 +117,16 @@ export function summaryText(devices: Pick<SmartDevice, 'status'>[]): string {
 }
 
 // Адрес для кнопки «Открыть»: только http/https; для HTTP-проверки по IP — адрес устройства
-export function openUrl(d: Pick<SmartDevice, 'kind' | 'url' | 'host' | 'port'>): string | null {
+export function openUrl(d: Pick<SmartDevice, 'kind' | 'url' | 'host' | 'port'> & { source?: string }): string | null {
+  if (d.source === 'homeassistant') return null // у устройств HA своя кнопка «Открыть в HA»
   if (d.url && /^https?:\/\//i.test(d.url)) return d.url
   if (d.kind === 'http' && d.host) return `http://${d.host.includes(':') ? `[${d.host}]` : d.host}${d.port && d.port !== 80 ? `:${d.port}` : ''}/`
   if (d.kind === 'homeassistant' && d.host) return `http://${d.host}:${d.port ?? 8123}/`
   return null
 }
 
-export function statusLabel(s: DeviceStatus): string {
+export function statusLabel(s: DeviceStatus, source: SmartDevice['source'] = 'manual'): string {
+  if (source === 'homeassistant') return s.state === 'online' ? 'доступно' : s.state === 'offline' ? 'недоступно' : (s.detail ?? 'нет данных')
   switch (s.state) {
     case 'online': return s.latencyMs !== null ? `в сети · ${s.latencyMs} мс` : 'в сети'
     case 'offline': return 'не в сети'

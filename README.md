@@ -86,6 +86,7 @@ sudo systemctl restart server-panel
 sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js QBT_USER        # и QBT_PASSWORD
 sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js ADGUARD_USER    # и ADGUARD_PASSWORD
 sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js JELLYFIN_API_KEY
+sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js HA_TOKEN         # Home Assistant, страница «Умный дом» (только чтение); HA_URL по умолчанию http://127.0.0.1:8123
 sudo systemctl restart server-panel
 ```
 

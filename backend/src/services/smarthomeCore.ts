@@ -7,7 +7,8 @@ import { run } from '../exec.js'
 // ---------- модель и проверка входных данных ----------
 export const KINDS = ['link', 'http', 'tcp', 'ping', 'homeassistant'] as const
 export type Kind = (typeof KINDS)[number]
-export const ICONS = ['lamp', 'socket', 'sensor', 'camera', 'lock', 'ac', 'tv', 'router', 'speaker', 'other'] as const
+export const ICON_IDS = ['lamp', 'socket', 'sensor', 'camera', 'lock', 'ac', 'tv', 'router', 'speaker', 'other'] as const
+export const ICONS = ICON_IDS
 export const MAX_DEVICES = 60 // порядок карточек хранится общим механизмом страниц: до 60 id
 
 export type DeviceInput = {

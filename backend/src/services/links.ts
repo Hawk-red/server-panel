@@ -13,6 +13,7 @@ export const SERVICE_LINKS: Record<string, Def> = {
   portainer: { scheme: 'http', port: 9000 },
   adguard: { scheme: 'http', port: 3000 },
   qbittorrent: { scheme: 'http', port: 8090 },
+  homeassistant: { scheme: 'http', port: 8123 }, // Home Assistant (network_mode host); ссылки «Открыть в HA» на странице «Умный дом»
   mirror: { scheme: 'http', port: 80 }, // зеркало jetsetter (default_server на :80)
   marantz: { scheme: 'http', port: 80, host: config.marantz.host }, // другое устройство в LAN
   sftpgo_admin: { scheme: 'https', port: 8443, host: 'api.pulsdev.net', path: '/files/web/admin/' }, // админка обменника: nginx, только LAN/VPN

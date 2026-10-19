@@ -1,11 +1,42 @@
 import { db } from '../db.js'
+import { config } from '../config.js'
+import { errText } from '../mask.js'
+import { getSetting, setSetting } from '../settings.js'
+import { HaError, readDevices, type HaStatus, type HaSummary } from './haClient.js'
+import { accentForNewGroup, newGroupId, resolveGroups, type CustomGroup, type Group } from './smarthomeGroups.js'
+import { applyHaSync } from './smarthomeSync.js'
 import { createStatusCache, type DeviceInput, type Status } from './smarthomeCore.js'
 
-export type SmartDevice = DeviceInput & { id: number; createdAt: number; updatedAt: number }
-export type SmartDeviceView = SmartDevice & { status: Status }
+export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary }
+export type SmartDevice = DeviceInput & {
+  id: number
+  createdAt: number
+  updatedAt: number
+  source: 'manual' | 'homeassistant'
+  haDeviceId: string | null
+  haMissing: boolean
+  ha: HaInfo | null
+  groupKey: string | null
+  hidden: boolean
+}
+export type SmartDeviceView = SmartDevice & { status: Status; groupId: string }
 
-type Row = { id: number; name: string; kind: SmartDevice['kind']; room: string | null; icon: SmartDevice['icon']; host: string | null; port: number | null; url: string | null; notes: string | null; enabled: number; created_at: number; updated_at: number }
-const map = (r: Row): SmartDevice => ({ id: r.id, name: r.name, kind: r.kind, room: r.room, icon: r.icon, host: r.host, port: r.port, url: r.url, notes: r.notes, enabled: r.enabled === 1, createdAt: r.created_at, updatedAt: r.updated_at })
+type Row = {
+  id: number; name: string; kind: SmartDevice['kind']; room: string | null; icon: SmartDevice['icon']; host: string | null; port: number | null; url: string | null; notes: string | null
+  enabled: number; created_at: number; updated_at: number; source: SmartDevice['source']; ha_device_id: string | null; ha_info: string | null; ha_missing: number; name_custom: number
+  group_key: string | null; hidden: number
+}
+const parseInfo = (s: string | null): HaInfo | null => {
+  try {
+    return s ? (JSON.parse(s) as HaInfo) : null
+  } catch {
+    return null
+  }
+}
+const map = (r: Row): SmartDevice => ({
+  id: r.id, name: r.name, kind: r.kind, room: r.room, icon: r.icon, host: r.host, port: r.port, url: r.url, notes: r.notes, enabled: r.enabled === 1, createdAt: r.created_at, updatedAt: r.updated_at,
+  source: r.source, haDeviceId: r.ha_device_id, haMissing: r.ha_missing === 1, ha: parseInfo(r.ha_info), groupKey: r.group_key, hidden: r.hidden === 1,
+})
 
 const cache = createStatusCache()
 
@@ -14,13 +45,94 @@ export const getDevice = (id: number): SmartDevice | null => {
   const r = db.prepare('SELECT * FROM smart_devices WHERE id = ?').get(id) as Row | undefined
   return r ? map(r) : null
 }
-export const countDevices = () => (db.prepare('SELECT COUNT(*) AS n FROM smart_devices').get() as { n: number }).n
+export const countManual = () => (db.prepare("SELECT COUNT(*) AS n FROM smart_devices WHERE source = 'manual'").get() as { n: number }).n
 
-// Список с состояниями: берёт из кэша, устаревшие проверяет в фоне (запрос не ждёт)
-export function listWithStatus(): SmartDeviceView[] {
-  return listDevices().map((d) => ({ ...d, status: cache.get(d.id, d).status }))
+// Состояние устройства из Home Assistant — по его данным (панель HA не опрашивает чаще, чем раз в 20 с); ручные — проверкой доступности
+function statusOf(d: SmartDevice): Status {
+  if (d.source === 'homeassistant') {
+    if (d.haMissing) return { state: 'unknown', checkedAt: null, latencyMs: null, detail: 'не найдено в HA' }
+    return { state: d.ha?.available ? 'online' : 'offline', checkedAt: haState.syncedAt, latencyMs: null, detail: d.ha?.available ? null : 'недоступно' }
+  }
+  return cache.get(d.id, d).status
 }
 
+// ---------- Home Assistant: состояние синхронизации ----------
+export const HA_TTL_MS = 20_000
+export const haState: { status: HaStatus; message: string | null; syncedAt: number | null; lastAttempt: number; inflight: Promise<void> | null } = {
+  status: config.ha.token ? 'pending' : 'no-token', message: null, syncedAt: null, lastAttempt: 0, inflight: null,
+}
+
+export type HaReader = typeof readDevices
+// Одна синхронизация (читает HA, пишет в реестр). Ошибки не бросает: превращает в понятный статус
+export async function syncHa(opts: { reader?: HaReader; now?: () => number } = {}): Promise<void> {
+  const now = opts.now ?? Date.now
+  haState.lastAttempt = now()
+  try {
+    const list = await (opts.reader ?? readDevices)({ url: config.ha.url, token: config.ha.token })
+    applyHaSync(db, list, now())
+    haState.status = 'ok'
+    haState.message = null
+    haState.syncedAt = now()
+  } catch (e) {
+    const he = e instanceof HaError ? e : null
+    haState.status = he?.status ?? 'error'
+    haState.message = errText(e).split('\n')[0]
+  }
+}
+
+// В фоне, не чаще раза в 20 с; запрос списка её не ждёт
+export function maybeSyncHa(now = Date.now()) {
+  if (!config.ha.token || haState.inflight || now - haState.lastAttempt < HA_TTL_MS) return
+  haState.inflight = syncHa().finally(() => (haState.inflight = null))
+}
+// Принудительно (кнопка «Обновить»): не чаще раза в 5 с
+export async function forceSyncHa(): Promise<void> {
+  if (!config.ha.token) return
+  if (haState.inflight) return haState.inflight
+  if (Date.now() - haState.lastAttempt < 5000) return
+  haState.inflight = syncHa().finally(() => (haState.inflight = null))
+  return haState.inflight
+}
+export const haPublic = () => ({ configured: Boolean(config.ha.token), status: haState.status, message: haState.message, syncedAt: haState.syncedAt })
+
+// ---------- блоки ----------
+const GROUPS_KEY = 'smarthome.groups'
+export const customGroups = (): CustomGroup[] => getSetting<CustomGroup[]>(GROUPS_KEY, [])
+
+export function addGroup(name: string): CustomGroup {
+  const list = customGroups()
+  const g: CustomGroup = { id: newGroupId(), name, accent: accentForNewGroup(list.length), icon: 'folder' }
+  setSetting(GROUPS_KEY, [...list, g])
+  return g
+}
+export function renameGroup(id: string, name: string): CustomGroup | null {
+  const list = customGroups()
+  const g = list.find((x) => x.id === id)
+  if (!g) return null
+  g.name = name
+  setSetting(GROUPS_KEY, list)
+  return g
+}
+export function removeGroup(id: string): boolean {
+  const list = customGroups()
+  if (!list.some((x) => x.id === id)) return false
+  setSetting(GROUPS_KEY, list.filter((x) => x.id !== id))
+  db.prepare('UPDATE smart_devices SET group_key = NULL WHERE group_key = ?').run(id) // устройства возвращаются в блок по умолчанию
+  return true
+}
+
+// Блоки, существующие сейчас (для проверки «переместить в блок»)
+export const currentGroups = (): Group[] => resolveGroups(listDevices().filter((d) => !d.hidden), customGroups()).groups
+
+export function listView() {
+  const all = listDevices()
+  const visible = all.filter((d) => !d.hidden)
+  const { groups, groupOf } = resolveGroups(visible, customGroups())
+  const view = (d: SmartDevice): SmartDeviceView => ({ ...d, status: statusOf(d), groupId: groupOf.get(d.id) ?? '' })
+  return { devices: visible.map(view), hidden: all.filter((d) => d.hidden).map((d): SmartDeviceView => ({ ...d, status: { state: 'unknown', checkedAt: null, latencyMs: null, detail: null }, groupId: '' })), groups }
+}
+
+// ---------- запись ----------
 export function createDevice(v: DeviceInput): SmartDevice {
   const now = Date.now()
   const r = db
@@ -31,10 +143,33 @@ export function createDevice(v: DeviceInput): SmartDevice {
 
 export function updateDevice(id: number, v: DeviceInput): SmartDevice | null {
   const r = db
-    .prepare('UPDATE smart_devices SET name=?, kind=?, room=?, icon=?, host=?, port=?, url=?, notes=?, enabled=?, updated_at=? WHERE id=?')
+    .prepare("UPDATE smart_devices SET name=?, kind=?, room=?, icon=?, host=?, port=?, url=?, notes=?, enabled=?, updated_at=? WHERE id=? AND source='manual'")
     .run(v.name, v.kind, v.room, v.icon, v.host, v.port, v.url, v.notes, v.enabled ? 1 : 0, Date.now(), id)
   if (r.changes === 0) return null
   cache.forget(id)
+  return getDevice(id)
+}
+
+// Выбор владельца: имя (у устройства из HA фиксируется и не затирается синхронизацией), блок, скрытие
+export function patchDevice(id: number, p: { name?: string; groupKey?: string | null; hidden?: boolean }): SmartDevice | null {
+  const d = getDevice(id)
+  if (!d) return null
+  const sets: string[] = []
+  const args: unknown[] = []
+  if (p.name !== undefined) {
+    sets.push('name = ?', 'name_custom = 1')
+    args.push(p.name)
+  }
+  if (p.groupKey !== undefined) {
+    sets.push('group_key = ?')
+    args.push(p.groupKey)
+  }
+  if (p.hidden !== undefined) {
+    sets.push('hidden = ?')
+    args.push(p.hidden ? 1 : 0)
+  }
+  if (sets.length === 0) return d
+  db.prepare(`UPDATE smart_devices SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, Date.now(), id)
   return getDevice(id)
 }
 
