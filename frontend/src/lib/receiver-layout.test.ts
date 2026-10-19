@@ -35,6 +35,25 @@ describe('страница «Ресивер»: блоки', () => {
   })
 })
 
+describe('кнопка питания', () => {
+  const src = readFileSync(here('../features/receiver/index.tsx'), 'utf8')
+  it('диалога подтверждения выключения нет, PWSTANDBY уходит сразу', () => {
+    assert.doesNotMatch(src, /ConfirmDialog|Выключить ресивер\?/)
+    assert.match(src, /send\(on \? 'PWSTANDBY' : 'PWON'\)/)
+  })
+  it('красная только при подтверждённом standby, зелёная при включённом, иначе серая', () => {
+    assert.match(src, /standby && 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500'/)
+    assert.match(src, /on && 'bg-emerald-700/)
+    assert.match(src, /!on && !standby && 'bg-muted/)
+  })
+  it('кнопка заблокирована, пока идёт любая команда, и без данных о питании', () => {
+    assert.match(src, /disabled=\{\(!on && !standby\) \|\| pending !== null\}/)
+  })
+  it('подсказки: «Включить ресивер» в standby, «Выключить ресивер» при включённом', () => {
+    assert.match(src, /on \? 'Выключить ресивер' : standby \? 'Включить ресивер'/)
+  })
+})
+
 describe('главное меню: пункт «Ресивер»', () => {
   const all = sidebarData.navGroups.flatMap((g) => g.items.map((i) => ({ group: g.title, i })))
   it('есть пункт с адресом /receiver и подзаголовком Marantz NR1604', () => {

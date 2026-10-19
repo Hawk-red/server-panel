@@ -9,7 +9,6 @@ import { activeInput, activeMode, bumpVolume, createHold, formatDb, inputIcon, l
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { RECEIVER_LAYOUT_PAGE } from '@/lib/receiver-layout'
-import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ReceiverControls } from '@/features/media/receiver-controls'
@@ -115,7 +114,8 @@ export function ReceiverPage() {
   const st = q.data
   const err = q.isError ? errInfo(q.error) : null
   const on = st?.power === 'ON'
-  const [confirmOff, setConfirmOff] = useState(false)
+  const standby = st?.power === 'STANDBY'
+  const powerLabel = on ? 'Выключить ресивер' : standby ? 'Включить ресивер' : 'Питание ресивера'
   const [lastQuick, setLastQuick] = useState<string | null>(null)
   const [lastMode, setLastMode] = useState<{ cmd: string; modeAtClick: string | null } | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -310,14 +310,20 @@ export function ReceiverPage() {
               </div>
               <Button
                 size='icon'
-                aria-label={on ? 'Выключить ресивер' : 'Включить ресивер'}
+                aria-label={powerLabel}
+                title={powerLabel}
                 aria-pressed={on}
-                disabled={!st || pending === 'PWON' || pending === 'PWSTANDBY'}
-                className={cn('size-12 shrink-0 rounded-full', on ? 'bg-emerald-700 text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500' : 'bg-muted text-muted-foreground hover:bg-muted/80')}
+                disabled={(!on && !standby) || pending !== null}
+                className={cn(
+                  'size-12 shrink-0 rounded-full',
+                  // зелёная — включён; красная (как активный Mute) — только подтверждённый standby; нет данных — серая
+                  on && 'bg-emerald-700 text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500',
+                  standby && 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500',
+                  !on && !standby && 'bg-muted text-muted-foreground hover:bg-muted/80',
+                )}
                 onClick={() => {
                   buzz()
-                  if (on) setConfirmOff(true)
-                  else void send('PWON')
+                  void send(on ? 'PWSTANDBY' : 'PWON')
                 }}
               >
                 {pending === 'PWON' || pending === 'PWSTANDBY' ? <Loader2 className='size-6 animate-spin' /> : <Power className='size-6' />}
@@ -440,19 +446,6 @@ export function ReceiverPage() {
       <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
         <SortableBlocks grid stable blocks={blocks} className='grid gap-4 md:grid-cols-2 xl:grid-cols-3' />
       </div>
-
-      <ConfirmDialog
-        open={confirmOff}
-        onOpenChange={setConfirmOff}
-        title='Выключить ресивер?'
-        desc='Ресивер перейдёт в режим ожидания. Включить его можно кнопкой питания здесь или на самом ресивере.'
-        confirmText='Выключить'
-        destructive
-        handleConfirm={() => {
-          setConfirmOff(false)
-          void send('PWSTANDBY')
-        }}
-      />
     </Page>
   )
 }
