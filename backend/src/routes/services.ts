@@ -89,13 +89,33 @@ export async function serviceRoutes(app: FastifyInstance) {
   // Marantz по telnet: чтение состояния и запись параметров из белого списка (receiver.WRITABLE)
   const receiverFail = (e: unknown, reply: import('fastify').FastifyReply) => {
     const err = e as receiver.ReceiverError
-    const code = err.code === 'bad' ? 400 : err.code === 'standby' ? 409 : err.code === 'busy' ? 503 : 502
+    const code = err.code === 'bad' ? 400 : err.code === 'standby' || err.code === 'limit' ? 409 : err.code === 'rate' ? 429 : err.code === 'busy' ? 503 : 502
     return reply.code(code).send({ message: err.message, code: err.code ?? 'offline' })
   }
   app.get('/api/receiver', async (_req, reply) => {
     try {
-      return await receiver.getState()
+      return { ...(await receiver.getState()), stats: receiver.getStats() }
     } catch (e) {
+      return receiverFail(e, reply)
+    }
+  })
+  // Пульт: команда из белого списка (receiver.FIXED и SI<вход>), всё остальное — 400 без открытия сеанса.
+  // В журнал: питание, вход, режим, Quick Select, mute; громкость и навигация — нет (шум), но считаются в stats
+  const AUDITED = new Set(['power', 'input', 'mode', 'quick', 'mute'])
+  app.post<{ Body: { command?: unknown } }>('/api/receiver/command', async (req, reply) => {
+    const command = typeof req.body?.command === 'string' ? req.body.command : ''
+    let cls: receiver.CmdClass
+    try {
+      cls = receiver.classify(command)
+    } catch (e) {
+      return receiverFail(e, reply)
+    }
+    try {
+      const r = await receiver.sendCommand(command)
+      if (AUDITED.has(cls)) audit({ ...who(req), action: `receiver.${cls}`, target: command, result: r.accepted ? 'ok' : 'error', details: { from: r.before, to: r.after } })
+      return r
+    } catch (e) {
+      if (AUDITED.has(cls)) audit({ ...who(req), action: `receiver.${cls}`, target: command, result: 'error', details: { message: (e as Error).message } })
       return receiverFail(e, reply)
     }
   })

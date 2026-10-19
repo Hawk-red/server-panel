@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { ExternalLink, Globe, Pause, Play, Speaker } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ExternalLink, Gamepad2, Globe, Pause, Play, Speaker } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelative } from '@/lib/format'
 import type { MediaData } from '@/lib/types'
-import { ReceiverControls } from './receiver-controls'
 import { RECEIVER_LINK_GROUPS } from '@/lib/receiver-links'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
@@ -142,7 +142,11 @@ export function Media() {
                 <Globe /> Открыть веб-интерфейс
               </HomeLink>
             </Button>
-            <ReceiverControls online={Boolean(mz?.data?.online)} />
+            <Button size='lg' className='h-12 w-full' asChild disabled={!mz?.data?.online}>
+              <Link to='/media/remote'>
+                <Gamepad2 /> Пульт ресивера
+              </Link>
+            </Button>
             <div className='space-y-2'>
               <div className='text-xs font-medium'>Настройки ресивера</div>
               {RECEIVER_LINK_GROUPS.map((g) => (

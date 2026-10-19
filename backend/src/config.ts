@@ -51,7 +51,8 @@ export const config = {
   adguard: { url: env.ADGUARD_URL ?? 'http://127.0.0.1:3000', user: env.ADGUARD_USER ?? '', password: env.ADGUARD_PASSWORD ?? '' },
   jellyfin: { url: env.JELLYFIN_URL ?? 'http://127.0.0.1:8096', apiKey: env.JELLYFIN_API_KEY ?? '' },
   // Веб-интерфейс ресивера — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP
-  marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 80 },
+  // maxVolume — потолок громкости пульта по шкале ресивера MVxx (60 = −20 dB: абсолютная шкала, dB = MV − 80)
+  marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 80, maxVolume: Number(env.MARANTZ_MAX_VOLUME ?? 60) },
   // Адрес сервера в локальной сети: на него ведут ссылки на веб-интерфейсы служб (панель может быть открыта по panel.pulsdev.net,
   // а у такого имени этих портов нет, да и HSTS принудительно включает https). Задаётся LAN_HOST в .env, по умолчанию 192.168.31.112
   lanHost: env.LAN_HOST ?? '192.168.31.112',

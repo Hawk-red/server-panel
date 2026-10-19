@@ -30,6 +30,7 @@ import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenti
 import { Route as AuthenticatedGitIndexRouteImport } from './routes/_authenticated/git/index'
 import { Route as AuthenticatedInternetIndexRouteImport } from './routes/_authenticated/internet/index'
 import { Route as AuthenticatedMediaIndexRouteImport } from './routes/_authenticated/media/index'
+import { Route as AuthenticatedMediaRemoteRouteImport } from './routes/_authenticated/media/remote'
 import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authenticated/network/index'
 import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_authenticated/notifications/index'
 import { Route as AuthenticatedSecurityIndexRouteImport } from './routes/_authenticated/security/index'
@@ -150,6 +151,12 @@ const AuthenticatedMediaIndexRoute = AuthenticatedMediaIndexRouteImport.update({
   path: '/media/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMediaRemoteRoute =
+  AuthenticatedMediaRemoteRouteImport.update({
+    id: '/media/remote',
+    path: '/media/remote',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedNetworkIndexRoute =
   AuthenticatedNetworkIndexRouteImport.update({
     id: '/network/',
@@ -215,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/503': typeof errors503Route
   '/tv/$section': typeof TvSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
+  '/media/remote': typeof AuthenticatedMediaRemoteRoute
   '/access/': typeof AuthenticatedAccessIndexRoute
   '/adguard/': typeof AuthenticatedAdguardIndexRoute
   '/ai/': typeof AuthenticatedAiIndexRoute
@@ -246,6 +254,7 @@ export interface FileRoutesByTo {
   '/tv/$section': typeof TvSectionRoute
   '/': typeof AuthenticatedIndexRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
+  '/media/remote': typeof AuthenticatedMediaRemoteRoute
   '/access': typeof AuthenticatedAccessIndexRoute
   '/adguard': typeof AuthenticatedAdguardIndexRoute
   '/ai': typeof AuthenticatedAiIndexRoute
@@ -279,6 +288,7 @@ export interface FileRoutesById {
   '/tv_/$section': typeof TvSectionRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
+  '/_authenticated/media/remote': typeof AuthenticatedMediaRemoteRoute
   '/_authenticated/access/': typeof AuthenticatedAccessIndexRoute
   '/_authenticated/adguard/': typeof AuthenticatedAdguardIndexRoute
   '/_authenticated/ai/': typeof AuthenticatedAiIndexRoute
@@ -312,6 +322,7 @@ export interface FileRouteTypes {
     | '/503'
     | '/tv/$section'
     | '/errors/$error'
+    | '/media/remote'
     | '/access/'
     | '/adguard/'
     | '/ai/'
@@ -343,6 +354,7 @@ export interface FileRouteTypes {
     | '/tv/$section'
     | '/'
     | '/errors/$error'
+    | '/media/remote'
     | '/access'
     | '/adguard'
     | '/ai'
@@ -375,6 +387,7 @@ export interface FileRouteTypes {
     | '/tv_/$section'
     | '/_authenticated/'
     | '/_authenticated/errors/$error'
+    | '/_authenticated/media/remote'
     | '/_authenticated/access/'
     | '/_authenticated/adguard/'
     | '/_authenticated/ai/'
@@ -557,6 +570,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMediaIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/media/remote': {
+      id: '/_authenticated/media/remote'
+      path: '/media/remote'
+      fullPath: '/media/remote'
+      preLoaderRoute: typeof AuthenticatedMediaRemoteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/network/': {
       id: '/_authenticated/network/'
       path: '/network'
@@ -626,6 +646,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
+  AuthenticatedMediaRemoteRoute: typeof AuthenticatedMediaRemoteRoute
   AuthenticatedAccessIndexRoute: typeof AuthenticatedAccessIndexRoute
   AuthenticatedAdguardIndexRoute: typeof AuthenticatedAdguardIndexRoute
   AuthenticatedAiIndexRoute: typeof AuthenticatedAiIndexRoute
@@ -650,6 +671,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
+  AuthenticatedMediaRemoteRoute: AuthenticatedMediaRemoteRoute,
   AuthenticatedAccessIndexRoute: AuthenticatedAccessIndexRoute,
   AuthenticatedAdguardIndexRoute: AuthenticatedAdguardIndexRoute,
   AuthenticatedAiIndexRoute: AuthenticatedAiIndexRoute,
