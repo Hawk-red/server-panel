@@ -1,0 +1,10 @@
+# /etc/sudoers.d/server-panel-bluetooth — включение/выключение Bluetooth и автозагрузки из раздела «Беспроводные» панели (пользователь panel).
+# Источник: /opt/server-panel/deploy/bluetooth/sudoers-server-panel-bluetooth. Проверка перед установкой: visudo -cf <файл>
+# Отдельный файл — основной /etc/sudoers.d/server-panel не трогаем. Только root-утилита и пять точных вызовов, без «*».
+Cmnd_Alias SP_BTHELPER = /usr/local/sbin/server-panel-bluetooth status, \
+    /usr/local/sbin/server-panel-bluetooth on, \
+    /usr/local/sbin/server-panel-bluetooth off, \
+    /usr/local/sbin/server-panel-bluetooth autostart-on, \
+    /usr/local/sbin/server-panel-bluetooth autostart-off
+
+panel ALL=(root) NOPASSWD: SP_BTHELPER

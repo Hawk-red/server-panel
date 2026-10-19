@@ -50,6 +50,7 @@ type WifiState = {
   primaryInterface: string | null
   networks: WifiNetwork[]
 }
+type BtState = { active: boolean; enabled: string; masked: boolean; autostart: boolean; rfkill: { soft: boolean | null; hard: boolean | null }; adapter: boolean }
 type Wireless = { bluetooth: { adapter: BtAdapter | null; paired: BtDevice[]; scanning: boolean }; wifi: WifiState }
 
 const SCAN_SECONDS = 20
@@ -405,20 +406,50 @@ function BluetoothCard({ bt }: { bt: Wireless['bluetooth'] }) {
   const paired = bt.paired
   const connected = paired.filter((d) => d.connected)
   const others = paired.filter((d) => !d.connected)
-  const refresh = () => qc.invalidateQueries({ queryKey: ['wireless'] })
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['wireless'] })
+    qc.invalidateQueries({ queryKey: ['bluetooth-state'] })
+  }
+
+  // Состояние службы (через root-хелпер): включён сейчас / запускать при старте сервера
+  const st = useQuery({
+    queryKey: ['bluetooth-state'],
+    queryFn: async () => (await api.get<BtState>('/bluetooth/state')).data,
+    refetchInterval: 20_000,
+    retry: false,
+  })
+  const state = st.data
+  const helperMissing = st.error instanceof AxiosError && st.error.response?.data?.code === 'helper-missing'
+  const errText = (e: unknown, fb: string) => (e instanceof AxiosError && e.response?.data?.message) || fb
 
   const power = useMutation({
-    mutationFn: async (on: boolean) => (await api.post('/wireless/bluetooth/power', { on }, { timeout: 30_000 })).data,
+    mutationFn: async (on: boolean) => (await api.post<BtState>('/bluetooth/power', { on }, { timeout: 60_000 })).data,
     onSuccess: (_d, on) => {
       toast.success(on ? 'Bluetooth включён' : 'Bluetooth выключен')
       setConfirmOff(false)
       refresh()
     },
     onError: (e) => {
-      toast.error((e instanceof AxiosError && e.response?.data?.message) || 'не удалось переключить Bluetooth')
+      toast.error(errText(e, 'не удалось переключить Bluetooth'))
       setConfirmOff(false)
+      refresh()
     },
   })
+  const autostart = useMutation({
+    mutationFn: async (on: boolean) => (await api.post<BtState>('/bluetooth/autostart', { on }, { timeout: 60_000 })).data,
+    onSuccess: (_d, on) => {
+      toast.success(on ? 'Bluetooth будет запускаться при старте сервера' : 'Автозапуск Bluetooth выключен')
+      refresh()
+    },
+    onError: (e) => {
+      toast.error(errText(e, 'не удалось изменить автозапуск'))
+      refresh()
+    },
+  })
+  const locked = power.isPending || autostart.isPending
+  // Пока идёт запрос, тумблер показывает целевое значение; при ошибке возвращается к состоянию сервера (откат)
+  const activeNow = power.isPending ? !!power.variables : !!state?.active
+  const autostartNow = autostart.isPending ? !!autostart.variables : !!state?.autostart
   const scan = useMutation({
     mutationFn: async () => (await api.post<{ found: BtDevice[] }>('/wireless/bluetooth/scan', {}, { timeout: 60_000 })).data,
     onMutate: () => {
@@ -450,24 +481,50 @@ function BluetoothCard({ bt }: { bt: Wireless['bluetooth'] }) {
         <CardTitle className='flex items-center gap-2 text-sm font-medium'>
           <Bluetooth className='size-4 text-info' /> Bluetooth
         </CardTitle>
-        <div className='flex items-center gap-3'>
-          {adapter && <span className='text-sm text-muted-foreground'>{adapter.powered ? 'включён' : 'выключен'}</span>}
-          {adapter && (
+        {state && (
+          <div className='flex items-center gap-3'>
+            <span className='text-sm text-muted-foreground'>{activeNow ? 'включён' : 'выключен'}</span>
             <Switch
               aria-label='Bluetooth'
-              checked={adapter.powered}
-              disabled={power.isPending}
+              checked={activeNow}
+              disabled={locked || !state.adapter}
               onCheckedChange={(on) => (on ? power.mutate(true) : setConfirmOff(true))}
             />
-          )}
-        </div>
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className='space-y-5'>
-        {!adapter && <p className='text-sm text-muted-foreground'>Bluetooth-адаптер не найден или служба не запущена.</p>}
-        {adapter && adapter.powered === false && <p className='text-sm text-muted-foreground'>Bluetooth выключен. Включите, чтобы видеть устройства.</p>}
+        {helperMissing && (
+          <div className='rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm'>
+            <p className='font-medium'>Хелпер Bluetooth не установлен</p>
+            <p className='mt-1 text-muted-foreground'>Выполните на сервере в терминале, затем перезапустите панель:</p>
+            <pre className='mt-2 overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs'>
+              sudo /opt/server-panel/deploy/bluetooth/install.sh{'\n'}sudo systemctl restart server-panel
+            </pre>
+          </div>
+        )}
+        {st.isError && !helperMissing && <p className='text-sm text-danger-foreground'>{errText(st.error, 'не удалось получить состояние Bluetooth')}</p>}
 
-        {adapter?.powered && (
+        {state && (
+          <div className='flex items-start justify-between gap-4 rounded-lg border bg-card p-3'>
+            <div className='min-w-0'>
+              <Label htmlFor='bt-autostart' className='font-medium'>
+                Запускать при старте сервера
+              </Label>
+              <p className='mt-0.5 text-xs text-muted-foreground'>После перезагрузки сервера Bluetooth включится сам.</p>
+            </div>
+            <Switch id='bt-autostart' aria-label='Запускать при старте сервера' checked={autostartNow} disabled={locked} onCheckedChange={(on) => autostart.mutate(on)} />
+          </div>
+        )}
+
+        {state && !state.adapter && <p className='text-sm text-muted-foreground'>Bluetooth-адаптер не найден.</p>}
+        {state && state.adapter && !activeNow && <p className='text-sm text-muted-foreground'>Bluetooth выключен.</p>}
+        {state?.active && state.rfkill.hard && <p className='text-sm text-danger-foreground'>Bluetooth заблокирован аппаратно (rfkill).</p>}
+        {state?.active && !adapter && <p className='text-sm text-muted-foreground'>Служба запущена, адаптер пока не отвечает.</p>}
+        {state?.active && adapter && adapter.powered === false && <p className='text-sm text-muted-foreground'>Адаптер выключен. Включите тумблер «Bluetooth», чтобы видеть устройства.</p>}
+
+        {state?.active && adapter?.powered && (
           <>
             <section className='space-y-2'>
               <h3 className='text-sm font-medium'>Подключено: {connected.length}</h3>

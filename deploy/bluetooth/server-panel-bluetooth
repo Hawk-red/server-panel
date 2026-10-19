@@ -1,0 +1,180 @@
+#!/usr/bin/python3 -I
+"""server-panel-bluetooth — узкая root-утилита включения/выключения Bluetooth из раздела «Беспроводные» панели.
+
+Вызывается панелью только через sudo (deploy/bluetooth/sudoers-server-panel-bluetooth) и принимает ровно одну команду:
+    status          → JSON: active, enabled, masked, autostart, rfkill {soft, hard}, adapter
+    on              → unmask, start, rfkill unblock bluetooth (enable НЕ делает: автозагрузка — отдельная настройка)
+    off             → stop; если автозагрузка выключена — mask (чтобы D-Bus-активация приложений не поднимала службу)
+    autostart-on    → unmask, enable
+    autostart-off   → disable; если служба сейчас неактивна — mask
+Всё остальное (другие слова, лишние аргументы, пустой вызов) — выход с кодом 2. Никакого shell/eval, строгий PATH,
+одна операция за раз (flock), журнал — /var/log/server-panel-bluetooth.log.
+
+Коды выхода: 0 — готово; 2 — недопустимый вызов; 3 — не удалось выполнить systemctl/rfkill; 4 — занято другой операцией.
+Согласованность: «автозагрузка включена» = enabled (и не masked); «выключена» = disabled или masked.
+"""
+import fcntl
+import json
+import os
+import subprocess
+import sys
+import time
+
+CALLER_UID = os.environ.get("SUDO_UID", "-")
+os.environ.clear()
+os.environ["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin"
+os.environ["LC_ALL"] = "C"
+
+SYSTEMCTL = "/usr/bin/systemctl"
+RFKILL = "/usr/sbin/rfkill"
+UNIT = "bluetooth.service"
+LOG = "/var/log/server-panel-bluetooth.log"
+LOCK = "/run/lock/server-panel-bluetooth.lock"
+SYS_BT = "/sys/class/bluetooth"
+CMD_TIMEOUT = 30
+LOCK_WAIT = 15
+COMMANDS = ("status", "on", "off", "autostart-on", "autostart-off")
+
+
+class Fail(Exception):
+    def __init__(self, msg, code=3):
+        super().__init__(msg)
+        self.code = code
+
+
+def log(msg):
+    try:
+        with open(LOG, "a") as f:
+            f.write("%s uid=%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), CALLER_UID, msg))
+    except OSError:
+        pass
+
+
+def run(argv, check=True):
+    """Запуск без shell. Возвращает (код, stdout)."""
+    try:
+        p = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=CMD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise Fail("%s: превышено время ожидания" % " ".join(argv))
+    except OSError as e:
+        raise Fail("%s: %s" % (argv[0], e))
+    if check and p.returncode != 0:
+        raise Fail("%s: %s" % (" ".join(argv[1:]), (p.stderr or p.stdout).strip().splitlines()[0] if (p.stderr or p.stdout).strip() else "код %d" % p.returncode))
+    return p.returncode, p.stdout
+
+
+def systemctl(*args, check=True):
+    return run([SYSTEMCTL, *args], check)
+
+
+def unit_active():
+    return systemctl("is-active", UNIT, check=False)[1].strip() == "active"
+
+
+def unit_enabled():
+    """enabled / disabled / masked / ...: is-enabled печатает состояние и при ненулевом коде."""
+    return systemctl("is-enabled", UNIT, check=False)[1].strip() or "unknown"
+
+
+def is_masked(enabled):
+    return enabled in ("masked", "masked-runtime")
+
+
+def rfkill_state():
+    soft = hard = None
+    try:
+        data = json.loads(run([RFKILL, "-J", "-o", "ID,TYPE,SOFT,HARD"], check=False)[1] or "{}")
+        devs = [d for d in data.get("rfkilldevices", []) if d.get("type") == "bluetooth"]
+        if devs:
+            soft = any(d.get("soft") == "blocked" for d in devs)
+            hard = any(d.get("hard") == "blocked" for d in devs)
+    except (ValueError, AttributeError):
+        pass
+    return {"soft": soft, "hard": hard}
+
+
+def adapter_found():
+    try:
+        return any(n.startswith("hci") for n in os.listdir(SYS_BT))
+    except OSError:
+        return False
+
+
+def status():
+    enabled = unit_enabled()
+    return {
+        "active": unit_active(),
+        "enabled": enabled,
+        "masked": is_masked(enabled),
+        "autostart": enabled == "enabled",
+        "rfkill": rfkill_state(),
+        "adapter": adapter_found(),
+    }
+
+
+def do_on():
+    systemctl("unmask", UNIT)
+    systemctl("start", UNIT)
+    run([RFKILL, "unblock", "bluetooth"])
+
+
+def do_off():
+    systemctl("stop", UNIT)
+    if unit_enabled() != "enabled":
+        systemctl("mask", UNIT)
+
+
+def do_autostart_on():
+    systemctl("unmask", UNIT)
+    systemctl("enable", UNIT)
+
+
+def do_autostart_off():
+    systemctl("disable", UNIT)
+    if not unit_active():
+        systemctl("mask", UNIT)
+
+
+ACTIONS = {"on": do_on, "off": do_off, "autostart-on": do_autostart_on, "autostart-off": do_autostart_off}
+
+
+def lock():
+    fd = os.open(LOCK, os.O_CREAT | os.O_RDWR, 0o600)
+    deadline = time.time() + LOCK_WAIT
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fd
+        except OSError:
+            if time.time() > deadline:
+                raise Fail("занято: выполняется другая операция с Bluetooth", 4)
+            time.sleep(0.2)
+
+
+def main(argv):
+    if len(argv) != 1 or argv[0] not in COMMANDS:
+        print("недопустимая команда; допустимо: " + ", ".join(COMMANDS), file=sys.stderr)
+        return 2
+    cmd = argv[0]
+    try:
+        fd = lock()
+        try:
+            if cmd == "status":
+                print(json.dumps(status()))
+                return 0
+            before = status()
+            ACTIONS[cmd]()
+            after = status()
+            log("%s ok: active %s->%s enabled %s->%s" % (cmd, before["active"], after["active"], before["enabled"], after["enabled"]))
+            print(json.dumps(after))
+            return 0
+        finally:
+            os.close(fd)
+    except Fail as e:
+        log("%s ОШИБКА: %s" % (cmd, e))
+        print(str(e), file=sys.stderr)
+        return e.code
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
