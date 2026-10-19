@@ -33,6 +33,7 @@ import { Route as AuthenticatedMediaIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedMediaRemoteRouteImport } from './routes/_authenticated/media/remote'
 import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authenticated/network/index'
 import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_authenticated/notifications/index'
+import { Route as AuthenticatedReceiverIndexRouteImport } from './routes/_authenticated/receiver/index'
 import { Route as AuthenticatedSecurityIndexRouteImport } from './routes/_authenticated/security/index'
 import { Route as AuthenticatedSitesIndexRouteImport } from './routes/_authenticated/sites/index'
 import { Route as AuthenticatedSystemIndexRouteImport } from './routes/_authenticated/system/index'
@@ -169,6 +170,12 @@ const AuthenticatedNotificationsIndexRoute =
     path: '/notifications/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedReceiverIndexRoute =
+  AuthenticatedReceiverIndexRouteImport.update({
+    id: '/receiver/',
+    path: '/receiver/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSecurityIndexRoute =
   AuthenticatedSecurityIndexRouteImport.update({
     id: '/security/',
@@ -235,6 +242,7 @@ export interface FileRoutesByFullPath {
   '/media/': typeof AuthenticatedMediaIndexRoute
   '/network/': typeof AuthenticatedNetworkIndexRoute
   '/notifications/': typeof AuthenticatedNotificationsIndexRoute
+  '/receiver/': typeof AuthenticatedReceiverIndexRoute
   '/security/': typeof AuthenticatedSecurityIndexRoute
   '/sites/': typeof AuthenticatedSitesIndexRoute
   '/system/': typeof AuthenticatedSystemIndexRoute
@@ -267,6 +275,7 @@ export interface FileRoutesByTo {
   '/media': typeof AuthenticatedMediaIndexRoute
   '/network': typeof AuthenticatedNetworkIndexRoute
   '/notifications': typeof AuthenticatedNotificationsIndexRoute
+  '/receiver': typeof AuthenticatedReceiverIndexRoute
   '/security': typeof AuthenticatedSecurityIndexRoute
   '/sites': typeof AuthenticatedSitesIndexRoute
   '/system': typeof AuthenticatedSystemIndexRoute
@@ -301,6 +310,7 @@ export interface FileRoutesById {
   '/_authenticated/media/': typeof AuthenticatedMediaIndexRoute
   '/_authenticated/network/': typeof AuthenticatedNetworkIndexRoute
   '/_authenticated/notifications/': typeof AuthenticatedNotificationsIndexRoute
+  '/_authenticated/receiver/': typeof AuthenticatedReceiverIndexRoute
   '/_authenticated/security/': typeof AuthenticatedSecurityIndexRoute
   '/_authenticated/sites/': typeof AuthenticatedSitesIndexRoute
   '/_authenticated/system/': typeof AuthenticatedSystemIndexRoute
@@ -335,6 +345,7 @@ export interface FileRouteTypes {
     | '/media/'
     | '/network/'
     | '/notifications/'
+    | '/receiver/'
     | '/security/'
     | '/sites/'
     | '/system/'
@@ -367,6 +378,7 @@ export interface FileRouteTypes {
     | '/media'
     | '/network'
     | '/notifications'
+    | '/receiver'
     | '/security'
     | '/sites'
     | '/system'
@@ -400,6 +412,7 @@ export interface FileRouteTypes {
     | '/_authenticated/media/'
     | '/_authenticated/network/'
     | '/_authenticated/notifications/'
+    | '/_authenticated/receiver/'
     | '/_authenticated/security/'
     | '/_authenticated/sites/'
     | '/_authenticated/system/'
@@ -591,6 +604,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedNotificationsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/receiver/': {
+      id: '/_authenticated/receiver/'
+      path: '/receiver'
+      fullPath: '/receiver/'
+      preLoaderRoute: typeof AuthenticatedReceiverIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/security/': {
       id: '/_authenticated/security/'
       path: '/security'
@@ -659,6 +679,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMediaIndexRoute: typeof AuthenticatedMediaIndexRoute
   AuthenticatedNetworkIndexRoute: typeof AuthenticatedNetworkIndexRoute
   AuthenticatedNotificationsIndexRoute: typeof AuthenticatedNotificationsIndexRoute
+  AuthenticatedReceiverIndexRoute: typeof AuthenticatedReceiverIndexRoute
   AuthenticatedSecurityIndexRoute: typeof AuthenticatedSecurityIndexRoute
   AuthenticatedSitesIndexRoute: typeof AuthenticatedSitesIndexRoute
   AuthenticatedSystemIndexRoute: typeof AuthenticatedSystemIndexRoute
@@ -684,6 +705,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMediaIndexRoute: AuthenticatedMediaIndexRoute,
   AuthenticatedNetworkIndexRoute: AuthenticatedNetworkIndexRoute,
   AuthenticatedNotificationsIndexRoute: AuthenticatedNotificationsIndexRoute,
+  AuthenticatedReceiverIndexRoute: AuthenticatedReceiverIndexRoute,
   AuthenticatedSecurityIndexRoute: AuthenticatedSecurityIndexRoute,
   AuthenticatedSitesIndexRoute: AuthenticatedSitesIndexRoute,
   AuthenticatedSystemIndexRoute: AuthenticatedSystemIndexRoute,

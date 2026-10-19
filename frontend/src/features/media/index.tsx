@@ -1,17 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Gamepad2, Pause, Play, Speaker } from 'lucide-react'
+import { ArrowRight, Pause, Play, Speaker } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelative } from '@/lib/format'
 import type { MediaData } from '@/lib/types'
-import { ReceiverSettingsLinks } from './receiver-settings-links'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
 import { containerStatus, ServiceCard } from '@/components/service-card'
 import { StatusBadge } from '@/components/status-badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
 export function Media() {
   const { data } = useQuery({
@@ -111,37 +109,25 @@ export function Media() {
       id: 'marantz',
       title: 'Ресивер Marantz',
       node: (
-        <Card className='gap-3'>
-          <CardHeader className='flex flex-row items-start gap-3'>
-            <Speaker className='size-10 shrink-0 text-muted-foreground' />
-            <div className='min-w-0 flex-1'>
-              <CardTitle className='text-base'>Marantz NR1604</CardTitle>
-              <p className='text-xs text-muted-foreground'>AV-ресивер{mz?.data ? `, ${mz.data.host}` : ''}</p>
-            </div>
-            {mz?.error ? (
-              <StatusBadge status='unknown' />
-            ) : (
-              <StatusBadge status={mz?.data?.online ? 'ok' : 'error'} label={mz?.data?.online ? 'в сети' : 'не в сети'} />
-            )}
-          </CardHeader>
-          <CardContent className='space-y-3 text-sm'>
-            <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1'>
-              <dt className='text-muted-foreground'>Питание</dt>
-              <dd>{mz?.data?.power ? (mz.data.power === 'ON' ? 'включён' : 'в режиме ожидания') : <NoData />}</dd>
-              <dt className='text-muted-foreground'>Вход</dt>
-              <dd>{mz?.data?.source ?? <NoData />}</dd>
-              <dt className='text-muted-foreground'>Веб-интерфейс</dt>
-              <dd>
-                <span className='font-mono text-address'>{mz?.data ? `${mz.data.host}:${mz.data.webPort}` : <NoData />}</span>
-              </dd>
-            </dl>
-            <Button size='lg' className='h-12 w-full' asChild disabled={!mz?.data?.online}>
-              <Link to='/media/remote'>
-                <Gamepad2 /> Пульт ресивера
-              </Link>
-            </Button>
-            <ReceiverSettingsLinks />
-            <p className='text-xs text-muted-foreground'>Веб-интерфейс ресивера открывается только из домашней сети.</p>
+        <Card className='py-3 transition-colors hover:bg-muted/50'>
+          <CardContent>
+            <Link to='/receiver' className='flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring'>
+              <Speaker className='size-8 shrink-0 text-muted-foreground' aria-hidden />
+              <div className='min-w-0 flex-1'>
+                <div className='truncate text-base font-semibold'>Ресивер Marantz</div>
+                <div className='truncate text-xs text-muted-foreground'>
+                  NR1604{mz?.data ? `, ${mz.data.host}` : ''}
+                </div>
+              </div>
+              {mz?.error ? (
+                <StatusBadge status='unknown' />
+              ) : (
+                <StatusBadge status={mz?.data?.online ? 'ok' : 'error'} label={mz?.data?.online ? 'в сети' : 'не в сети'} />
+              )}
+              <span className='inline-flex shrink-0 items-center gap-1 text-sm font-medium'>
+                открыть <ArrowRight className='size-4' aria-hidden />
+              </span>
+            </Link>
           </CardContent>
         </Card>
       ),
@@ -149,7 +135,7 @@ export function Media() {
   ]
 
   return (
-    <Page title='Медиа' description='Стек /home/macmini/audio-streaming и ресивер' layoutPage='media'>
+    <Page title='Медиа' description='Стек /home/macmini/audio-streaming' layoutPage='media'>
       <SortableBlocks grid blocks={blocks} className='grid gap-4 md:grid-cols-2' />
     </Page>
   )

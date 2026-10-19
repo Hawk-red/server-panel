@@ -20,7 +20,7 @@ export type PaletteItem = {
   title: string
   subtitle?: string
   keywords: string[] // title первым; по ним ищет фильтр
-  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' // выбор только переходит на страницу
+  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/receiver' // выбор только переходит на страницу
   search?: { tab: 'services' }
 }
 
@@ -33,7 +33,7 @@ export type PaletteData = {
   media?: MediaData
 }
 
-const MARANTZ_IP = '192.168.31.94' // так же подписана карточка на странице «Медиа»
+const MARANTZ_IP = '192.168.31.94' // так же подписан ресивер на странице «Ресивер»
 
 export function buildPaletteItems(d: PaletteData): PaletteItem[] {
   const out: PaletteItem[] = []
@@ -62,7 +62,7 @@ export function buildPaletteItems(d: PaletteData): PaletteItem[] {
     { id: 'media:jellyfin', group: 'media', title: 'Jellyfin', subtitle: 'медиасервер', keywords: ['Jellyfin', 'медиасервер', m?.jellyfin.container.data?.name ?? '', jf?.name ?? '', jf?.version ?? ''], to: '/media' },
     { id: 'media:minimserver', group: 'media', title: 'MinimServer', subtitle: 'UPnP/DLNA', keywords: ['MinimServer', 'UPnP DLNA медиасервер', m?.minimserver.container.data?.name ?? ''], to: '/media' },
     { id: 'media:bubbleupnp', group: 'media', title: 'BubbleUPnP Server', subtitle: 'UPnP', keywords: ['BubbleUPnP Server', 'UPnP', m?.bubbleupnpserver.container.data?.name ?? ''], to: '/media' },
-    { id: 'media:marantz', group: 'media', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', m?.marantz.data?.host ?? MARANTZ_IP], to: '/media' }
+    { id: 'media:marantz', group: 'media', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', 'Marantz', 'марантз', 'пульт ресивера', 'громкость', m?.marantz.data?.host ?? MARANTZ_IP], to: '/receiver' }
   )
   return out
 }

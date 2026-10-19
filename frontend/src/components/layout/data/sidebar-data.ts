@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   ShieldHalf,
   Sparkles,
+  Speaker,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
@@ -40,6 +41,7 @@ export const sidebarData: SidebarData = {
       title: 'Сервисы',
       items: [
         { title: 'Медиа', url: '/media', icon: Music, color: 'text-volume' },
+        { title: 'Ресивер', url: '/receiver', icon: Speaker, color: 'text-volume', subtitle: 'Marantz NR1604' },
         { title: 'Торренты', url: '/torrents', icon: Download, color: 'text-ok' },
         { title: 'AdGuard Home', url: '/adguard', icon: ShieldCheck, color: 'text-ok' },
         { title: 'Docker', url: '/docker', icon: Container, color: 'text-info' },

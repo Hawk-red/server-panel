@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { closestCenter, DndContext, type DragEndEvent, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ArrowDown, ArrowUp, GripVertical, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { applyOrder, moveItem } from '@/lib/layout-order'
 import { cn } from '@/lib/utils'
 import { useLayoutEdit } from '@/components/layout/layout-edit'
 import { Button } from '@/components/ui/button'
@@ -17,14 +18,6 @@ export type Block = { id: string; title: string; node: React.ReactNode; classNam
 export const blockId = (prefix: string, raw: string) => `${prefix}-${raw}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40)
 
 type LayoutResponse = { order: string[] }
-
-// Порядок из настроек применяется к блокам: сохранённые — по порядку, новые (которых там нет) — в конец, исчезнувшие — игнорируются
-export function applyOrder<T extends { id: string }>(blocks: T[], saved: string[]): T[] {
-  const byId = new Map(blocks.map((b) => [b.id, b]))
-  const known = saved.filter((id) => byId.has(id)).map((id) => byId.get(id)!)
-  const rest = blocks.filter((b) => !saved.includes(b.id))
-  return [...known, ...rest]
-}
 
 function Item({ block, editing, index, count, onMove }: { block: Block; editing: boolean; index: number; count: number; onMove: (from: number, to: number) => void }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: block.id, disabled: !editing })
@@ -96,7 +89,7 @@ export function SortableBlocks({ blocks, className, grid = false }: { blocks: Bl
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
-  const move = (from: number, to: number) => save.mutate(arrayMove(ids, from, to))
+  const move = (from: number, to: number) => save.mutate(moveItem(ids, from, to))
   const onDragEnd = (e: DragEndEvent) => {
     if (!e.over || e.active.id === e.over.id) return
     move(ids.indexOf(String(e.active.id)), ids.indexOf(String(e.over.id)))

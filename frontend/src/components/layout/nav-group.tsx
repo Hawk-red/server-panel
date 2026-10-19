@@ -74,6 +74,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
         <Link to={item.url} onClick={() => setOpenMobile(false)}>
           {item.icon && <item.icon className={item.color} />}
           <span>{item.title}</span>
+          {item.subtitle && <span className='ms-auto truncate text-xs text-muted-foreground group-data-[collapsible=icon]:hidden'>{item.subtitle}</span>}
           {item.badge && <NavBadge>{item.badge}</NavBadge>}
         </Link>
       </SidebarMenuButton>

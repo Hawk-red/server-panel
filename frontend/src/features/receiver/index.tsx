@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info, Loader2, Menu, Minus, Plus, Power, Settings2, Undo2, VolumeX } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info, Loader2, Menu, Minus, Plus, Power, Settings2, Undo2, VolumeX } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { activeInput, activeMode, bumpVolume, createHold, formatDb, inputIcon, levelFraction, type CmdResult, type ReceiverFullState } from '@/lib/receiver-remote'
 import { Page } from '@/components/layout/page'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
+import { RECEIVER_LAYOUT_PAGE } from '@/lib/receiver-layout'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { ReceiverControls } from './receiver-controls'
-import { ReceiverSettingsLinks } from './receiver-settings-links'
+import { ReceiverControls } from '@/features/media/receiver-controls'
+import { ReceiverSettingsLinks } from '@/features/media/receiver-settings-links'
 
 type ApiError = { message?: string; code?: string }
 const errInfo = (e: unknown) => {
@@ -108,7 +108,7 @@ function useHoldButton(fire: () => void) {
 
 const touch = { touchAction: 'manipulation' } as const
 
-export function ReceiverRemote() {
+export function ReceiverPage() {
   const { q, pending, send, patch } = useRemote()
   const st = q.data
   const err = q.isError ? errInfo(q.error) : null
@@ -117,7 +117,6 @@ export function ReceiverRemote() {
   const [lastQuick, setLastQuick] = useState<string | null>(null)
   const [lastMode, setLastMode] = useState<{ cmd: string; modeAtClick: string | null } | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [soundOpen, setSoundOpen] = useState(false)
 
   const connection = err ? (err.code === 'busy' ? { label: 'занят', cls: 'bg-amber-500' } : { label: 'недоступен', cls: 'bg-red-600' }) : st ? { label: 'на связи', cls: 'bg-emerald-600' } : { label: 'подключаюсь…', cls: 'bg-muted-foreground' }
 
@@ -139,83 +138,90 @@ export function ReceiverRemote() {
   const disabled = !on
   const muteOn = st?.mute === true
 
-  return (
-    <Page title='Пульт ресивера' description='Marantz NR1604'>
-      <div className='mx-auto flex w-full max-w-md flex-col gap-4 pb-[env(safe-area-inset-bottom)] sm:max-w-xl' style={touch}>
-        {/* Шапка */}
+  // Блоки страницы: порядок по умолчанию — как здесь; сохранённый порядок применяет SortableBlocks (layout.receiver)
+  const dim = cn('transition-opacity', disabled && 'pointer-events-none opacity-50')
+  const blocks: Block[] = [
+    {
+      id: 'power',
+      title: 'Питание и статус',
+      node: (
         <Card className='py-3'>
-          <CardContent className='flex items-center gap-3'>
-            <Button asChild variant='ghost' size='icon' className='size-12 shrink-0' aria-label='Назад к «Медиа»'>
-              <Link to='/media'>
-                <ArrowLeft />
-              </Link>
-            </Button>
-            <div className='min-w-0 flex-1'>
-              <div className='truncate text-base font-semibold'>Marantz NR1604</div>
-              <div className='flex items-center gap-1.5 text-xs text-muted-foreground' role='status'>
-                <span className={cn('inline-block size-2 rounded-full', connection.cls)} aria-hidden /> {connection.label}
-                {st?.power === 'STANDBY' && ' · выключен'}
+          <CardContent className='space-y-3'>
+            <div className='flex items-center gap-3'>
+              <div className='min-w-0 flex-1'>
+                <div className='truncate text-base font-semibold'>Marantz NR1604</div>
+                <div className='flex items-center gap-1.5 text-xs text-muted-foreground' role='status'>
+                  <span className={cn('inline-block size-2 rounded-full', connection.cls)} aria-hidden /> {connection.label}
+                  {st?.power === 'STANDBY' && ' · выключен'}
+                </div>
               </div>
+              <Button
+                size='icon'
+                aria-label={on ? 'Выключить ресивер' : 'Включить ресивер'}
+                aria-pressed={on}
+                disabled={!st || pending === 'PWON' || pending === 'PWSTANDBY'}
+                className={cn('size-14 shrink-0 rounded-full', on ? 'bg-emerald-700 text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500' : 'bg-muted text-muted-foreground hover:bg-muted/80')}
+                onClick={() => {
+                  buzz()
+                  if (on) setConfirmOff(true)
+                  else void send('PWON')
+                }}
+              >
+                {pending === 'PWON' || pending === 'PWSTANDBY' ? <Loader2 className='size-6 animate-spin' /> : <Power className='size-6' />}
+              </Button>
+            </div>
+            {err && <p className='rounded-md border border-destructive/40 p-3 text-sm text-destructive'>{err.message}</p>}
+            {st?.power === 'STANDBY' && <p className='rounded-md border p-3 text-sm text-muted-foreground'>Ресивер выключен. Нажмите кнопку питания, чтобы включить.</p>}
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      id: 'volume',
+      title: 'Громкость',
+      node: (
+        <Card className={dim} aria-disabled={disabled}>
+          <CardContent className='space-y-3'>
+            <div className='flex items-center justify-between gap-3'>
+              <Button variant='outline' className='size-16 rounded-2xl' aria-label='Тише' disabled={disabled} {...downHold} style={touch}>
+                <Minus className='size-7' />
+              </Button>
+              <div className='text-center'>
+                <div className='text-3xl font-bold tabular-nums' aria-live='polite'>
+                  {formatDb(st?.volume ?? null)}
+                </div>
+                <div className='text-xs text-muted-foreground'>громкость</div>
+              </div>
+              <Button variant='outline' className='size-16 rounded-2xl' aria-label='Громче' disabled={disabled} {...upHold} style={touch}>
+                <Plus className='size-7' />
+              </Button>
+            </div>
+            <div className='relative h-2 rounded-full bg-muted' role='img' aria-label={`Уровень ${formatDb(st?.volume ?? null)}, потолок ${formatDb(st?.maxVolume ?? null)}`}>
+              <div className='h-full rounded-full bg-primary transition-[width] duration-200' style={{ width: `${levelFraction(st?.volume ?? null) * 100}%` }} />
+              {st && <div className='absolute -top-1 h-4 w-0.5 rounded bg-red-600' style={{ left: `${levelFraction(st.maxVolume) * 100}%` }} title='Потолок громкости' />}
             </div>
             <Button
-              size='icon'
-              aria-label={on ? 'Выключить ресивер' : 'Включить ресивер'}
-              aria-pressed={on}
-              disabled={!st || pending === 'PWON' || pending === 'PWSTANDBY'}
-              className={cn('size-14 shrink-0 rounded-full', on ? 'bg-emerald-700 text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500' : 'bg-muted text-muted-foreground hover:bg-muted/80')}
+              className={cn('h-14 w-full rounded-2xl text-base font-semibold', muteOn ? 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500' : 'border-red-600/50 text-red-700 dark:text-red-300')}
+              variant={muteOn ? 'default' : 'outline'}
+              aria-pressed={muteOn}
+              disabled={disabled || pending === 'MUON' || pending === 'MUOFF'}
               onClick={() => {
                 buzz()
-                if (on) setConfirmOff(true)
-                else void send('PWON')
+                void send(muteOn ? 'MUOFF' : 'MUON')
               }}
             >
-              {pending === 'PWON' || pending === 'PWSTANDBY' ? <Loader2 className='size-6 animate-spin' /> : <Power className='size-6' />}
+              {pending === 'MUON' || pending === 'MUOFF' ? <Loader2 className='animate-spin' /> : <VolumeX />} {muteOn ? 'Звук выключен' : 'Mute'}
             </Button>
           </CardContent>
         </Card>
-
-        {err && <p className='rounded-md border border-destructive/40 p-3 text-sm text-destructive'>{err.message}</p>}
-        {st?.power === 'STANDBY' && <p className='rounded-md border p-3 text-sm text-muted-foreground'>Ресивер выключен. Нажмите кнопку питания, чтобы включить.</p>}
-
-        <div className={cn('flex flex-col gap-4 transition-opacity', disabled && 'pointer-events-none opacity-50')} aria-disabled={disabled}>
-          {/* Громкость */}
-          <Card>
-            <CardContent className='space-y-3'>
-              <div className='flex items-center justify-between gap-3'>
-                <Button variant='outline' className='size-16 rounded-2xl' aria-label='Тише' disabled={disabled} {...downHold} style={touch}>
-                  <Minus className='size-7' />
-                </Button>
-                <div className='text-center'>
-                  <div className='text-3xl font-bold tabular-nums' aria-live='polite'>
-                    {formatDb(st?.volume ?? null)}
-                  </div>
-                  <div className='text-xs text-muted-foreground'>громкость</div>
-                </div>
-                <Button variant='outline' className='size-16 rounded-2xl' aria-label='Громче' disabled={disabled} {...upHold} style={touch}>
-                  <Plus className='size-7' />
-                </Button>
-              </div>
-              <div className='relative h-2 rounded-full bg-muted' role='img' aria-label={`Уровень ${formatDb(st?.volume ?? null)}, потолок ${formatDb(st?.maxVolume ?? null)}`}>
-                <div className='h-full rounded-full bg-primary transition-[width] duration-200' style={{ width: `${levelFraction(st?.volume ?? null) * 100}%` }} />
-                {st && <div className='absolute -top-1 h-4 w-0.5 rounded bg-red-600' style={{ left: `${levelFraction(st.maxVolume) * 100}%` }} title='Потолок громкости' />}
-              </div>
-              <Button
-                className={cn('h-14 w-full rounded-2xl text-base font-semibold', muteOn ? 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500' : 'border-red-600/50 text-red-700 dark:text-red-300')}
-                variant={muteOn ? 'default' : 'outline'}
-                aria-pressed={muteOn}
-                disabled={disabled || pending === 'MUON' || pending === 'MUOFF'}
-                onClick={() => {
-                  buzz()
-                  void send(muteOn ? 'MUOFF' : 'MUON')
-                }}
-              >
-                {pending === 'MUON' || pending === 'MUOFF' ? <Loader2 className='animate-spin' /> : <VolumeX />} {muteOn ? 'Звук выключен' : 'Mute'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Входы */}
-          <section aria-label='Входы' className='space-y-2'>
+      ),
+    },
+    {
+      id: 'inputs',
+      title: 'Входы',
+      node: (
+        <Card className={dim} aria-disabled={disabled}>
+          <CardContent className='space-y-2'>
             <h2 className='text-sm font-medium'>Входы</h2>
             {inputs.length === 0 && on && <p className='text-xs text-muted-foreground'>Список входов недоступен.</p>}
             <div className='grid grid-cols-2 gap-2 sm:grid-cols-3'>
@@ -241,10 +247,16 @@ export function ReceiverRemote() {
                 )
               })}
             </div>
-          </section>
-
-          {/* Режимы звука */}
-          <section aria-label='Режимы звука' className='space-y-2'>
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      id: 'modes',
+      title: 'Режимы звука',
+      node: (
+        <Card className={dim} aria-disabled={disabled}>
+          <CardContent className='space-y-2'>
             <h2 className='text-sm font-medium'>Режим звука</h2>
             <div className='grid grid-cols-2 gap-2 sm:grid-cols-5'>
               {MODES.map((m) => {
@@ -269,10 +281,16 @@ export function ReceiverRemote() {
               })}
             </div>
             {st?.mode && <p className='text-xs text-muted-foreground'>Сейчас: {st.mode}</p>}
-          </section>
-
-          {/* Быстрый выбор */}
-          <section aria-label='Быстрый выбор' className='space-y-2'>
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      id: 'quick',
+      title: 'Быстрый выбор',
+      node: (
+        <Card className={dim} aria-disabled={disabled}>
+          <CardContent className='space-y-2'>
             <h2 className='text-sm font-medium'>Быстрый выбор</h2>
             <div className='grid grid-cols-3 gap-2'>
               {[1, 2, 3].map((n) => {
@@ -298,12 +316,18 @@ export function ReceiverRemote() {
               })}
             </div>
             <p className='text-xs text-muted-foreground'>Ресивер не сообщает, какой быстрый выбор активен, подсвечен последний нажатый.</p>
-          </section>
-
-          {/* Навигация */}
-          <section aria-label='Навигация по меню' className='space-y-3'>
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      id: 'nav',
+      title: 'Навигация',
+      node: (
+        <Card className={dim} aria-disabled={disabled}>
+          <CardContent className='space-y-3'>
             <h2 className='text-sm font-medium'>Меню</h2>
-            <div className='flex items-center justify-center gap-4'>
+            <div className='flex flex-wrap items-center justify-center gap-4'>
               <div className='grid size-56 shrink-0 grid-cols-3 grid-rows-3 place-items-center rounded-full border bg-muted/50 p-2 sm:size-64'>
                 <span />
                 <Button variant='ghost' className='size-16 rounded-full' aria-label='Вверх' disabled={disabled} {...holdUp} style={touch}>
@@ -364,25 +388,40 @@ export function ReceiverRemote() {
                 ))}
               </div>
             </div>
-          </section>
-        </div>
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      id: 'sound',
+      title: 'Звук и настройки',
+      node: (
+        <Card>
+          <CardContent className='space-y-2'>
+            <h2 className='text-sm font-medium'>Звук и настройки</h2>
+            <ReceiverControls online />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      id: 'links',
+      title: 'Настройки ресивера (ссылки)',
+      className: 'lg:col-span-2',
+      node: (
+        <Card>
+          <CardContent>
+            <ReceiverSettingsLinks />
+          </CardContent>
+        </Card>
+      ),
+    },
+  ]
 
-        {/* Звук и ссылки */}
-        <Collapsible open={soundOpen} onOpenChange={setSoundOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant='outline' className='h-12 w-full justify-between rounded-xl'>
-              Звук и настройки ресивера <ChevronDown className={cn('transition-transform', soundOpen && 'rotate-180')} />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className='mt-3 space-y-4'>
-            <Card>
-              <CardContent className='space-y-4'>
-                <ReceiverControls online />
-                <ReceiverSettingsLinks />
-              </CardContent>
-            </Card>
-          </CollapsibleContent>
-        </Collapsible>
+  return (
+    <Page title='Ресивер' description='Marantz NR1604' layoutPage={RECEIVER_LAYOUT_PAGE}>
+      <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
+        <SortableBlocks grid blocks={blocks} className='grid items-start gap-4 lg:grid-cols-2' />
       </div>
 
       <ConfirmDialog

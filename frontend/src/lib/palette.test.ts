@@ -38,7 +38,7 @@ describe('палитра ⌘K: устройство Marantz NR1604', () => {
   })
   it('выбор только переходит на страницу (без действий)', () => {
     const items = buildPaletteItems(data).filter((i) => /marantz/i.test(i.title))
-    assert.deepEqual(items.map((i) => i.to).sort(), ['/media', '/network'])
+    assert.deepEqual(items.map((i) => i.to).sort(), ['/network', '/receiver'])
   })
 })
 
@@ -114,4 +114,14 @@ describe('палитра ⌘K: разделы и порядок выдачи', (
     assert.ok(titles('хаммингберд', { network: { ...network, devices: [{ ...other, name: null, hostname: 'Hummingbird' } as Device] } }).length > 0)
     assert.ok(titles('hummingbird', { network: { ...network, devices: [{ ...other, name: 'Хаммингберд' } as Device] } }).length > 0)
   })
+})
+
+describe('палитра ⌘K: страница «Ресивер»', () => {
+  for (const q of ['ресивер', 'marantz', 'марантз', 'пульт', 'громкость']) {
+    it(`«${q}» ведёт на /receiver`, () => {
+      const hit = buildPaletteItems(data).find((i) => i.id === 'media:marantz')
+      assert.equal(hit?.to, '/receiver')
+      assert.ok(titles(q).includes('media:Marantz NR1604'), q)
+    })
+  }
 })

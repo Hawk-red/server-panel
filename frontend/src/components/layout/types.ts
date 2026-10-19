@@ -2,6 +2,8 @@ import { type LinkProps } from '@tanstack/react-router'
 
 type BaseNavItem = {
   title: string
+  /** подпись под названием (например, модель устройства) */
+  subtitle?: string
   badge?: string
   icon?: React.ElementType
   /** цвет иконки раздела (класс text-*) — один на сайдбар и заголовок страницы */

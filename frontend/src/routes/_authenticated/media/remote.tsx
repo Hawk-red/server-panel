@@ -1,6 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { ReceiverRemote } from '@/features/media/remote'
-
+import { createFileRoute, redirect } from '@tanstack/react-router'
+// Старый адрес пульта: закладки продолжают работать
 export const Route = createFileRoute('/_authenticated/media/remote')({
-  component: ReceiverRemote,
+  beforeLoad: () => {
+    throw redirect({ to: '/receiver', replace: true })
+  },
 })
