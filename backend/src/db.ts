@@ -3,6 +3,7 @@ import path from 'node:path'
 import Database from 'better-sqlite3'
 import { config } from './config.js'
 import { ALERT_EVENTS_DDL } from './services/alertSchema.js'
+import { SMART_DEVICES_DDL } from './services/smarthomeSchema.js'
 
 mkdirSync(config.dataDir, { recursive: true })
 
@@ -140,6 +141,7 @@ const migrations: string[] = [
   );
   CREATE INDEX ai_messages_session ON ai_messages (session_id, id);
   `,
+  SMART_DEVICES_DDL,
 ]
 
 const current = db.pragma('user_version', { simple: true }) as number

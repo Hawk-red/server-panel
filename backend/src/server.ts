@@ -16,6 +16,7 @@ import { serviceRoutes } from './routes/services.js'
 import { aiRoutes } from './routes/ai.js'
 import { wirelessRoutes } from './routes/wireless.js'
 import { bluetoothRoutes } from './routes/bluetooth.js'
+import { smarthomeRoutes } from './routes/smarthome.js'
 import { accessRoutes } from './routes/access.js'
 import { auditRoutes } from './routes/audit.js'
 import { layoutRoutes } from './routes/layout.js'
@@ -113,6 +114,7 @@ await app.register(uptimeRoutes)
 await app.register(aiRoutes)
 await app.register(wirelessRoutes)
 await app.register(bluetoothRoutes)
+await app.register(smarthomeRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',

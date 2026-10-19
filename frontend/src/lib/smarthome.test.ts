@@ -1,0 +1,125 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { describe, it } from 'node:test'
+import { sidebarData } from '../components/layout/data/sidebar-data.ts'
+import { applyOrder } from './layout-order.ts'
+import { buildPaletteItems, filterPaletteItems } from './palette.ts'
+import {
+  addressFields, ALL_ROOMS, deviceBlockId, emptyForm, filterByRoom, NO_ROOM, openUrl, roomsOf, SMARTHOME_LAYOUT_PAGE, statusLabel, summaryText, toPayload, validateForm,
+  type DeviceForm, type SmartDevice,
+} from './smarthome.ts'
+
+const here = (p: string) => new URL(p, import.meta.url)
+const st = (state: SmartDevice['status']['state'], latencyMs: number | null = null): SmartDevice['status'] => ({ state, checkedAt: 1, latencyMs, detail: null })
+const dev = (o: Partial<SmartDevice>): SmartDevice => ({ id: 1, name: 'Лампа', kind: 'ping', room: null, icon: 'lamp', host: '192.168.31.50', port: null, url: null, notes: null, enabled: true, status: st('online', 5), ...o })
+const form = (o: Partial<DeviceForm>): DeviceForm => ({ ...emptyForm(), name: 'Лампа', kind: 'ping', host: '192.168.31.50', ...o })
+
+describe('меню и поиск', () => {
+  const items = sidebarData.navGroups.find((g) => g.title === 'Сервисы')!.items.map((i) => i.title)
+  it('«Умный дом» в «Сервисах» сразу после «Ресивера», с подписью SmartHome и адресом /smarthome', () => {
+    assert.equal(items[items.indexOf('Ресивер') + 1], 'Умный дом')
+    const it = sidebarData.navGroups.flatMap((g) => g.items).find((i) => i.title === 'Умный дом')!
+    assert.equal(it.url, '/smarthome')
+    assert.equal(it.subtitle, 'SmartHome')
+    assert.ok(it.icon)
+  })
+  const items2 = buildPaletteItems({})
+  for (const q of ['умный дом', 'smarthome', 'smart home', 'гаджеты', 'устройства дома', 'умный', 'гаджет']) {
+    it(`⌘K: «${q}» ведёт на /smarthome`, () => {
+      const r = filterPaletteItems(items2, q)
+      assert.ok(r.some((x) => x.to === '/smarthome'), r.map((x) => x.id).join(','))
+    })
+  }
+})
+
+describe('порядок карточек', () => {
+  it('ключ страницы — smarthome, id карточек подходят серверу', () => {
+    assert.equal(SMARTHOME_LAYOUT_PAGE, 'smarthome')
+    assert.match(SMARTHOME_LAYOUT_PAGE, /^[a-z0-9-]{1,30}$/)
+    assert.match(deviceBlockId(123456), /^[a-z0-9-]{1,40}$/)
+  })
+  it('сохранённый порядок применяется, удалённые устройства игнорируются, новые встают в конец', () => {
+    const blocks = [1, 2, 3, 4].map((i) => ({ id: deviceBlockId(i) }))
+    const r = applyOrder(blocks, ['dev-3', 'dev-99', 'dev-1']).map((b) => b.id)
+    assert.deepEqual(r, ['dev-3', 'dev-1', 'dev-2', 'dev-4'])
+  })
+  it('страница использует тот же SortableBlocks с этим ключом', () => {
+    const src = readFileSync(here('../features/smarthome/index.tsx'), 'utf8')
+    assert.match(src, /SortableBlocks/)
+    assert.match(src, /layoutPage=\{SMARTHOME_LAYOUT_PAGE\}/)
+  })
+})
+
+describe('комнаты и сводка', () => {
+  const list = [dev({ id: 1, room: 'Кухня' }), dev({ id: 2, room: 'Гостиная' }), dev({ id: 3, room: 'Кухня', status: st('offline') }), dev({ id: 4, room: null })]
+  it('комнаты из введённых, по алфавиту, без дублей; «без комнаты» отдельно', () => {
+    assert.deepEqual(roomsOf(list), { rooms: ['Гостиная', 'Кухня'], hasNoRoom: true })
+    assert.deepEqual(roomsOf([dev({ room: 'Спальня' })]), { rooms: ['Спальня'], hasNoRoom: false })
+  })
+  it('фильтр по комнате', () => {
+    assert.equal(filterByRoom(list, ALL_ROOMS).length, 4)
+    assert.deepEqual(filterByRoom(list, 'Кухня').map((d) => d.id), [1, 3])
+    assert.deepEqual(filterByRoom(list, NO_ROOM).map((d) => d.id), [4])
+  })
+  it('подзаголовок «N устройств · M в сети»', () => {
+    assert.equal(summaryText(list), '4 устройства · 3 в сети')
+    assert.equal(summaryText([dev({})]), '1 устройство · 1 в сети')
+    assert.equal(summaryText([]), '0 устройств · 0 в сети')
+    assert.equal(summaryText(Array.from({ length: 5 }, () => dev({}))), '5 устройств · 5 в сети')
+    assert.equal(summaryText(Array.from({ length: 11 }, () => dev({}))), '11 устройств · 11 в сети')
+    assert.equal(summaryText(Array.from({ length: 22 }, () => dev({}))), '22 устройства · 22 в сети')
+  })
+})
+
+describe('состояние и «Открыть»', () => {
+  it('подписи', () => {
+    assert.equal(statusLabel(st('online', 12)), 'в сети · 12 мс')
+    assert.equal(statusLabel(st('offline')), 'не в сети')
+    assert.equal(statusLabel(st('checking')), 'проверяю…')
+  })
+  it('кнопка «Открыть»: только http/https', () => {
+    assert.equal(openUrl(dev({ kind: 'link', url: 'http://192.168.31.65/' })), 'http://192.168.31.65/')
+    assert.equal(openUrl(dev({ kind: 'http', url: null, host: '192.168.31.5', port: 8080 })), 'http://192.168.31.5:8080/')
+    assert.equal(openUrl(dev({ kind: 'homeassistant', host: '192.168.31.112', port: null })), 'http://192.168.31.112:8123/')
+    assert.equal(openUrl(dev({ kind: 'ping' })), null)
+    assert.equal(openUrl(dev({ kind: 'link', url: 'javascript:alert(1)' })), null)
+  })
+})
+
+describe('форма: проверка на клиенте', () => {
+  it('нормальные значения проходят', () => {
+    assert.deepEqual(validateForm(form({})), {})
+    assert.deepEqual(validateForm(form({ kind: 'tcp', port: '22' })), {})
+    assert.deepEqual(validateForm(form({ kind: 'link', host: '', url: 'https://192.168.31.1/' })), {})
+  })
+  it('имя 1–60', () => {
+    assert.ok(validateForm(form({ name: '  ' })).name)
+    assert.ok(validateForm(form({ name: 'я'.repeat(61) })).name)
+  })
+  it('host без пробелов и shell-символов', () => {
+    for (const h of ['a b', 'x;ls', '$(id)', 'a|b', 'a/b']) assert.ok(validateForm(form({ host: h })).host, h)
+  })
+  it('порт 1–65535, url только http/https, обязательные поля типов', () => {
+    for (const p of ['0', '65536', 'x', '1.5']) assert.ok(validateForm(form({ kind: 'tcp', port: p })).port, p)
+    assert.ok(validateForm(form({ kind: 'link', url: 'ftp://192.168.1.1' })).url)
+    assert.ok(validateForm(form({ kind: 'link', url: '' })).url)
+    assert.ok(validateForm(form({ kind: 'tcp', port: '' })).port)
+    assert.ok(validateForm(form({ kind: 'ping', host: '' })).host)
+  })
+  it('поля адреса зависят от типа, лишние в запрос не попадают', () => {
+    assert.deepEqual(addressFields('ping'), { url: false, host: true, port: false })
+    const p = toPayload(form({ kind: 'ping', port: '99', url: 'http://x/' }))
+    assert.equal(p.port, null)
+    assert.equal(p.url, '')
+  })
+})
+
+describe('страница', () => {
+  const src = readFileSync(here('../features/smarthome/index.tsx'), 'utf8')
+  it('обновление статусов каждые 30 с', () => assert.match(src, /30_000/))
+  it('пустое состояние с подсказкой и примерами; удаление с подтверждением', () => {
+    assert.match(src, /Добавьте первое устройство/)
+    assert.match(src, /ConfirmDialog/)
+    assert.match(src, /Добавить устройство/)
+  })
+})

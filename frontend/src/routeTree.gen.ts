@@ -36,6 +36,7 @@ import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedReceiverIndexRouteImport } from './routes/_authenticated/receiver/index'
 import { Route as AuthenticatedSecurityIndexRouteImport } from './routes/_authenticated/security/index'
 import { Route as AuthenticatedSitesIndexRouteImport } from './routes/_authenticated/sites/index'
+import { Route as AuthenticatedSmarthomeIndexRouteImport } from './routes/_authenticated/smarthome/index'
 import { Route as AuthenticatedSystemIndexRouteImport } from './routes/_authenticated/system/index'
 import { Route as AuthenticatedTelegramIndexRouteImport } from './routes/_authenticated/telegram/index'
 import { Route as AuthenticatedTorrentsIndexRouteImport } from './routes/_authenticated/torrents/index'
@@ -187,6 +188,12 @@ const AuthenticatedSitesIndexRoute = AuthenticatedSitesIndexRouteImport.update({
   path: '/sites/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSmarthomeIndexRoute =
+  AuthenticatedSmarthomeIndexRouteImport.update({
+    id: '/smarthome/',
+    path: '/smarthome/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSystemIndexRoute =
   AuthenticatedSystemIndexRouteImport.update({
     id: '/system/',
@@ -245,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/receiver/': typeof AuthenticatedReceiverIndexRoute
   '/security/': typeof AuthenticatedSecurityIndexRoute
   '/sites/': typeof AuthenticatedSitesIndexRoute
+  '/smarthome/': typeof AuthenticatedSmarthomeIndexRoute
   '/system/': typeof AuthenticatedSystemIndexRoute
   '/telegram/': typeof AuthenticatedTelegramIndexRoute
   '/torrents/': typeof AuthenticatedTorrentsIndexRoute
@@ -278,6 +286,7 @@ export interface FileRoutesByTo {
   '/receiver': typeof AuthenticatedReceiverIndexRoute
   '/security': typeof AuthenticatedSecurityIndexRoute
   '/sites': typeof AuthenticatedSitesIndexRoute
+  '/smarthome': typeof AuthenticatedSmarthomeIndexRoute
   '/system': typeof AuthenticatedSystemIndexRoute
   '/telegram': typeof AuthenticatedTelegramIndexRoute
   '/torrents': typeof AuthenticatedTorrentsIndexRoute
@@ -313,6 +322,7 @@ export interface FileRoutesById {
   '/_authenticated/receiver/': typeof AuthenticatedReceiverIndexRoute
   '/_authenticated/security/': typeof AuthenticatedSecurityIndexRoute
   '/_authenticated/sites/': typeof AuthenticatedSitesIndexRoute
+  '/_authenticated/smarthome/': typeof AuthenticatedSmarthomeIndexRoute
   '/_authenticated/system/': typeof AuthenticatedSystemIndexRoute
   '/_authenticated/telegram/': typeof AuthenticatedTelegramIndexRoute
   '/_authenticated/torrents/': typeof AuthenticatedTorrentsIndexRoute
@@ -348,6 +358,7 @@ export interface FileRouteTypes {
     | '/receiver/'
     | '/security/'
     | '/sites/'
+    | '/smarthome/'
     | '/system/'
     | '/telegram/'
     | '/torrents/'
@@ -381,6 +392,7 @@ export interface FileRouteTypes {
     | '/receiver'
     | '/security'
     | '/sites'
+    | '/smarthome'
     | '/system'
     | '/telegram'
     | '/torrents'
@@ -415,6 +427,7 @@ export interface FileRouteTypes {
     | '/_authenticated/receiver/'
     | '/_authenticated/security/'
     | '/_authenticated/sites/'
+    | '/_authenticated/smarthome/'
     | '/_authenticated/system/'
     | '/_authenticated/telegram/'
     | '/_authenticated/torrents/'
@@ -625,6 +638,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSitesIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/smarthome/': {
+      id: '/_authenticated/smarthome/'
+      path: '/smarthome'
+      fullPath: '/smarthome/'
+      preLoaderRoute: typeof AuthenticatedSmarthomeIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/system/': {
       id: '/_authenticated/system/'
       path: '/system'
@@ -682,6 +702,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReceiverIndexRoute: typeof AuthenticatedReceiverIndexRoute
   AuthenticatedSecurityIndexRoute: typeof AuthenticatedSecurityIndexRoute
   AuthenticatedSitesIndexRoute: typeof AuthenticatedSitesIndexRoute
+  AuthenticatedSmarthomeIndexRoute: typeof AuthenticatedSmarthomeIndexRoute
   AuthenticatedSystemIndexRoute: typeof AuthenticatedSystemIndexRoute
   AuthenticatedTelegramIndexRoute: typeof AuthenticatedTelegramIndexRoute
   AuthenticatedTorrentsIndexRoute: typeof AuthenticatedTorrentsIndexRoute
@@ -708,6 +729,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReceiverIndexRoute: AuthenticatedReceiverIndexRoute,
   AuthenticatedSecurityIndexRoute: AuthenticatedSecurityIndexRoute,
   AuthenticatedSitesIndexRoute: AuthenticatedSitesIndexRoute,
+  AuthenticatedSmarthomeIndexRoute: AuthenticatedSmarthomeIndexRoute,
   AuthenticatedSystemIndexRoute: AuthenticatedSystemIndexRoute,
   AuthenticatedTelegramIndexRoute: AuthenticatedTelegramIndexRoute,
   AuthenticatedTorrentsIndexRoute: AuthenticatedTorrentsIndexRoute,

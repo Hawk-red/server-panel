@@ -3,7 +3,7 @@
 import { createMatcher, TIER, type Matcher } from './search.ts'
 import type { DiskInfo, DockerData, MediaData, NetworkData, ServiceRow, TorrentsData } from './types.ts'
 
-export type PaletteGroup = 'torrents' | 'docker' | 'services' | 'disks' | 'devices' | 'media'
+export type PaletteGroup = 'torrents' | 'docker' | 'services' | 'disks' | 'devices' | 'media' | 'smarthome'
 
 export const GROUP_HEADING: Record<PaletteGroup, string> = {
   torrents: 'Торренты (активные)',
@@ -12,6 +12,7 @@ export const GROUP_HEADING: Record<PaletteGroup, string> = {
   disks: 'Диски',
   devices: 'Устройства сети',
   media: 'Медиа',
+  smarthome: 'Умный дом',
 }
 
 export type PaletteItem = {
@@ -20,7 +21,7 @@ export type PaletteItem = {
   title: string
   subtitle?: string
   keywords: string[] // title первым; по ним ищет фильтр
-  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/receiver' // выбор только переходит на страницу
+  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/receiver' | '/smarthome' // выбор только переходит на страницу
   search?: { tab: 'services' }
 }
 
@@ -64,6 +65,11 @@ export function buildPaletteItems(d: PaletteData): PaletteItem[] {
     { id: 'media:bubbleupnp', group: 'media', title: 'BubbleUPnP Server', subtitle: 'UPnP', keywords: ['BubbleUPnP Server', 'UPnP', m?.bubbleupnpserver.container.data?.name ?? ''], to: '/media' },
     { id: 'media:marantz', group: 'media', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', 'Marantz', 'марантз', 'пульт ресивера', 'громкость', m?.marantz.data?.host ?? MARANTZ_IP], to: '/receiver' }
   )
+  // Страница «Умный дом»: по этим словам выбор ведёт на /smarthome
+  out.push({
+    id: 'smarthome:page', group: 'smarthome', title: 'Умный дом', subtitle: 'устройства дома',
+    keywords: ['Умный дом', 'SmartHome', 'smart home', 'smarthome', 'гаджеты', 'гаджет', 'устройства дома', 'умные устройства', 'лампы розетки камеры'], to: '/smarthome',
+  })
   return out
 }
 
@@ -79,7 +85,7 @@ function matcherFor(search: string): Matcher {
 }
 
 // Заголовок элемента: у элементов палитры value — служебный id (`torrent:…`), заголовок первым в keywords; у разделов value — сам заголовок
-const ID_VALUE = /^(torrent|container|image|service|disk|device|media):/
+const ID_VALUE = /^(torrent|container|image|service|disk|device|media|smarthome):/
 const titleOf = (value: string, keywords?: string[]) => (ID_VALUE.test(value) ? (keywords?.[0] ?? '') : value)
 
 // Сигнатура cmdk: filter(value, search, keywords) → оценка > 0 (0 — скрыть). Берём search из аргумента, а не из состояния компонента:
