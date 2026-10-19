@@ -2,19 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ExternalLink, Info, Loader2, Menu, Minus, Plus, Power, Settings2, Undo2, VolumeX } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info, Loader2, Menu, Minus, Plus, Power, Settings2, Undo2, VolumeX } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { RECEIVER_LINK_GROUPS } from '@/lib/receiver-links'
 import { activeInput, activeMode, bumpVolume, createHold, formatDb, inputIcon, levelFraction, type CmdResult, type ReceiverFullState } from '@/lib/receiver-remote'
 import { Page } from '@/components/layout/page'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { HomeLink } from '@/components/home-link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ReceiverControls } from './receiver-controls'
+import { ReceiverSettingsLinks } from './receiver-settings-links'
 
 type ApiError = { message?: string; code?: string }
 const errInfo = (e: unknown) => {
@@ -379,19 +378,7 @@ export function ReceiverRemote() {
             <Card>
               <CardContent className='space-y-4'>
                 <ReceiverControls online />
-                <div className='space-y-2'>
-                  <div className='text-xs font-medium'>Настройки ресивера</div>
-                  {RECEIVER_LINK_GROUPS.map((g) => (
-                    <div key={g.title} className='flex flex-wrap items-center gap-1'>
-                      <span className='w-full text-[11px] text-muted-foreground sm:w-auto sm:pr-1'>{g.title}:</span>
-                      {g.links.map((l) => (
-                        <HomeLink key={l.path} service='marantz' path={l.path} rel='noopener noreferrer' className='inline-flex items-center gap-1 rounded border px-2 py-1.5 text-xs hover:bg-muted'>
-                          {l.label} <ExternalLink className='size-3' />
-                        </HomeLink>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                <ReceiverSettingsLinks />
               </CardContent>
             </Card>
           </CollapsibleContent>

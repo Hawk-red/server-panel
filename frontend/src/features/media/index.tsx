@@ -1,14 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ExternalLink, Gamepad2, Globe, Pause, Play, Speaker } from 'lucide-react'
+import { Gamepad2, Pause, Play, Speaker } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelative } from '@/lib/format'
 import type { MediaData } from '@/lib/types'
-import { RECEIVER_LINK_GROUPS } from '@/lib/receiver-links'
+import { ReceiverSettingsLinks } from './receiver-settings-links'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { NoData } from '@/components/no-data'
-import { HomeLink } from '@/components/home-link'
 import { containerStatus, ServiceCard } from '@/components/service-card'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
@@ -136,36 +135,12 @@ export function Media() {
                 <span className='font-mono text-address'>{mz?.data ? `${mz.data.host}:${mz.data.webPort}` : <NoData />}</span>
               </dd>
             </dl>
-            <Button size='sm' variant='web' asChild>
-              {/* Настоящий веб-интерфейс — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP */}
-              <HomeLink service='marantz'>
-                <Globe /> Открыть веб-интерфейс
-              </HomeLink>
-            </Button>
             <Button size='lg' className='h-12 w-full' asChild disabled={!mz?.data?.online}>
               <Link to='/media/remote'>
                 <Gamepad2 /> Пульт ресивера
               </Link>
             </Button>
-            <div className='space-y-2'>
-              <div className='text-xs font-medium'>Настройки ресивера</div>
-              {RECEIVER_LINK_GROUPS.map((g) => (
-                <div key={g.title} className='flex flex-wrap items-center gap-1'>
-                  <span className='w-full text-[11px] text-muted-foreground sm:w-auto sm:pr-1'>{g.title}:</span>
-                  {g.links.map((l) => (
-                    <HomeLink
-                      key={l.path}
-                      service='marantz'
-                      path={l.path}
-                      rel='noopener noreferrer'
-                      className='inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs hover:bg-muted'
-                    >
-                      {l.label} <ExternalLink className='size-3' />
-                    </HomeLink>
-                  ))}
-                </div>
-              ))}
-            </div>
+            <ReceiverSettingsLinks />
             <p className='text-xs text-muted-foreground'>Веб-интерфейс ресивера открывается только из домашней сети.</p>
           </CardContent>
         </Card>
