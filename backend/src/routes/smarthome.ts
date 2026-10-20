@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { audit } from '../audit.js'
 import { requireAuth } from '../auth.js'
+import { config } from '../config.js'
+import { errText } from '../mask.js'
 import * as store from '../services/smarthome.js'
+import { CONTROL_DOMAINS, HaError, toggleEntity, type HaControlApi } from '../services/haClient.js'
+import { createRateLimiter } from '../services/smarthomeControl.js'
 import { validateGroupName } from '../services/smarthomeGroups.js'
 import { assertLocal, MAX_DEVICES, urlHost, parseUrl, validateDevice, type DeviceInput } from '../services/smarthomeCore.js'
 
@@ -32,6 +36,10 @@ async function accept(body: unknown, reply: FastifyReply): Promise<DeviceInput |
   return v
 }
 
+// Не больше 5 переключений в секунду на всю панель
+const controlLimiter = createRateLimiter(5, 1000)
+export const controlDeps: { api?: HaControlApi } = {}
+
 export async function smarthomeRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth)
 
@@ -47,6 +55,47 @@ export async function smarthomeRoutes(app: FastifyInstance) {
     audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.sync', details: { status: store.haState.status }, result: store.haState.status === 'ok' ? 'ok' : 'error' })
     return { ...store.listView(), ha: store.haPublic(), now: Date.now() }
   })
+
+  // Включить/выключить сущность switch или light. Только домены из белого списка и только сущности синхронизированных, не скрытых устройств HA.
+  app.post<{ Body: { entity_id: string; action: 'on' | 'off' } }>(
+    '/api/smarthome/ha/toggle',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['entity_id', 'action'],
+          additionalProperties: false,
+          properties: { entity_id: { type: 'string', maxLength: 120 }, action: { type: 'string', enum: ['on', 'off'] } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { entity_id: entityId, action } = req.body
+      const deny = (code: number, message: string, result: 'denied' | 'error' = 'denied') => {
+        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.toggle', target: entityId.slice(0, 120), details: { action, reason: message }, result })
+        return reply.code(code).send({ message })
+      }
+      if (!/^[a-z_]+\.[a-z0-9_]+$/.test(entityId)) return deny(400, 'Некорректный идентификатор сущности')
+      if (!(CONTROL_DOMAINS as readonly string[]).includes(entityId.split('.')[0])) return deny(403, 'Эту сущность нельзя включать и выключать из панели')
+      const found = store.findControl(entityId)
+      if (!found) return deny(403, 'Сущность не найдена среди устройств панели (или устройство скрыто)')
+      if (!config.ha.token) return deny(409, 'Токен Home Assistant не задан', 'error')
+      if (found.control.state === 'unavailable') return deny(409, 'Устройство недоступно', 'error')
+      if (!controlLimiter.take()) return deny(429, 'Слишком часто: не больше 5 переключений в секунду', 'error')
+
+      const base = { entityId, device: found.device.name, action, from: found.control.state }
+      try {
+        const state = await toggleEntity({ url: config.ha.url, token: config.ha.token, entityId, action, api: controlDeps.api })
+        store.setControlState(found.device.id, entityId, state)
+        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.toggle', target: entityId, details: { ...base, to: state }, result: 'ok' })
+        return { entity_id: entityId, name: found.control.name, state }
+      } catch (e) {
+        const message = errText(e).split('\n')[0] || 'Ошибка Home Assistant'
+        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.toggle', target: entityId, details: { ...base, error: message }, result: 'error' })
+        return reply.code(e instanceof HaError && e.status === 'unavailable' ? 503 : 502).send({ message })
+      }
+    }
+  )
 
   app.post('/api/smarthome/devices', async (req, reply) => {
     const v = await accept(req.body, reply)

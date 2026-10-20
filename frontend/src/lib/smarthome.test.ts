@@ -5,7 +5,7 @@ import { sidebarData } from '../components/layout/data/sidebar-data.ts'
 import { applyOrder } from './layout-order.ts'
 import { buildPaletteItems, filterPaletteItems } from './palette.ts'
 import {
-  devicesByGroup, groupBlockId, groupLayoutPage, groupSummary, HA_STATUS_TEXT,
+  devicesByGroup, groupBlockId, performToggle, withControlState, type SmartHomeData, groupLayoutPage, groupSummary, HA_STATUS_TEXT,
   addressFields, ALL_ROOMS, deviceBlockId, emptyForm, filterByRoom, NO_ROOM, openUrl, roomsOf, SMARTHOME_LAYOUT_PAGE, statusLabel, summaryText, toPayload, validateForm,
   type DeviceForm, type SmartDevice,
 } from './smarthome.ts'
@@ -178,5 +178,57 @@ describe('блоки-группы и Home Assistant', () => {
   })
   it('страница ничего не управляет: нет вызовов сервисов HA', () => {
     for (const src of [idx, card, group]) assert.ok(!/services\/(light|switch|lock|cover|climate)|turn_on|turn_off|call_service/.test(src))
+  })
+})
+
+describe('переключатели switch/light', () => {
+  const tx2c = dev({
+    id: 7, source: 'homeassistant', haDeviceId: 'd-tx2c',
+    ha: { manufacturer: null, model: null, integration: 'sonoff', area: null, available: true, summary: { text: 'включено 0 из 2', tone: 'off', extras: [] },
+      controls: [{ entityId: 'switch.tx2c_balcon', name: 'Balcon', state: 'off' }, { entityId: 'switch.tx2c_lamp', name: 'Lamp', state: 'off' }] },
+  })
+  const mkData = (): SmartHomeData => ({ devices: [tx2c], hidden: [], groups: [], ha: { configured: true, status: 'ok', message: null, syncedAt: 1 }, now: 1 })
+  const states = (d: SmartHomeData) => d.devices[0].ha!.controls!.map((c) => c.state)
+  const holder = (post: (e: string, a: 'on' | 'off') => Promise<{ state: 'on' | 'off' | 'unavailable' }>) => {
+    let data = mkData()
+    const log: string[][] = []
+    return { get: () => data, set: (d: SmartHomeData) => (log.push(states(d)), (data = d)), post, log, now: () => data }
+  }
+
+  it('withControlState: меняет одну сущность и пересчитывает итог', () => {
+    const d = withControlState(mkData(), 'switch.tx2c_balcon', 'on')
+    assert.deepEqual(states(d), ['on', 'off'])
+    assert.equal(d.devices[0].ha!.summary.text, 'включено 1 из 2')
+    assert.equal(d.devices[0].ha!.summary.tone, 'on')
+    assert.equal(withControlState(mkData(), 'switch.nope', 'on').devices[0], tx2c)
+  })
+  it('оптимистично: состояние меняется до ответа сервера, затем подставляется реальное', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const h = holder(async () => (await gate, { state: 'on' as const }))
+    const p = performToggle(h, 'switch.tx2c_balcon', true)
+    assert.deepEqual(states(h.now()), ['on', 'off']) // до ответа
+    release()
+    assert.equal(await p, 'on')
+    assert.deepEqual(states(h.now()), ['on', 'off'])
+  })
+  it('реальное состояние из ответа важнее ожидаемого', async () => {
+    const h = holder(async () => ({ state: 'off' as const }))
+    await performToggle(h, 'switch.tx2c_balcon', true)
+    assert.deepEqual(states(h.now()), ['off', 'off'])
+    assert.equal(h.now().devices[0].ha!.summary.text, 'включено 0 из 2')
+  })
+  it('ошибка: откат к прежнему состоянию и ошибка пробрасывается', async () => {
+    const h = holder(async () => { throw new Error('Home Assistant недоступен') })
+    await assert.rejects(performToggle(h, 'switch.tx2c_lamp', true), /недоступен/)
+    assert.deepEqual(h.log, [['off', 'on'], ['off', 'off']]) // сначала включили, затем откатили
+    assert.equal(h.now().devices[0].ha!.summary.text, 'включено 0 из 2')
+  })
+  it('на сервер уходит нужная команда', async () => {
+    const sent: string[] = []
+    const h = holder(async (e, a) => (sent.push(`${e} ${a}`), { state: a }))
+    await performToggle(h, 'switch.tx2c_lamp', true)
+    await performToggle(h, 'switch.tx2c_lamp', false)
+    assert.deepEqual(sent, ['switch.tx2c_lamp on', 'switch.tx2c_lamp off'])
   })
 })

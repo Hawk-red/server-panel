@@ -32,7 +32,9 @@ export const DEFAULT_ROOMS = ['Гостиная', 'Кухня', 'Спальня'
 
 export type DeviceStatus = { state: 'online' | 'offline' | 'unknown' | 'disabled' | 'checking'; checkedAt: number | null; latencyMs: number | null; detail: string | null }
 export type HaSummary = { text: string; tone: 'on' | 'off' | 'neutral' | 'unavailable'; extras: { label: string; value: string; unit: string | null }[] }
-export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary }
+export type ControlState = 'on' | 'off' | 'unavailable'
+export type HaControl = { entityId: string; name: string; state: ControlState }
+export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary; controls?: HaControl[] }
 export type SmartDevice = {
   id: number
   name: string
@@ -215,3 +217,43 @@ export const EXAMPLES: { title: string; hint: string; form: Partial<DeviceForm> 
   { title: 'Розетка', hint: 'Sonoff и другие: ping или порт', form: { name: 'Розетка', kind: 'ping', icon: 'socket' } },
   { title: 'Камера', hint: 'ссылка на веб-интерфейс', form: { name: 'Камера', kind: 'link', icon: 'camera', url: 'http://' } },
 ]
+
+// ---------- переключатели (switch/light) ----------
+// Подставляет состояние сущности в данные страницы и пересчитывает итог «включено N из M»
+export function withControlState(data: SmartHomeData, entityId: string, state: ControlState): SmartHomeData {
+  const patch = (d: SmartDevice): SmartDevice => {
+    const controls = d.ha?.controls
+    if (!d.ha || !controls?.some((c) => c.entityId === entityId)) return d
+    const next = controls.map((c) => (c.entityId === entityId ? { ...c, state } : c))
+    const usable = next.filter((c) => c.state !== 'unavailable')
+    const on = usable.filter((c) => c.state === 'on').length
+    let summary = d.ha.summary
+    if (usable.length > 0 && /^(включено|выключено)/.test(summary.text))
+      summary = { ...summary, text: usable.length === 1 ? (on ? 'включено' : 'выключено') : `включено ${on} из ${usable.length}`, tone: on > 0 ? 'on' : 'off' }
+    return { ...d, ha: { ...d.ha, controls: next, summary } }
+  }
+  return { ...data, devices: data.devices.map(patch) }
+}
+
+export type ToggleDeps = {
+  get: () => SmartHomeData | undefined
+  set: (d: SmartHomeData) => void
+  post: (entityId: string, action: 'on' | 'off') => Promise<{ state: ControlState }>
+}
+// Оптимистичное переключение: сразу показывает новое состояние, отправляет команду, по ответу ставит реальное;
+// при ошибке возвращает прежнее состояние и пробрасывает ошибку (для toast)
+export async function performToggle(deps: ToggleDeps, entityId: string, on: boolean): Promise<ControlState> {
+  const before = deps.get()
+  const prev = before?.devices.flatMap((d) => d.ha?.controls ?? []).find((c) => c.entityId === entityId)?.state
+  if (before) deps.set(withControlState(before, entityId, on ? 'on' : 'off'))
+  try {
+    const { state } = await deps.post(entityId, on ? 'on' : 'off')
+    const now = deps.get()
+    if (now) deps.set(withControlState(now, entityId, state))
+    return state
+  } catch (e) {
+    const now = deps.get()
+    if (now && prev) deps.set(withControlState(now, entityId, prev))
+    throw e
+  }
+}

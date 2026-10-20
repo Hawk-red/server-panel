@@ -2,12 +2,12 @@ import { db } from '../db.js'
 import { config } from '../config.js'
 import { errText } from '../mask.js'
 import { getSetting, setSetting } from '../settings.js'
-import { HaError, readDevices, type HaStatus, type HaSummary } from './haClient.js'
+import { HaError, readDevices, type ControlState, type HaControl, type HaStatus, type HaSummary } from './haClient.js'
 import { accentForNewGroup, newGroupId, resolveGroups, type CustomGroup, type Group } from './smarthomeGroups.js'
 import { applyHaSync } from './smarthomeSync.js'
 import { createStatusCache, type DeviceInput, type Status } from './smarthomeCore.js'
 
-export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary }
+export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary; controls?: HaControl[] }
 export type SmartDevice = DeviceInput & {
   id: number
   createdAt: number
@@ -176,4 +176,28 @@ export function patchDevice(id: number, p: { name?: string; groupKey?: string | 
 export function deleteDevice(id: number): boolean {
   cache.forget(id)
   return db.prepare('DELETE FROM smart_devices WHERE id = ?').run(id).changes > 0
+}
+
+// ---------- управление: поиск сущности среди синхронизированных устройств ----------
+// Сущность допустима, только если она есть у устройства HA в реестре панели, которое не скрыто и не пропало из HA
+export function findControl(entityId: string): { device: SmartDevice; control: HaControl } | null {
+  for (const d of listDevices()) {
+    if (d.source !== 'homeassistant' || d.hidden || d.haMissing) continue
+    const control = d.ha?.controls?.find((c) => c.entityId === entityId)
+    if (control) return { device: d, control }
+  }
+  return null
+}
+
+// После переключения подставляем реальное состояние в реестр (и итог «включено N из M»), не дожидаясь следующей синхронизации
+export function setControlState(deviceId: number, entityId: string, state: ControlState) {
+  const d = getDevice(deviceId)
+  if (!d?.ha?.controls) return
+  const controls = d.ha.controls.map((c) => (c.entityId === entityId ? { ...c, state } : c))
+  const usable = controls.filter((c) => c.state !== 'unavailable')
+  const on = usable.filter((c) => c.state === 'on').length
+  let summary = d.ha.summary
+  if (usable.length > 0 && /^(включено|выключено)/.test(summary.text))
+    summary = { ...summary, text: usable.length === 1 ? (on ? 'включено' : 'выключено') : `включено ${on} из ${usable.length}`, tone: on > 0 ? 'on' : 'off' }
+  db.prepare('UPDATE smart_devices SET ha_info = ? WHERE id = ?').run(JSON.stringify({ ...d.ha, controls, summary }), deviceId)
 }

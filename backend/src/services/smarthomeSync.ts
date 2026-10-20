@@ -18,7 +18,7 @@ export function applyHaSync(db: Database.Database, list: HaDevice[], now = Date.
     )
     for (const d of list) {
       seen.add(d.id)
-      const info = JSON.stringify({ manufacturer: d.manufacturer, model: d.model, integration: d.integration, area: d.area, available: d.available, summary: d.summary })
+      const info = JSON.stringify({ manufacturer: d.manufacturer, model: d.model, integration: d.integration, area: d.area, available: d.available, summary: d.summary, controls: d.controls })
       const row = byHa.get(d.id)
       if (row) {
         upd.run(d.name.slice(0, 60), d.area, info, now, row.id)

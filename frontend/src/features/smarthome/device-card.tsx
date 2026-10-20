@@ -1,8 +1,9 @@
 import { Eye, EyeOff, ExternalLink, FolderInput, Pencil, Trash2, Ellipsis } from 'lucide-react'
-import { KINDS, openUrl, type SmartDevice, statusLabel } from '@/lib/smarthome'
+import { type HaControl, KINDS, openUrl, type SmartDevice, statusLabel } from '@/lib/smarthome'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ICON_COMPONENT } from './icons'
 
@@ -12,11 +13,26 @@ export type CardActions = {
   onHide: (d: SmartDevice, hidden: boolean) => void
   onDelete: (d: SmartDevice) => void
   haHref: (haDeviceId: string) => string | null
+  onToggle: (entityId: string, on: boolean) => void // тумблер switch/light
+  pending: ReadonlySet<string> // entity_id, по которым команда ещё выполняется
 }
 
 function StatusDot({ state }: { state: SmartDevice['status']['state'] }) {
   const cls = state === 'online' ? 'bg-ok' : state === 'offline' ? 'bg-danger' : state === 'checking' ? 'animate-pulse bg-muted-foreground/60' : 'bg-muted-foreground/40'
   return <span className={cn('inline-block size-2.5 shrink-0 rounded-full', cls)} aria-hidden />
+}
+
+function ControlSwitch({ c, label, a }: { c: HaControl; label: string; a: CardActions }) {
+  const unavailable = c.state === 'unavailable'
+  return (
+    <Switch
+      checked={c.state === 'on'}
+      disabled={unavailable || a.pending.has(c.entityId)}
+      onCheckedChange={(on) => a.onToggle(c.entityId, on)}
+      aria-label={unavailable ? `${label}: недоступно` : label}
+      title={unavailable ? 'Недоступно' : undefined}
+    />
+  )
 }
 
 export function DeviceCard({ d, a }: { d: SmartDevice; a: CardActions }) {
@@ -27,6 +43,8 @@ export function DeviceCard({ d, a }: { d: SmartDevice; a: CardActions }) {
   const online = d.status.state === 'online'
   const sum = d.ha?.summary
   const canDelete = !isHa || d.haMissing
+  const controls = isHa && !d.haMissing ? (d.ha?.controls ?? []) : []
+  const single = controls.length === 1 ? controls[0] : null
   return (
     <Card className='h-full min-h-44 gap-3 py-4'>
       <CardContent className='flex h-full flex-col gap-2.5 px-4'>
@@ -71,7 +89,22 @@ export function DeviceCard({ d, a }: { d: SmartDevice; a: CardActions }) {
           {isHa && !d.haMissing && sum && d.ha?.available && sum.text !== 'доступно' && (
             <span className={cn('ms-auto truncate text-sm font-medium tabular-nums', sum.tone === 'on' ? 'text-ok-foreground' : 'text-foreground')}>{sum.text}</span>
           )}
+          {single && (
+            <span className={cn(!(sum && d.ha?.available && sum.text !== 'доступно') && 'ms-auto', 'shrink-0 ps-2')}>
+              <ControlSwitch c={single} label={`${d.name}: включить или выключить`} a={a} />
+            </span>
+          )}
         </div>
+        {controls.length > 1 && (
+          <ul className='space-y-1.5' aria-label='Каналы'>
+            {controls.map((c) => (
+              <li key={c.entityId} className='flex items-center justify-between gap-3 text-sm'>
+                <span className={cn('truncate', c.state === 'unavailable' && 'text-muted-foreground')}>{c.name}</span>
+                <ControlSwitch c={c} label={`${d.name}, ${c.name}`} a={a} />
+              </li>
+            ))}
+          </ul>
+        )}
         {isHa && !d.haMissing && sum && sum.extras.length > 0 && d.ha?.available && (
           <p className='truncate text-xs text-muted-foreground tabular-nums'>{sum.extras.map((x) => `${x.label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}`).join(' · ')}</p>
         )}

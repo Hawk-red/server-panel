@@ -5,8 +5,8 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { useLinks } from '@/lib/links'
 import {
-  DEFAULT_ROOMS, type DeviceForm, devicesByGroup, emptyForm, EXAMPLES, groupBlockId, groupLayoutPage, HA_STATUS_TEXT, MAX_DEVICES, type Group,
-  type SmartDevice, type SmartHomeData, SMARTHOME_LAYOUT_PAGE, summaryText, toForm,
+  type ControlState, DEFAULT_ROOMS, type DeviceForm, devicesByGroup, emptyForm, EXAMPLES, groupBlockId, groupLayoutPage, HA_STATUS_TEXT, MAX_DEVICES, type Group,
+  performToggle, type SmartDevice, type SmartHomeData, SMARTHOME_LAYOUT_PAGE, summaryText, toForm,
 } from '@/lib/smarthome'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -294,7 +294,32 @@ export function SmartHome() {
     setDialog({ editing, initial: editing ? toForm(editing) : { ...emptyForm(), ...patchForm }, key: Date.now() })
   const manualCount = devices.filter((d) => d.source === 'manual').length
 
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
+  const toggle = (entityId: string, on: boolean) => {
+    if (pending.has(entityId)) return
+    setPending((p) => new Set(p).add(entityId))
+    performToggle(
+      {
+        get: () => qc.getQueryData<SmartHomeData>(['smarthome']),
+        set: (d) => qc.setQueryData(['smarthome'], d),
+        post: async (id, action) => (await api.post<{ state: ControlState }>('/smarthome/ha/toggle', { entity_id: id, action })).data,
+      },
+      entityId,
+      on
+    )
+      .catch((e) => toast.error(apiError(e).message ?? 'Не удалось переключить'))
+      .finally(() =>
+        setPending((p) => {
+          const n = new Set(p)
+          n.delete(entityId)
+          return n
+        })
+      )
+  }
+
   const actions: CardActions = {
+    onToggle: toggle,
+    pending,
     onEdit: (d) => (d.source === 'manual' ? openDialog(d) : setRenaming(d)),
     onMove: (d) => {
       setFormError(null)

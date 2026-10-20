@@ -4,8 +4,8 @@ import WebSocket from 'ws'
 import { errText } from '../mask.js'
 import { guardedLookup, isPrivateIp, NOT_LOCAL, urlHost, parseUrl, type ICON_IDS } from './smarthomeCore.js'
 
-// Home Assistant, ТОЛЬКО ЧТЕНИЕ: реестры устройств/областей/сущностей (WebSocket, config/*/list) и состояния (REST /api/states).
-// Никаких вызовов сервисов и записи. Из реестров берутся только нужные поля: идентификаторы, адреса, аккаунты и ключи отбрасываются.
+// Home Assistant: реестры устройств/областей/сущностей (WebSocket, config/*/list) и состояния (REST /api/states) — только чтение.
+// Единственная запись — toggleEntity: turn_on/turn_off для сущностей switch и light (белый список, см. smarthomeControl.ts). Из реестров берутся только нужные поля: идентификаторы, адреса, аккаунты и ключи отбрасываются.
 
 export type HaStatus = 'ok' | 'pending' | 'no-token' | 'unavailable' | 'unauthorized' | 'error'
 export class HaError extends Error {
@@ -30,6 +30,9 @@ export const IGNORED_INTEGRATIONS = new Set([
 export type Tone = 'on' | 'off' | 'neutral' | 'unavailable'
 export type HaExtra = { label: string; value: string; unit: string | null }
 export type HaSummary = { text: string; tone: Tone; extras: HaExtra[] }
+export type ControlState = 'on' | 'off' | 'unavailable'
+export type HaControl = { entityId: string; name: string; state: ControlState }
+export const CONTROL_DOMAINS = ['switch', 'light'] as const
 export type HaDevice = {
   id: string
   name: string
@@ -39,6 +42,7 @@ export type HaDevice = {
   area: string | null
   available: boolean
   summary: HaSummary
+  controls: HaControl[]
   icon: (typeof ICON_IDS)[number]
 }
 
@@ -121,10 +125,24 @@ export function buildDevices(raw: HaRaw): HaDevice[] {
       area: areaId ? (areas.get(areaId) ?? null) : null,
       available: summary.tone !== 'unavailable',
       summary,
+      controls: controlsOf(ents, name),
       icon: (primary && ICON_BY_DOMAIN[primary]) || 'other',
     })
   }
   return out.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+}
+
+export const controlState = (s: string): ControlState => (s === 'on' || s === 'off' ? s : 'unavailable')
+
+// Управляемые сущности устройства: только switch и light (белый список); недоступные тоже показываются, но с состоянием unavailable
+function controlsOf(ents: Ent[], deviceName: string): HaControl[] {
+  return ents
+    .filter((e) => (CONTROL_DOMAINS as readonly string[]).includes(domainOf(e.entityId)))
+    .map((e) => {
+      const n = e.name.startsWith(deviceName) ? e.name.slice(deviceName.length).trim() : e.name
+      return { entityId: e.entityId, name: (n || e.name).slice(0, 60), state: controlState(e.state) }
+    })
+    .sort((a, b) => a.entityId.localeCompare(b.entityId))
 }
 
 function summarize(ents: Ent[], deviceName: string): HaSummary {
@@ -180,10 +198,16 @@ const kindOf = (e: unknown): HaError => {
   return new HaError('error', msg.split('\n')[0] || 'ошибка Home Assistant')
 }
 
-function getJson(u: URL, path: string, token: string): Promise<unknown> {
+function getJson(u: URL, path: string, token: string, opts: { method?: 'GET' | 'POST'; body?: unknown; timeout?: number } = {}): Promise<unknown> {
+  const payload = opts.body === undefined ? null : JSON.stringify(opts.body)
   return new Promise((resolve, reject) => {
+    const headers: Record<string, string | number> = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    if (payload !== null) {
+      headers['Content-Type'] = 'application/json'
+      headers['Content-Length'] = Buffer.byteLength(payload)
+    }
     const req = http.request(
-      { protocol: u.protocol, hostname: urlHost(u), port: u.port || 80, path, method: 'GET', timeout: TIMEOUT_MS, lookup: guardedLookup(), headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
+      { protocol: u.protocol, hostname: urlHost(u), port: u.port || 80, path, method: opts.method ?? 'GET', timeout: opts.timeout ?? TIMEOUT_MS, lookup: guardedLookup(), headers },
       (res) => {
         if (res.statusCode === 401) {
           res.resume()
@@ -211,7 +235,7 @@ function getJson(u: URL, path: string, token: string): Promise<unknown> {
     )
     req.once('timeout', () => req.destroy(new Error('таймаут')))
     req.once('error', reject)
-    req.end()
+    req.end(payload)
   })
 }
 
@@ -272,4 +296,39 @@ export const liveTransport: HaTransport = async (baseUrl, token) => {
 export async function readDevices(opts: { url: string; token: string; transport?: HaTransport }): Promise<HaDevice[]> {
   if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
   return buildDevices(await (opts.transport ?? liveTransport)(opts.url, opts.token))
+}
+
+// ---------- управление (единственная запись в HA) ----------
+export type HaControlApi = {
+  call: (baseUrl: string, token: string, domain: string, action: 'on' | 'off', entityId: string) => Promise<void>
+  state: (baseUrl: string, token: string, entityId: string) => Promise<string>
+}
+const CONTROL_TIMEOUT_MS = 5000
+
+export const liveControlApi: HaControlApi = {
+  async call(baseUrl, token, domain, action, entityId) {
+    try {
+      await getJson(parseBase(baseUrl), `/api/services/${domain}/turn_${action}`, token, { method: 'POST', body: { entity_id: entityId }, timeout: CONTROL_TIMEOUT_MS })
+    } catch (e) {
+      throw kindOf(e)
+    }
+  },
+  async state(baseUrl, token, entityId) {
+    try {
+      const r = rec(await getJson(parseBase(baseUrl), `/api/states/${entityId}`, token, { timeout: CONTROL_TIMEOUT_MS }))
+      return typeof r.state === 'string' ? r.state : 'unavailable'
+    } catch (e) {
+      throw kindOf(e)
+    }
+  },
+}
+
+// turn_on/turn_off и повторное чтение состояния. Домен проверяется ещё раз здесь, независимо от маршрута.
+export async function toggleEntity(opts: { url: string; token: string; entityId: string; action: 'on' | 'off'; api?: HaControlApi }): Promise<ControlState> {
+  if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
+  const domain = domainOf(opts.entityId)
+  if (!(CONTROL_DOMAINS as readonly string[]).includes(domain) || !/^[a-z_]+\.[a-z0-9_]+$/.test(opts.entityId)) throw new HaError('error', 'Это устройство нельзя включать и выключать из панели')
+  const api = opts.api ?? liveControlApi
+  await api.call(opts.url, opts.token, domain, opts.action, opts.entityId)
+  return controlState(await api.state(opts.url, opts.token, opts.entityId))
 }

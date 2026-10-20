@@ -86,7 +86,7 @@ sudo systemctl restart server-panel
 sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js QBT_USER        # и QBT_PASSWORD
 sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js ADGUARD_USER    # и ADGUARD_PASSWORD
 sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js JELLYFIN_API_KEY
-sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js HA_TOKEN         # Home Assistant, страница «Умный дом» (только чтение); HA_URL по умолчанию http://127.0.0.1:8123
+sudo -u panel node /opt/server-panel/backend/dist/scripts/set-secret.js HA_TOKEN         # Home Assistant, страница «Умный дом» (чтение + тумблеры switch/light); HA_URL по умолчанию http://127.0.0.1:8123
 sudo systemctl restart server-panel
 ```
 
@@ -137,6 +137,16 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
 ## Ссылки на веб-интерфейсы служб
 
 Адреса qBittorrent, AdGuard, Portainer, Jellyfin, зеркала сайта, Marantz и т. д. не строятся из адреса страницы (панель открывается и по `https://panel.pulsdev.net:9443`, где портов служб нет, а HSTS принудительно меняет http на https). Их отдаёт сервер: `GET /api/links` (реестр `backend/src/services/links.ts`, адрес сервера в LAN — переменная `LAN_HOST` в `backend/.env`, по умолчанию `192.168.31.112`). Схема у каждой службы своя (все отвечают по http, админка SFTPGo — https). Снаружи адреса не отдаются, ссылки неактивны с подсказкой «Доступно только из домашней сети или через WireGuard». Новая служба: строка в реестре и `<HomeLink service='id'>`.
+
+## Умный дом (`/smarthome`)
+
+Устройства Home Assistant берутся из его реестров (токен `HA_TOKEN` в `backend/.env`, адрес `HA_URL`, по умолчанию `http://127.0.0.1:8123`, только локальная сеть) и раскладываются по блокам (комната HA → интеграция → «Прочее»). Ручные устройства (ссылка/HTTP/TCP/ping) работают отдельно.
+
+**Управление.** На карточке устройства с `switch` или `light` есть тумблер (у многоканальных — «название канала + тумблер»). Нажатие сразу меняет тумблер, панель шлёт `POST /api/smarthome/ha/toggle {entity_id, action: on|off}`, а в карточку возвращается реальное состояние из HA (`GET /api/states/<entity_id>`); при ошибке тумблер откатывается и показывается сообщение. Недоступная сущность (`unavailable`) — серый неактивный тумблер. В режиме «Изменить порядок» содержимое карточек заморожено, тумблеры не нажимаются и не мешают перетаскиванию.
+
+**Белый список.** Только домены `switch` и `light` (`CONTROL_DOMAINS` в `backend/src/services/haClient.ts`), только `turn_on`/`turn_off`. Сущность должна быть у синхронизированного, не скрытого и не пропавшего из HA устройства панели, иначе 403. `lock`, `cover`, `climate`, `fan`, сценарии и любые другие сервисы с панели недоступны. Чтобы расширить список — менять домены в коде, это отдельное решение. Лимит: не больше 5 переключений в секунду на всю панель (429). Таймаут вызова HA — 5 с.
+
+**Журнал действий** (`smarthome.ha.toggle`): сущность, название устройства, on/off, прежнее и новое состояние, результат (`ok`/`error`/`denied`). Токен и заголовки не пишутся, ошибки проходят через `mask.ts`.
 
 ## Доступ из интернета (подготовлен, выключен)
 
