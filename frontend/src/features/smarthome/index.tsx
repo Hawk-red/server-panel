@@ -6,7 +6,7 @@ import { api } from '@/lib/api'
 import { useLinks } from '@/lib/links'
 import {
   type ControlState, DEFAULT_ROOMS, type DeviceForm, devicesByGroup, emptyForm, EXAMPLES, groupBlockId, groupLayoutPage, HA_STATUS_TEXT, MAX_DEVICES, type Group,
-  performToggle, type SmartDevice, type SmartHomeData, SMARTHOME_LAYOUT_PAGE, summaryText, toForm,
+  performToggle, type SmartDevice, type SmartHomeData, SMARTHOME_LAYOUT_PAGE, SCENES_LAYOUT_PAGE, summaryText, toForm, visibleScenes,
 } from '@/lib/smarthome'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -16,6 +16,7 @@ import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { type CardActions, HiddenRow } from './device-card'
+import { SceneTiles } from './scenes'
 import { DeviceDialog } from './device-dialog'
 import { MoveDialog, NameDialog } from './dialogs'
 import { GroupSection } from './group-section'
@@ -40,7 +41,7 @@ function HaNotice({ ha, onSync, syncing }: { ha: SmartHomeData['ha']; onSync: ()
           <div className='flex items-center gap-2 font-medium'>
             <KeyRound className='size-4 text-info' /> Подключите Home Assistant
           </div>
-          <p className='text-sm text-muted-foreground'>Панель покажет устройства из Home Assistant (только чтение, без управления). Нужен долгосрочный токен доступа:</p>
+          <p className='text-sm text-muted-foreground'>Панель покажет устройства и сцены из Home Assistant и позволит включать розетки, свет и запускать сцены. Нужен долгосрочный токен доступа:</p>
           <ol className='list-decimal space-y-1 ps-5 text-sm'>
             <li>В Home Assistant откройте профиль (внизу слева) → «Безопасность» → «Долгосрочные токены доступа» → «Создать токен».</li>
             <li>
@@ -76,7 +77,7 @@ function HaNotice({ ha, onSync, syncing }: { ha: SmartHomeData['ha']; onSync: ()
 }
 
 // ---------- содержимое страницы (внутри Page: нужен режим изменения порядка) ----------
-type Level = 'groups' | 'cards'
+type Level = 'scenes' | 'groups' | 'cards'
 
 function Content({ data, actions, onAdd, onRenameGroup, onDeleteGroup, onShow, onSync, syncing }: {
   data: SmartHomeData
@@ -91,7 +92,7 @@ function Content({ data, actions, onAdd, onRenameGroup, onDeleteGroup, onShow, o
   const qc = useQueryClient()
   const edit = useLayoutEdit()
   const editing = Boolean(edit?.editing)
-  const [level, setLevel] = useState<Level>('groups')
+  const [level, setLevel] = useState<Level>('scenes')
   const [collapsed, setCollapsed] = useState<string[]>(readCollapsed)
   const toggle = (id: string) =>
     setCollapsed((c) => {
@@ -106,12 +107,12 @@ function Content({ data, actions, onAdd, onRenameGroup, onDeleteGroup, onShow, o
 
   const reset = useMutation({
     mutationFn: async () => {
-      const pages = level === 'groups' ? [SMARTHOME_LAYOUT_PAGE] : data.groups.map((g) => groupLayoutPage(g.id))
+      const pages = level === 'scenes' ? [SCENES_LAYOUT_PAGE] : level === 'groups' ? [SMARTHOME_LAYOUT_PAGE] : data.groups.map((g) => groupLayoutPage(g.id))
       await Promise.all(pages.map((p) => api.put(`/layout/${p}`, { order: [] })))
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['layout'] })
-      toast.success(level === 'groups' ? 'Порядок групп сброшен' : 'Порядок карточек сброшен')
+      toast.success(level === 'scenes' ? 'Порядок сцен сброшен' : level === 'groups' ? 'Порядок групп сброшен' : 'Порядок карточек сброшен')
     },
     onError: () => toast.error('Не удалось сбросить порядок'),
   })
@@ -135,13 +136,13 @@ function Content({ data, actions, onAdd, onRenameGroup, onDeleteGroup, onShow, o
       {editing && edit && (
         <div className='flex flex-wrap items-center gap-2 rounded-lg border border-info/50 bg-info/10 px-3 py-2 text-sm'>
           <div className='inline-flex rounded-md border bg-background p-0.5' role='tablist' aria-label='Что переставлять'>
-            {([['groups', 'Порядок групп'], ['cards', 'Порядок карточек']] as const).map(([id, label]) => (
+            {([['scenes', 'Порядок сцен'], ['groups', 'Порядок групп'], ['cards', 'Порядок карточек']] as const).map(([id, label]) => (
               <button key={id} type='button' role='tab' aria-selected={level === id} onClick={() => setLevel(id)} className={cn('min-h-8 rounded px-3 text-sm', level === id ? 'bg-info/15 font-medium' : 'text-muted-foreground')}>
                 {label}
               </button>
             ))}
           </div>
-          <span className='me-auto text-muted-foreground'>{level === 'groups' ? 'Перетащите группу или используйте стрелки ▲▼.' : 'Перетащите карточку внутри группы. В другую группу: «⋯» → «Переместить в группу…».'}</span>
+          <span className='me-auto text-muted-foreground'>{level === 'scenes' ? 'Перетащите плитку сцены или используйте стрелки ▲▼. Скрытые сцены показаны полупрозрачными.' : level === 'groups' ? 'Перетащите группу или используйте стрелки ▲▼.' : 'Перетащите карточку внутри группы. В другую группу: «⋯» → «Переместить в группу…».'}</span>
           <Button type='button' size='sm' variant='outline' onClick={() => reset.mutate()} disabled={reset.isPending}>
             Сбросить порядок
           </Button>
@@ -150,6 +151,20 @@ function Content({ data, actions, onAdd, onRenameGroup, onDeleteGroup, onShow, o
           </Button>
         </div>
       )}
+
+      {(() => {
+        const tiles = visibleScenes(data.scenes ?? [], editing)
+        if (tiles.length > 0)
+          return (
+            <section aria-label='Быстрые сцены' className='space-y-2'>
+              <h2 className='text-sm font-semibold text-muted-foreground'>Быстрые сцены</h2>
+              <SceneTiles scenes={tiles} editing={editing} sortable={editing && level === 'scenes'} />
+            </section>
+          )
+        return data.ha.configured && data.ha.status !== 'pending' && data.ha.status === 'ok' ? (
+          <p className='rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground'>Создайте сценарии «Запуск одним касанием» в Smart Life, они появятся здесь.</p>
+        ) : null
+      })()}
 
       {none && !editing ? (
         data.ha.status === 'pending' ? (

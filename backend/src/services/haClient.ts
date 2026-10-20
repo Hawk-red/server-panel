@@ -33,6 +33,7 @@ export type HaSummary = { text: string; tone: Tone; extras: HaExtra[] }
 export type ControlState = 'on' | 'off' | 'unavailable'
 export type HaControl = { entityId: string; name: string; state: ControlState }
 export const CONTROL_DOMAINS = ['switch', 'light'] as const
+export const SCENE_DOMAIN = 'scene' // только scene.turn_on
 export type HaDevice = {
   id: string
   name: string
@@ -58,6 +59,26 @@ const CLASS_LABEL: Record<string, string> = {
 const TOGGLE = ['light', 'switch', 'fan', 'input_boolean'] as const
 const ICON_BY_DOMAIN: Record<string, HaDevice['icon']> = { light: 'lamp', switch: 'socket', fan: 'ac', climate: 'ac', lock: 'lock', camera: 'camera', media_player: 'speaker', cover: 'other', sensor: 'sensor', binary_sensor: 'sensor' }
 const DOMAIN_PRIORITY = ['light', 'switch', 'fan', 'climate', 'lock', 'camera', 'media_player', 'cover', 'sensor', 'binary_sensor']
+
+export type HaScene = { entityId: string; name: string; available: boolean }
+
+// Сцены (scene.*) из состояний; отключённые и скрытые в реестре не берутся
+export function buildScenes(raw: HaRaw): HaScene[] {
+  const off = new Set<string>()
+  for (const e of raw.entities) {
+    const r = rec(e)
+    const id = str(r.entity_id)
+    if (id && (r.disabled_by || r.hidden_by)) off.add(id)
+  }
+  const out: HaScene[] = []
+  for (const s of raw.states) {
+    const r = rec(s)
+    const id = str(r.entity_id)
+    if (!id || !id.startsWith('scene.') || off.has(id)) continue
+    out.push({ entityId: id, name: (str(rec(r.attributes).friendly_name) ?? id).slice(0, 80), available: r.state !== 'unavailable' })
+  }
+  return out
+}
 
 const num = (s: string) => s.replace('.', ',')
 const domainOf = (entityId: string) => entityId.split('.')[0]
@@ -293,6 +314,13 @@ export const liveTransport: HaTransport = async (baseUrl, token) => {
   }
 }
 
+// Устройства и сцены за одно чтение
+export async function readHome(opts: { url: string; token: string; transport?: HaTransport }): Promise<{ devices: HaDevice[]; scenes: HaScene[] }> {
+  if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
+  const raw = await (opts.transport ?? liveTransport)(opts.url, opts.token)
+  return { devices: buildDevices(raw), scenes: buildScenes(raw) }
+}
+
 export async function readDevices(opts: { url: string; token: string; transport?: HaTransport }): Promise<HaDevice[]> {
   if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
   return buildDevices(await (opts.transport ?? liveTransport)(opts.url, opts.token))
@@ -307,6 +335,9 @@ const CONTROL_TIMEOUT_MS = 5000
 
 export const liveControlApi: HaControlApi = {
   async call(baseUrl, token, domain, action, entityId) {
+    // Разрешены только пары: switch/light — on/off, scene — on (у сцены нет «выключить»)
+    const allowed = domain === SCENE_DOMAIN ? action === 'on' : (CONTROL_DOMAINS as readonly string[]).includes(domain)
+    if (!allowed) throw new HaError('error', 'Это действие нельзя выполнить из панели')
     try {
       await getJson(parseBase(baseUrl), `/api/services/${domain}/turn_${action}`, token, { method: 'POST', body: { entity_id: entityId }, timeout: CONTROL_TIMEOUT_MS })
     } catch (e) {
@@ -331,4 +362,25 @@ export async function toggleEntity(opts: { url: string; token: string; entityId:
   const api = opts.api ?? liveControlApi
   await api.call(opts.url, opts.token, domain, opts.action, opts.entityId)
   return controlState(await api.state(opts.url, opts.token, opts.entityId))
+}
+
+// Только чтение: сцены (scene.*) — entity_id и friendly_name. Используется скриптом scripts/list-scenes.ts
+export async function readScenes(opts: { url: string; token: string }): Promise<{ entityId: string; name: string; state: string }[]> {
+  if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
+  try {
+    const list = await getJson(parseBase(opts.url), '/api/states', opts.token)
+    return (Array.isArray(list) ? list : [])
+      .map(rec)
+      .filter((r) => typeof r.entity_id === 'string' && r.entity_id.startsWith('scene.'))
+      .map((r) => ({ entityId: r.entity_id as string, name: str(rec(r.attributes).friendly_name) ?? (r.entity_id as string), state: typeof r.state === 'string' ? r.state : 'unknown' }))
+  } catch (e) {
+    throw kindOf(e)
+  }
+}
+
+// Запуск сцены: scene.turn_on. Домен проверяется здесь независимо от маршрута.
+export async function activateScene(opts: { url: string; token: string; entityId: string; api?: HaControlApi }): Promise<void> {
+  if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
+  if (!/^scene\.[a-z0-9_]+$/.test(opts.entityId)) throw new HaError('error', 'Это не сцена')
+  await (opts.api ?? liveControlApi).call(opts.url, opts.token, SCENE_DOMAIN, 'on', opts.entityId)
 }

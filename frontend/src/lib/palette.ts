@@ -1,6 +1,7 @@
 // Данные для палитры ⌘K: плоский список элементов из ответов страниц (общий кеш запросов) и фильтр для cmdk.
 // Вынесено из компонента, чтобы покрыть тестом ровно то, что вызывает cmdk: filter(value, search, keywords).
 import { createMatcher, TIER, type Matcher } from './search.ts'
+import { sceneRunnable, type Scene } from './smarthome.ts'
 import type { DiskInfo, DockerData, MediaData, NetworkData, ServiceRow, TorrentsData } from './types.ts'
 
 export type PaletteGroup = 'torrents' | 'docker' | 'services' | 'disks' | 'devices' | 'media' | 'smarthome'
@@ -23,6 +24,7 @@ export type PaletteItem = {
   keywords: string[] // title первым; по ним ищет фильтр
   to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/receiver' | '/smarthome' // выбор только переходит на страницу
   search?: { tab: 'services' }
+  scene?: string // entity_id сцены: выбор запускает её (без перехода)
 }
 
 export type PaletteData = {
@@ -32,6 +34,7 @@ export type PaletteData = {
   disks?: DiskInfo[]
   network?: NetworkData
   media?: MediaData
+  scenes?: Scene[]
 }
 
 const MARANTZ_IP = '192.168.31.94' // так же подписан ресивер на странице «Ресивер»
@@ -70,6 +73,10 @@ export function buildPaletteItems(d: PaletteData): PaletteItem[] {
     id: 'smarthome:page', group: 'smarthome', title: 'Умный дом', subtitle: 'устройства дома',
     keywords: ['Умный дом', 'SmartHome', 'smart home', 'smarthome', 'гаджеты', 'гаджет', 'устройства дома', 'умные устройства', 'лампы розетки камеры'], to: '/smarthome',
   })
+  // «Сцена: <имя>» — запуск сцены Home Assistant прямо из палитры
+  for (const sc of d.scenes ?? [])
+    if (sceneRunnable(sc))
+      out.push({ id: `scene:${sc.entityId}`, group: 'smarthome', title: `Сцена: ${sc.name}`, subtitle: 'запуск', keywords: [`Сцена ${sc.name}`, sc.name, sc.haName, 'сцена', 'scene', 'запустить'], to: '/smarthome', scene: sc.entityId })
   return out
 }
 

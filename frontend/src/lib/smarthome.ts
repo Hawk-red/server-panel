@@ -60,7 +60,12 @@ export type Accent = 'info' | 'ok' | 'warn' | 'brand' | 'indigo' | 'volume'
 export type GroupIcon = 'home' | 'plug' | 'cloud' | 'folder' | 'box'
 export type Group = { id: string; name: string; accent: Accent; icon: GroupIcon; custom: boolean }
 export type HaConnection = { configured: boolean; status: 'ok' | 'pending' | 'no-token' | 'unavailable' | 'unauthorized' | 'error'; message: string | null; syncedAt: number | null }
-export type SmartHomeData = { devices: SmartDevice[]; hidden: SmartDevice[]; groups: Group[]; ha: HaConnection; now: number }
+export const SCENE_COLORS = ['green', 'red', 'magenta', 'blue', 'brown', 'emerald', 'violet', 'orange', 'slate', 'cyan'] as const
+export const SCENE_ICONS = ['tv', 'power', 'clapperboard', 'flame', 'radio', 'laptop', 'gamepad', 'smartphone', 'lightbulb', 'volume', 'monitor', 'sparkles'] as const
+export type SceneColor = (typeof SCENE_COLORS)[number]
+export type SceneIcon = (typeof SCENE_ICONS)[number]
+export type Scene = { id: string; entityId: string; name: string; haName: string; nameCustom: boolean; color: SceneColor; icon: SceneIcon; hidden: boolean; missing: boolean; available: boolean }
+export type SmartHomeData = { devices: SmartDevice[]; hidden: SmartDevice[]; groups: Group[]; scenes: Scene[]; ha: HaConnection; now: number }
 
 // Порядок блоков хранится под ключом страницы, порядок карточек внутри блока — под своим ключом (на сервере: layout.<ключ>, до 30 символов)
 export const groupBlockId = (groupId: string) => `g-${groupId}`
@@ -255,5 +260,23 @@ export async function performToggle(deps: ToggleDeps, entityId: string, on: bool
     const now = deps.get()
     if (now && prev) deps.set(withControlState(now, entityId, prev))
     throw e
+  }
+}
+
+// ---------- быстрые сцены ----------
+export const SCENES_LAYOUT_PAGE = 'smarthome-scenes' // порядок плиток: layout.smarthome-scenes
+
+// Скрытые и пропавшие из HA сцены видны только в режиме изменения (полупрозрачные)
+export const visibleScenes = (scenes: Scene[], editing: boolean): Scene[] => scenes.filter((s) => editing || (!s.hidden && !s.missing))
+// Сцену можно запускать, если она доступна, не скрыта и не пропала
+export const sceneRunnable = (s: Pick<Scene, 'available' | 'hidden' | 'missing'>) => s.available && !s.hidden && !s.missing
+
+// Запуск сцены: результат вместо исключения, чтобы плитка показала галочку или ошибку
+export async function runScene(post: (entityId: string) => Promise<unknown>, entityId: string, errText: (e: unknown) => string): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    await post(entityId)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, message: errText(e) }
   }
 }

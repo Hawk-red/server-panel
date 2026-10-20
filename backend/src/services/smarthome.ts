@@ -2,9 +2,10 @@ import { db } from '../db.js'
 import { config } from '../config.js'
 import { errText } from '../mask.js'
 import { getSetting, setSetting } from '../settings.js'
-import { HaError, readDevices, type ControlState, type HaControl, type HaStatus, type HaSummary } from './haClient.js'
+import { HaError, readHome, type ControlState, type HaControl, type HaStatus, type HaSummary } from './haClient.js'
 import { accentForNewGroup, newGroupId, resolveGroups, type CustomGroup, type Group } from './smarthomeGroups.js'
-import { applyHaSync } from './smarthomeSync.js'
+import { applyHaSync, applySceneSync } from './smarthomeSync.js'
+import { defaultColor, defaultIcon, displayName, sceneBlockId, sortScenes, type SceneColor, type SceneIcon, type ScenePatch } from './smarthomeScenes.js'
 import { createStatusCache, type DeviceInput, type Status } from './smarthomeCore.js'
 
 export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary; controls?: HaControl[] }
@@ -62,14 +63,15 @@ export const haState: { status: HaStatus; message: string | null; syncedAt: numb
   status: config.ha.token ? 'pending' : 'no-token', message: null, syncedAt: null, lastAttempt: 0, inflight: null,
 }
 
-export type HaReader = typeof readDevices
+export type HaReader = typeof readHome
 // Одна синхронизация (читает HA, пишет в реестр). Ошибки не бросает: превращает в понятный статус
 export async function syncHa(opts: { reader?: HaReader; now?: () => number } = {}): Promise<void> {
   const now = opts.now ?? Date.now
   haState.lastAttempt = now()
   try {
-    const list = await (opts.reader ?? readDevices)({ url: config.ha.url, token: config.ha.token })
-    applyHaSync(db, list, now())
+    const { devices, scenes } = await (opts.reader ?? readHome)({ url: config.ha.url, token: config.ha.token })
+    applyHaSync(db, devices, now())
+    applySceneSync(db, scenes, now())
     haState.status = 'ok'
     haState.message = null
     haState.syncedAt = now()
@@ -200,4 +202,44 @@ export function setControlState(deviceId: number, entityId: string, state: Contr
   if (usable.length > 0 && /^(включено|выключено)/.test(summary.text))
     summary = { ...summary, text: usable.length === 1 ? (on ? 'включено' : 'выключено') : `включено ${on} из ${usable.length}`, tone: on > 0 ? 'on' : 'off' }
   db.prepare('UPDATE smart_devices SET ha_info = ? WHERE id = ?').run(JSON.stringify({ ...d.ha, controls, summary }), deviceId)
+}
+
+// ---------- сцены (плитки «Быстрые сцены») ----------
+type SceneRow = { entity_id: string; ha_name: string; name: string | null; color: string | null; icon: string | null; hidden: number; missing: number; available: number; first_seen: number }
+export type SceneView = {
+  id: string // id блока для порядка плиток
+  entityId: string
+  name: string // имя владельца или имя из HA (буквы через пробел склеены)
+  haName: string
+  nameCustom: boolean
+  color: SceneColor
+  icon: SceneIcon
+  hidden: boolean
+  missing: boolean
+  available: boolean
+}
+const sceneView = (r: SceneRow): SceneView => ({
+  id: sceneBlockId(r.entity_id), entityId: r.entity_id, name: r.name ?? displayName(r.ha_name), haName: r.ha_name, nameCustom: r.name !== null,
+  color: (r.color as SceneColor | null) ?? defaultColor(r.entity_id, r.ha_name), icon: (r.icon as SceneIcon | null) ?? defaultIcon(r.entity_id, r.ha_name),
+  hidden: r.hidden === 1, missing: r.missing === 1, available: r.available === 1,
+})
+export function listScenes(): SceneView[] {
+  const rows = db.prepare('SELECT * FROM smart_scenes').all() as SceneRow[]
+  const order = new Map(sortScenes(rows.map((r) => ({ entityId: r.entity_id, firstSeen: r.first_seen }))).map((x, i) => [x.entityId, i]))
+  return rows.sort((a, b) => order.get(a.entity_id)! - order.get(b.entity_id)!).map(sceneView)
+}
+// Сцену можно запускать, только если она есть в реестре панели, не скрыта и не пропала из HA
+export const findScene = (entityId: string): SceneView | null => listScenes().find((s) => s.entityId === entityId && !s.hidden && !s.missing) ?? null
+export const sceneExists = (entityId: string): boolean => Boolean(db.prepare('SELECT 1 FROM smart_scenes WHERE entity_id = ?').get(entityId))
+
+export function patchScene(entityId: string, p: ScenePatch): SceneView | null {
+  if (!sceneExists(entityId)) return null
+  const sets: string[] = []
+  const args: unknown[] = []
+  if (p.name !== undefined) (sets.push('name = ?'), args.push(p.name))
+  if (p.color !== undefined) (sets.push('color = ?'), args.push(p.color))
+  if (p.icon !== undefined) (sets.push('icon = ?'), args.push(p.icon))
+  if (p.hidden !== undefined) (sets.push('hidden = ?'), args.push(p.hidden ? 1 : 0))
+  if (sets.length > 0) db.prepare(`UPDATE smart_scenes SET ${sets.join(', ')}, updated_at = ? WHERE entity_id = ?`).run(...args, Date.now(), entityId)
+  return listScenes().find((s) => s.entityId === entityId) ?? null
 }

@@ -5,7 +5,7 @@ import { sidebarData } from '../components/layout/data/sidebar-data.ts'
 import { applyOrder } from './layout-order.ts'
 import { buildPaletteItems, filterPaletteItems } from './palette.ts'
 import {
-  devicesByGroup, groupBlockId, performToggle, withControlState, type SmartHomeData, groupLayoutPage, groupSummary, HA_STATUS_TEXT,
+  devicesByGroup, groupBlockId, runScene, sceneRunnable, SCENE_COLORS, SCENE_ICONS, SCENES_LAYOUT_PAGE, visibleScenes, type Scene, performToggle, withControlState, type SmartHomeData, groupLayoutPage, groupSummary, HA_STATUS_TEXT,
   addressFields, ALL_ROOMS, deviceBlockId, emptyForm, filterByRoom, NO_ROOM, openUrl, roomsOf, SMARTHOME_LAYOUT_PAGE, statusLabel, summaryText, toPayload, validateForm,
   type DeviceForm, type SmartDevice,
 } from './smarthome.ts'
@@ -187,7 +187,7 @@ describe('переключатели switch/light', () => {
     ha: { manufacturer: null, model: null, integration: 'sonoff', area: null, available: true, summary: { text: 'включено 0 из 2', tone: 'off', extras: [] },
       controls: [{ entityId: 'switch.tx2c_balcon', name: 'Balcon', state: 'off' }, { entityId: 'switch.tx2c_lamp', name: 'Lamp', state: 'off' }] },
   })
-  const mkData = (): SmartHomeData => ({ devices: [tx2c], hidden: [], groups: [], ha: { configured: true, status: 'ok', message: null, syncedAt: 1 }, now: 1 })
+  const mkData = (): SmartHomeData => ({ devices: [tx2c], hidden: [], groups: [], scenes: [], ha: { configured: true, status: 'ok', message: null, syncedAt: 1 }, now: 1 })
   const states = (d: SmartHomeData) => d.devices[0].ha!.controls!.map((c) => c.state)
   const holder = (post: (e: string, a: 'on' | 'off') => Promise<{ state: 'on' | 'off' | 'unavailable' }>) => {
     let data = mkData()
@@ -230,5 +230,40 @@ describe('переключатели switch/light', () => {
     await performToggle(h, 'switch.tx2c_lamp', true)
     await performToggle(h, 'switch.tx2c_lamp', false)
     assert.deepEqual(sent, ['switch.tx2c_lamp on', 'switch.tx2c_lamp off'])
+  })
+})
+
+describe('быстрые сцены', () => {
+  const scene = (o: Partial<Scene>): Scene => ({ id: 'sc-tv-on', entityId: 'scene.tv_on', name: 'TV ON', haName: 'TV ON', nameCustom: false, color: 'green', icon: 'tv', hidden: false, missing: false, available: true, ...o })
+  it('запуск: на сервер уходит entity_id, успех — ok', async () => {
+    const sent: string[] = []
+    const r = await runScene(async (id) => void sent.push(id), 'scene.tv_on', String)
+    assert.deepEqual([r, sent], [{ ok: true }, ['scene.tv_on']])
+  })
+  it('ошибка запуска возвращается текстом, а не исключением', async () => {
+    const r = await runScene(async () => { throw new Error('Home Assistant недоступен') }, 'scene.tv_on', (e) => (e as Error).message)
+    assert.deepEqual(r, { ok: false, message: 'Home Assistant недоступен' })
+  })
+  it('скрытые и пропавшие видны только в режиме изменения; недоступные не запускаются', () => {
+    const list = [scene({}), scene({ entityId: 'scene.a', hidden: true }), scene({ entityId: 'scene.b', missing: true }), scene({ entityId: 'scene.c', available: false })]
+    assert.deepEqual(visibleScenes(list, false).map((s) => s.entityId), ['scene.tv_on', 'scene.c'])
+    assert.equal(visibleScenes(list, true).length, 4)
+    assert.deepEqual(list.map(sceneRunnable), [true, false, false, false])
+  })
+  it('палитра: 10 цветов, не меньше 12 значков, ключ порядка подходит серверу', () => {
+    assert.equal(SCENE_COLORS.length, 10)
+    assert.ok(SCENE_ICONS.length >= 12)
+    assert.match(SCENES_LAYOUT_PAGE, /^[a-z0-9-]{1,30}$/)
+    assert.deepEqual(SCENE_COLORS.slice(0, 8), ['green', 'red', 'magenta', 'blue', 'brown', 'emerald', 'violet', 'orange'])
+  })
+  it('⌘K: «Сцена: <имя>» для запускаемых сцен, выбор запускает сцену', () => {
+    const items = buildPaletteItems({ scenes: [scene({}), scene({ entityId: 'scene.a', name: 'OFF', hidden: true }), scene({ entityId: 'scene.c', name: 'Dead', available: false })] })
+    const sc = items.filter((i) => i.id.startsWith('scene:'))
+    assert.deepEqual(sc.map((i) => [i.title, i.scene]), [['Сцена: TV ON', 'scene.tv_on']])
+    assert.ok(filterPaletteItems(items, 'сцена tv').some((i) => i.scene === 'scene.tv_on'))
+  })
+  it('все цвета и значки имеют оформление (серверные списки совпадают с интерфейсом)', async () => {
+    const { SCENE_BG } = await import('../features/smarthome/scene-style.ts')
+    for (const c of SCENE_COLORS) assert.ok(SCENE_BG[c], c)
   })
 })

@@ -4,7 +4,8 @@ import { requireAuth } from '../auth.js'
 import { config } from '../config.js'
 import { errText } from '../mask.js'
 import * as store from '../services/smarthome.js'
-import { CONTROL_DOMAINS, HaError, toggleEntity, type HaControlApi } from '../services/haClient.js'
+import { activateScene, CONTROL_DOMAINS, HaError, SCENE_DOMAIN, toggleEntity, type HaControlApi } from '../services/haClient.js'
+import { validateScenePatch } from '../services/smarthomeScenes.js'
 import { createRateLimiter } from '../services/smarthomeControl.js'
 import { validateGroupName } from '../services/smarthomeGroups.js'
 import { assertLocal, MAX_DEVICES, urlHost, parseUrl, validateDevice, type DeviceInput } from '../services/smarthomeCore.js'
@@ -38,6 +39,9 @@ async function accept(body: unknown, reply: FastifyReply): Promise<DeviceInput |
 
 // Не больше 5 переключений в секунду на всю панель
 const controlLimiter = createRateLimiter(5, 1000)
+// Одна и та же сцена — не чаще раза в 300 мс (можно быстро жать «громкость −10»)
+const sceneGap = new Map<string, number>()
+const SCENE_GAP_MS = 300
 export const controlDeps: { api?: HaControlApi } = {}
 
 export async function smarthomeRoutes(app: FastifyInstance) {
@@ -46,14 +50,14 @@ export async function smarthomeRoutes(app: FastifyInstance) {
   // Список: ручные устройства (проверка доступности) и устройства Home Assistant (из реестра, только чтение), блоки, состояние HA
   app.get('/api/smarthome/devices', async () => {
     store.maybeSyncHa()
-    return { ...store.listView(), ha: store.haPublic(), now: Date.now() }
+    return { ...store.listView(), scenes: store.listScenes(), ha: store.haPublic(), now: Date.now() }
   })
 
   // «Обновить»: перечитать HA сейчас (только чтение)
   app.post('/api/smarthome/ha/sync', async (req) => {
     await store.forceSyncHa()
     audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.sync', details: { status: store.haState.status }, result: store.haState.status === 'ok' ? 'ok' : 'error' })
-    return { ...store.listView(), ha: store.haPublic(), now: Date.now() }
+    return { ...store.listView(), scenes: store.listScenes(), ha: store.haPublic(), now: Date.now() }
   })
 
   // Включить/выключить сущность switch или light. Только домены из белого списка и только сущности синхронизированных, не скрытых устройств HA.
@@ -94,6 +98,54 @@ export async function smarthomeRoutes(app: FastifyInstance) {
         audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.toggle', target: entityId, details: { ...base, error: message }, result: 'error' })
         return reply.code(e instanceof HaError && e.status === 'unavailable' ? 503 : 502).send({ message })
       }
+    }
+  )
+
+  // Запуск сцены (scene.turn_on). Только домен scene и только сцены из реестра панели, не скрытые.
+  app.post<{ Body: { entity_id: string } }>(
+    '/api/smarthome/ha/scene',
+    { schema: { body: { type: 'object', required: ['entity_id'], additionalProperties: false, properties: { entity_id: { type: 'string', maxLength: 120 } } } } },
+    async (req, reply) => {
+      const entityId = req.body.entity_id
+      const deny = (code: number, message: string, result: 'denied' | 'error' = 'denied') => {
+        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.scene', target: entityId.slice(0, 120), details: { reason: message }, result })
+        return reply.code(code).send({ message })
+      }
+      if (!/^[a-z_]+\.[a-z0-9_]+$/.test(entityId)) return deny(400, 'Некорректный идентификатор сущности')
+      if (entityId.split('.')[0] !== SCENE_DOMAIN) return deny(403, 'Это не сцена')
+      const scene = store.findScene(entityId)
+      if (!scene) return deny(403, 'Сцена не найдена среди сцен панели (или скрыта)')
+      if (!config.ha.token) return deny(409, 'Токен Home Assistant не задан', 'error')
+      if (!scene.available) return deny(409, 'Сцена недоступна', 'error')
+      const t = Date.now()
+      if (t - (sceneGap.get(entityId) ?? 0) < SCENE_GAP_MS) return deny(429, 'Эта сцена только что запускалась', 'error')
+      if (!controlLimiter.take()) return deny(429, 'Слишком часто: не больше 5 вызовов в секунду', 'error')
+      sceneGap.set(entityId, t)
+      try {
+        await activateScene({ url: config.ha.url, token: config.ha.token, entityId, api: controlDeps.api })
+        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.scene', target: entityId, details: { scene: scene.name }, result: 'ok' })
+        return { entity_id: entityId, name: scene.name, ok: true }
+      } catch (e) {
+        const message = errText(e).split('\n')[0] || 'Ошибка Home Assistant'
+        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.scene', target: entityId, details: { scene: scene.name, error: message }, result: 'error' })
+        return reply.code(e instanceof HaError && e.status === 'unavailable' ? 503 : 502).send({ message })
+      }
+    }
+  )
+
+  // Настройки плитки сцены: имя, цвет, значок, скрытие (null — вернуть значение по умолчанию)
+  app.patch<{ Body: { entity_id: string } }>(
+    '/api/smarthome/scenes',
+    { schema: { body: { type: 'object', required: ['entity_id'], properties: { entity_id: { type: 'string', pattern: '^scene\\.[a-z0-9_]{1,100}$' } } } } },
+    async (req, reply) => {
+      const { entity_id: entityId, ...rest } = req.body as { entity_id: string } & Record<string, unknown>
+      const v = validateScenePatch(rest)
+      if (!v.ok) return reply.code(400).send({ message: v.message, field: v.field })
+      const before = store.listScenes().find((s) => s.entityId === entityId)
+      const scene = store.patchScene(entityId, v.value)
+      if (!scene) return reply.code(404).send({ message: 'Сцена не найдена' })
+      audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.scene.update', target: entityId, details: { from: before && { name: before.name, color: before.color, icon: before.icon, hidden: before.hidden }, to: v.value }, result: 'ok' })
+      return scene
     }
   )
 

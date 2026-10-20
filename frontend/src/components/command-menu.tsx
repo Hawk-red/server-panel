@@ -1,9 +1,11 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
 import { api } from '@/lib/api'
 import { buildPaletteItems, GROUP_HEADING, paletteFilter, type PaletteGroup } from '@/lib/palette'
+import { runScene, type SmartHomeData } from '@/lib/smarthome'
 import type { DiskInfo, DockerData, MediaData, NetworkData, ServiceRow, TorrentsData } from '@/lib/types'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
@@ -38,14 +40,15 @@ export function CommandMenu() {
   const disks = useQuery({ queryKey: ['disks'], queryFn: async () => (await api.get<DiskInfo[]>('/system/disks')).data, ...opts })
   const network = useQuery({ queryKey: ['network'], queryFn: async () => (await api.get<NetworkData>('/network')).data, ...opts })
   const media = useQuery({ queryKey: ['media'], queryFn: async () => (await api.get<MediaData>('/media')).data, ...opts })
+  const smarthome = useQuery({ queryKey: ['smarthome'], queryFn: async () => (await api.get<SmartHomeData>('/smarthome/devices')).data, ...opts })
   const loading = [torrents, docker, services, disks, network, media].some((q) => q.isLoading)
   const searching = query.trim() !== ''
   const items = React.useMemo(
     () =>
       searching
-        ? buildPaletteItems({ torrents: torrents.data, docker: docker.data, services: services.data, disks: disks.data, network: network.data, media: media.data })
+        ? buildPaletteItems({ torrents: torrents.data, docker: docker.data, services: services.data, disks: disks.data, network: network.data, media: media.data, scenes: smarthome.data?.scenes })
         : [],
-    [searching, torrents.data, docker.data, services.data, disks.data, network.data, media.data]
+    [searching, torrents.data, docker.data, services.data, disks.data, network.data, media.data, smarthome.data]
   )
 
   const runCommand = React.useCallback(
@@ -120,7 +123,15 @@ export function CommandMenu() {
           rows.length === 0 ? null : (
             <CommandGroup key={g} heading={GROUP_HEADING[g]}>
               {rows.map((it) => (
-                <CommandItem key={it.id} value={it.id} keywords={it.keywords} onSelect={() => runCommand(() => navigate({ to: it.to, search: it.search as never }))}>
+                <CommandItem key={it.id} value={it.id} keywords={it.keywords} onSelect={() =>
+                    runCommand(() => {
+                      if (!it.scene) return navigate({ to: it.to, search: it.search as never })
+                      const name = it.title.replace(/^Сцена: /, '')
+                      void runScene((id) => api.post('/smarthome/ha/scene', { entity_id: id }), it.scene, (e) => (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Не удалось запустить сцену').then((r) =>
+                        r.ok ? toast.success(`Сцена «${name}» запущена`) : toast.error(r.message)
+                      )
+                    })
+                  }>
                   <ArrowRight className='text-muted-foreground/80' />
                   <span className='truncate'>{it.title}</span>
                   {it.subtitle && <span className='ms-auto truncate text-xs text-muted-foreground'>{it.subtitle}</span>}

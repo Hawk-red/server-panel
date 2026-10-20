@@ -30,3 +30,20 @@ export const SMART_DEVICES_HA_DDL = `
   ALTER TABLE smart_devices ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
   CREATE UNIQUE INDEX smart_devices_ha_id ON smart_devices (ha_device_id) WHERE ha_device_id IS NOT NULL;
 `
+
+// Сцены Home Assistant (scene.*) для блока «Быстрые сцены». ha_name — имя из HA; name/color/icon/hidden — выбор владельца,
+// синхронизация их не трогает. Пропавшие в HA помечаются missing=1 и не удаляются. Порядок плиток — layout.smarthome-scenes.
+export const SMART_SCENES_DDL = `
+  CREATE TABLE smart_scenes (
+    entity_id  TEXT PRIMARY KEY,
+    ha_name    TEXT NOT NULL,
+    name       TEXT,                             -- имя владельца (NULL — показывать имя из HA)
+    color      TEXT,                             -- NULL — цвет по умолчанию
+    icon       TEXT,                             -- NULL — значок по умолчанию
+    hidden     INTEGER NOT NULL DEFAULT 0,
+    missing    INTEGER NOT NULL DEFAULT 0,
+    available  INTEGER NOT NULL DEFAULT 1,
+    first_seen INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+`

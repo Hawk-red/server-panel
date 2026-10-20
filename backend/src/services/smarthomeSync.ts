@@ -37,3 +37,32 @@ export function applyHaSync(db: Database.Database, list: HaDevice[], now = Date.
   })()
   return { added, updated, missing }
 }
+
+export type SceneIn = { entityId: string; name: string; available: boolean }
+// Сцены HA → реестр панели. Новые добавляются (hidden=0), у существующих обновляются имя из HA и доступность;
+// name/color/icon/hidden владельца не трогаются. Пропавшие помечаются missing=1, не удаляются.
+export function applySceneSync(db: Database.Database, list: SceneIn[], now = Date.now()): { added: number; missing: number } {
+  let added = 0
+  let missing = 0
+  db.transaction(() => {
+    const existing = new Set((db.prepare('SELECT entity_id AS id FROM smart_scenes').all() as { id: string }[]).map((r) => r.id))
+    const upd = db.prepare('UPDATE smart_scenes SET ha_name = ?, available = ?, missing = 0, updated_at = ? WHERE entity_id = ?')
+    const ins = db.prepare('INSERT INTO smart_scenes (entity_id, ha_name, available, first_seen, updated_at) VALUES (?, ?, ?, ?, ?)')
+    const seen = new Set<string>()
+    for (const s of list) {
+      seen.add(s.entityId)
+      if (existing.has(s.entityId)) upd.run(s.name, s.available ? 1 : 0, now, s.entityId)
+      else {
+        ins.run(s.entityId, s.name, s.available ? 1 : 0, now, now)
+        added++
+      }
+    }
+    const mark = db.prepare('UPDATE smart_scenes SET missing = 1, updated_at = ? WHERE entity_id = ? AND missing = 0')
+    for (const id of existing)
+      if (!seen.has(id)) {
+        mark.run(now, id)
+        missing++
+      }
+  })()
+  return { added, missing }
+}
