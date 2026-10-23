@@ -2,10 +2,11 @@ import { db } from '../db.js'
 import { config } from '../config.js'
 import { errText } from '../mask.js'
 import { getSetting, setSetting } from '../settings.js'
-import { HaError, readHome, type ControlState, type HaControl, type HaStatus, type HaSummary } from './haClient.js'
+import { HaError, readHome, controlState, type ControlState, type HaControl, type HaStatus, type HaSummary } from './haClient.js'
 import { accentForNewGroup, newGroupId, resolveGroups, type CustomGroup, type Group } from './smarthomeGroups.js'
 import { applyHaSync, applySceneSync } from './smarthomeSync.js'
 import { defaultColor, defaultIcon, displayName, sceneBlockId, sortScenes, type SceneColor, type SceneIcon, type ScenePatch } from './smarthomeScenes.js'
+import { startHaLive, type LiveEvent } from './haLive.js'
 import { createStatusCache, type DeviceInput, type Status } from './smarthomeCore.js'
 
 export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary; controls?: HaControl[] }
@@ -58,9 +59,10 @@ function statusOf(d: SmartDevice): Status {
 }
 
 // ---------- Home Assistant: состояние синхронизации ----------
-export const HA_TTL_MS = 20_000
-export const haState: { status: HaStatus; message: string | null; syncedAt: number | null; lastAttempt: number; inflight: Promise<void> | null } = {
-  status: config.ha.token ? 'pending' : 'no-token', message: null, syncedAt: null, lastAttempt: 0, inflight: null,
+// Полная синхронизация (реестры) — раз в минуту; состояния switch/light/scene приходят событиями (см. «Живые события»), без них — этим же опросом
+export const HA_TTL_MS = 60_000
+export const haState: { status: HaStatus; message: string | null; syncedAt: number | null; lastAttempt: number; inflight: Promise<void> | null; live: boolean } = {
+  status: config.ha.token ? 'pending' : 'no-token', message: null, syncedAt: null, lastAttempt: 0, inflight: null, live: false,
 }
 
 export type HaReader = typeof readHome
@@ -68,10 +70,13 @@ export type HaReader = typeof readHome
 export async function syncHa(opts: { reader?: HaReader; now?: () => number } = {}): Promise<void> {
   const now = opts.now ?? Date.now
   haState.lastAttempt = now()
+  const startedAt = now()
   try {
     const { devices, scenes } = await (opts.reader ?? readHome)({ url: config.ha.url, token: config.ha.token })
     applyHaSync(db, devices, now())
     applySceneSync(db, scenes, now())
+    // События, пришедшие, пока шло чтение, новее прочитанного: поверх них синхронизация не пишет
+    for (const [entityId, v] of liveSeen) if (v.at >= startedAt) applyLiveState(entityId, v.state)
     haState.status = 'ok'
     haState.message = null
     haState.syncedAt = now()
@@ -82,7 +87,7 @@ export async function syncHa(opts: { reader?: HaReader; now?: () => number } = {
   }
 }
 
-// В фоне, не чаще раза в 20 с; запрос списка её не ждёт
+// В фоне, не чаще раза в минуту; запрос списка её не ждёт
 export function maybeSyncHa(now = Date.now()) {
   if (!config.ha.token || haState.inflight || now - haState.lastAttempt < HA_TTL_MS) return
   haState.inflight = syncHa().finally(() => (haState.inflight = null))
@@ -95,7 +100,7 @@ export async function forceSyncHa(): Promise<void> {
   haState.inflight = syncHa().finally(() => (haState.inflight = null))
   return haState.inflight
 }
-export const haPublic = () => ({ configured: Boolean(config.ha.token), status: haState.status, message: haState.message, syncedAt: haState.syncedAt })
+export const haPublic = () => ({ configured: Boolean(config.ha.token), status: haState.status, message: haState.message, syncedAt: haState.syncedAt, live: haState.live })
 
 // ---------- блоки ----------
 const GROUPS_KEY = 'smarthome.groups'
@@ -202,6 +207,56 @@ export function setControlState(deviceId: number, entityId: string, state: Contr
   if (usable.length > 0 && /^(включено|выключено)/.test(summary.text))
     summary = { ...summary, text: usable.length === 1 ? (on ? 'включено' : 'выключено') : `включено ${on} из ${usable.length}`, tone: on > 0 ? 'on' : 'off' }
   db.prepare('UPDATE smart_devices SET ha_info = ? WHERE id = ?').run(JSON.stringify({ ...d.ha, controls, summary }), deviceId)
+}
+
+// ---------- Живые события HA ----------
+const liveSeen = new Map<string, { state: string; at: number }>()
+
+// Событие state_changed → реестр панели сразу: тумблеры (switch/light) и доступность сцены. Прочие сущности игнорируются.
+export function applyLiveState(entityId: string, state: string, now = Date.now()): boolean {
+  if (entityId.startsWith('scene.')) {
+    return db.prepare('UPDATE smart_scenes SET available = ?, updated_at = ? WHERE entity_id = ? AND available != ?').run(...(state === 'unavailable' ? [0, now, entityId, 0] : [1, now, entityId, 1])).changes > 0
+  }
+  const next = controlState(state)
+  let changed = false
+  const rows = db.prepare("SELECT id FROM smart_devices WHERE source = 'homeassistant' AND ha_info LIKE ?").all(`%"entityId":"${entityId}"%`) as { id: number }[]
+  for (const r of rows) {
+    const c = getDevice(r.id)?.ha?.controls?.find((x) => x.entityId === entityId)
+    if (c && c.state !== next) {
+      setControlState(r.id, entityId, next)
+      changed = true
+    }
+  }
+  return changed
+}
+
+export function onLiveEvent(e: LiveEvent, now = Date.now()) {
+  liveSeen.set(e.entityId, { state: e.state, at: now })
+  applyLiveState(e.entityId, e.state, now)
+}
+
+let live: { stop: () => void } | null = null
+export function startLive(log: (msg: string) => void = () => undefined) {
+  if (live || !config.ha.token) return
+  live = startHaLive({
+    url: config.ha.url,
+    token: config.ha.token,
+    onEvent: (e) => onLiveEvent(e),
+    onConnected: (up) => {
+      haState.live = up
+      if (up) {
+        // События до подписки могли быть пропущены: полное чтение сразу после (пере)подключения
+        haState.lastAttempt = 0
+        maybeSyncHa()
+      } else log('Home Assistant live: связь потеряна, состояния обновляются опросом раз в минуту')
+    },
+    log,
+  })
+}
+export function stopLive() {
+  live?.stop()
+  live = null
+  haState.live = false
 }
 
 // ---------- сцены (плитки «Быстрые сцены») ----------

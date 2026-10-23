@@ -89,10 +89,10 @@ export async function smarthomeRoutes(app: FastifyInstance) {
 
       const base = { entityId, device: found.device.name, action, from: found.control.state }
       try {
-        const state = await toggleEntity({ url: config.ha.url, token: config.ha.token, entityId, action, api: controlDeps.api })
+        const { state, confirmed } = await toggleEntity({ url: config.ha.url, token: config.ha.token, entityId, action, api: controlDeps.api })
         store.setControlState(found.device.id, entityId, state)
-        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.toggle', target: entityId, details: { ...base, to: state }, result: 'ok' })
-        return { entity_id: entityId, name: found.control.name, state }
+        audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.toggle', target: entityId, details: { ...base, to: state, confirmed }, result: 'ok' })
+        return { entity_id: entityId, name: found.control.name, state, confirmed }
       } catch (e) {
         const message = errText(e).split('\n')[0] || 'Ошибка Home Assistant'
         audit({ ip: req.clientIp, user: 'admin', action: 'smarthome.ha.toggle', target: entityId, details: { ...base, error: message }, result: 'error' })

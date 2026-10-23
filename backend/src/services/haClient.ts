@@ -354,14 +354,32 @@ export const liveControlApi: HaControlApi = {
   },
 }
 
-// turn_on/turn_off и повторное чтение состояния. Домен проверяется ещё раз здесь, независимо от маршрута.
-export async function toggleEntity(opts: { url: string; token: string; entityId: string; action: 'on' | 'off'; api?: HaControlApi }): Promise<ControlState> {
+// Медленные устройства (Sonoff LAN) подтверждают не сразу: до 2 повторных чтений состояния с паузой ~700 мс
+export const CONFIRM_RETRIES = 2
+export const CONFIRM_PAUSE_MS = 700
+export type ToggleResult = { state: ControlState; confirmed: boolean }
+
+// turn_on/turn_off и чтение состояния, пока оно не станет ожидаемым (или не кончатся попытки). Домен проверяется ещё раз здесь, независимо от маршрута.
+export async function toggleEntity(opts: {
+  url: string
+  token: string
+  entityId: string
+  action: 'on' | 'off'
+  api?: HaControlApi
+  sleep?: (ms: number) => Promise<void>
+}): Promise<ToggleResult> {
   if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
   const domain = domainOf(opts.entityId)
   if (!(CONTROL_DOMAINS as readonly string[]).includes(domain) || !/^[a-z_]+\.[a-z0-9_]+$/.test(opts.entityId)) throw new HaError('error', 'Это устройство нельзя включать и выключать из панели')
   const api = opts.api ?? liveControlApi
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   await api.call(opts.url, opts.token, domain, opts.action, opts.entityId)
-  return controlState(await api.state(opts.url, opts.token, opts.entityId))
+  let state = controlState(await api.state(opts.url, opts.token, opts.entityId))
+  for (let i = 0; i < CONFIRM_RETRIES && state !== opts.action; i++) {
+    await sleep(CONFIRM_PAUSE_MS)
+    state = controlState(await api.state(opts.url, opts.token, opts.entityId))
+  }
+  return { state, confirmed: state === opts.action }
 }
 
 // Только чтение: сцены (scene.*) — entity_id и friendly_name. Используется скриптом scripts/list-scenes.ts

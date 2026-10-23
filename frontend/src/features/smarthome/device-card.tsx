@@ -1,4 +1,4 @@
-import { Eye, EyeOff, ExternalLink, FolderInput, Pencil, Trash2, Ellipsis } from 'lucide-react'
+import { Eye, EyeOff, Loader2, ExternalLink, FolderInput, Pencil, Trash2, Ellipsis } from 'lucide-react'
 import { type HaControl, KINDS, openUrl, type SmartDevice, statusLabel } from '@/lib/smarthome'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ export type CardActions = {
   haHref: (haDeviceId: string) => string | null
   onToggle: (entityId: string, on: boolean) => void // тумблер switch/light
   pending: ReadonlySet<string> // entity_id, по которым команда ещё выполняется
+  waiting: ReadonlySet<string> // entity_id, ожидающие подтверждения от устройства (не дольше 3 с)
 }
 
 function StatusDot({ state }: { state: SmartDevice['status']['state'] }) {
@@ -24,14 +25,18 @@ function StatusDot({ state }: { state: SmartDevice['status']['state'] }) {
 
 function ControlSwitch({ c, label, a }: { c: HaControl; label: string; a: CardActions }) {
   const unavailable = c.state === 'unavailable'
+  const waiting = a.waiting.has(c.entityId)
   return (
-    <Switch
-      checked={c.state === 'on'}
-      disabled={unavailable || a.pending.has(c.entityId)}
-      onCheckedChange={(on) => a.onToggle(c.entityId, on)}
-      aria-label={unavailable ? `${label}: недоступно` : label}
-      title={unavailable ? 'Недоступно' : undefined}
-    />
+    <span className='inline-flex items-center gap-1.5'>
+      {waiting && <Loader2 className='size-3.5 animate-spin text-muted-foreground' role='status' aria-label='Ожидание подтверждения' />}
+      <Switch
+        checked={c.state === 'on'}
+        disabled={unavailable || waiting || a.pending.has(c.entityId)}
+        onCheckedChange={(on) => a.onToggle(c.entityId, on)}
+        aria-label={unavailable ? `${label}: недоступно` : label}
+        title={unavailable ? 'Недоступно' : waiting ? 'Ожидание подтверждения' : undefined}
+      />
+    </span>
   )
 }
 

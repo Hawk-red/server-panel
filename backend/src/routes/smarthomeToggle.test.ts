@@ -73,7 +73,7 @@ describe('POST /api/smarthome/ha/toggle', () => {
     await new Promise((r) => setTimeout(r, 1100)) // свежее окно лимита
     const r = await post('switch.tx2c_balcon', 'on')
     assert.equal(r.statusCode, 200)
-    assert.deepEqual(JSON.parse(r.body), { entity_id: 'switch.tx2c_balcon', name: 'Balcon', state: 'on' })
+    assert.deepEqual(JSON.parse(r.body), { entity_id: 'switch.tx2c_balcon', name: 'Balcon', state: 'on', confirmed: true })
     assert.deepEqual(calls, ['switch/turn_on switch.tx2c_balcon'])
     const d = listDevices().find((x) => x.haDeviceId === 'd-tx2c')!
     assert.equal(d.ha!.summary.text, 'включено 1 из 2')
@@ -84,7 +84,9 @@ describe('POST /api/smarthome/ha/toggle', () => {
     const orig = controlDeps.api!.call
     controlDeps.api!.call = async () => undefined // HA «не выполнил» команду
     const r = await post('switch.tx2c_lamp', 'on')
-    assert.equal(JSON.parse(r.body).state, 'off')
+    const j = JSON.parse(r.body)
+    assert.equal(j.state, 'off')
+    assert.equal(j.confirmed, false)
     controlDeps.api!.call = orig
   })
   it('домены вне белого списка → 403 (lock, cover, climate, fan, input_boolean, automation, script)', async () => {
@@ -192,7 +194,7 @@ describe('REST-вызов на локальном подставном HA', asyn
 
   it('POST /api/services/<domain>/turn_on с entity_id и Bearer, затем GET /api/states/<id>', async () => {
     const s = await toggleEntity({ url, token: 'good', entityId: 'switch.a', action: 'on' })
-    assert.equal(s, 'on')
+    assert.deepEqual(s, { state: 'on', confirmed: true })
     assert.deepEqual(seen.map((x) => x.req), ['POST /api/services/switch/turn_on', 'GET /api/states/switch.a'])
     assert.deepEqual(JSON.parse(seen[0].body), { entity_id: 'switch.a' })
     assert.equal(seen[0].auth, 'Bearer good')

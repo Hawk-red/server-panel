@@ -59,7 +59,7 @@ export type SmartDevice = {
 export type Accent = 'info' | 'ok' | 'warn' | 'brand' | 'indigo' | 'volume'
 export type GroupIcon = 'home' | 'plug' | 'cloud' | 'folder' | 'box'
 export type Group = { id: string; name: string; accent: Accent; icon: GroupIcon; custom: boolean }
-export type HaConnection = { configured: boolean; status: 'ok' | 'pending' | 'no-token' | 'unavailable' | 'unauthorized' | 'error'; message: string | null; syncedAt: number | null }
+export type HaConnection = { configured: boolean; status: 'ok' | 'pending' | 'no-token' | 'unavailable' | 'unauthorized' | 'error'; message: string | null; syncedAt: number | null; live?: boolean }
 export const SCENE_COLORS = ['green', 'red', 'magenta', 'blue', 'brown', 'emerald', 'violet', 'orange', 'slate', 'cyan'] as const
 export const SCENE_ICONS = ['tv', 'power', 'clapperboard', 'flame', 'radio', 'laptop', 'gamepad', 'smartphone', 'lightbulb', 'volume', 'monitor', 'sparkles'] as const
 export type SceneColor = (typeof SCENE_COLORS)[number]
@@ -240,26 +240,71 @@ export function withControlState(data: SmartHomeData, entityId: string, state: C
   return { ...data, devices: data.devices.map(patch) }
 }
 
+export type ToggleResult = { state: ControlState; confirmed: boolean }
 export type ToggleDeps = {
   get: () => SmartHomeData | undefined
   set: (d: SmartHomeData) => void
-  post: (entityId: string, action: 'on' | 'off') => Promise<{ state: ControlState }>
+  post: (entityId: string, action: 'on' | 'off') => Promise<ToggleResult>
 }
-// Оптимистичное переключение: сразу показывает новое состояние, отправляет команду, по ответу ставит реальное;
+// Оптимистичное переключение: сразу показывает новое состояние, отправляет команду, по ответу ставит реальное (из ответа сервера, а не из старого кэша);
 // при ошибке возвращает прежнее состояние и пробрасывает ошибку (для toast)
-export async function performToggle(deps: ToggleDeps, entityId: string, on: boolean): Promise<ControlState> {
+export async function performToggle(deps: ToggleDeps, entityId: string, on: boolean): Promise<ToggleResult> {
   const before = deps.get()
   const prev = before?.devices.flatMap((d) => d.ha?.controls ?? []).find((c) => c.entityId === entityId)?.state
   if (before) deps.set(withControlState(before, entityId, on ? 'on' : 'off'))
   try {
-    const { state } = await deps.post(entityId, on ? 'on' : 'off')
+    const r = await deps.post(entityId, on ? 'on' : 'off')
     const now = deps.get()
-    if (now) deps.set(withControlState(now, entityId, state))
-    return state
+    if (now) deps.set(withControlState(now, entityId, r.state))
+    return r
   } catch (e) {
     const now = deps.get()
     if (now && prev) deps.set(withControlState(now, entityId, prev))
     throw e
+  }
+}
+
+export const controlStateOf = (data: SmartHomeData | undefined, entityId: string): ControlState | undefined =>
+  data?.devices.flatMap((d) => d.ha?.controls ?? []).find((c) => c.entityId === entityId)?.state
+
+export const WAIT_MS = 3000 // индикатор «ожидание» при confirmed=false — не дольше
+
+// Защита от устаревшего опроса. Пока тумблер «в полёте», ответы опроса, начатые до нажатия (или во время него), отбрасываются;
+// пока устройство «ждёт подтверждения» (confirmed=false), поверх опроса держится ожидаемое состояние — до совпадения или конца ожидания.
+export class ToggleGuard {
+  private flying = new Set<string>()
+  private epoch = 0
+  private held = new Map<string, ControlState>()
+
+  begin(entityId: string) {
+    this.flying.add(entityId)
+    this.epoch++
+  }
+  end(entityId: string) {
+    this.flying.delete(entityId)
+    this.epoch++
+  }
+  hold(entityId: string, expected: ControlState) {
+    this.held.set(entityId, expected)
+  }
+  release(entityId: string) {
+    this.held.delete(entityId)
+  }
+  snapshot(): number {
+    return this.epoch
+  }
+  // Что положить в кэш по ответу опроса, начатого при снимке `snap`; `cached` — текущее значение кэша; `released` — удержания, снятые совпадением
+  applyPoll(fresh: SmartHomeData, snap: number, cached: SmartHomeData | undefined): { data: SmartHomeData; released: string[] } {
+    if (cached && (this.flying.size > 0 || snap !== this.epoch)) return { data: cached, released: [] }
+    let data = fresh
+    const released: string[] = []
+    for (const [id, expected] of this.held) {
+      if (controlStateOf(fresh, id) === expected) {
+        this.held.delete(id)
+        released.push(id)
+      } else data = withControlState(data, id, expected)
+    }
+    return { data, released }
   }
 }
 

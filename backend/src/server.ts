@@ -17,6 +17,7 @@ import { aiRoutes } from './routes/ai.js'
 import { wirelessRoutes } from './routes/wireless.js'
 import { bluetoothRoutes } from './routes/bluetooth.js'
 import { smarthomeRoutes } from './routes/smarthome.js'
+import { startLive, stopLive } from './services/smarthome.js'
 import { accessRoutes } from './routes/access.js'
 import { auditRoutes } from './routes/audit.js'
 import { layoutRoutes } from './routes/layout.js'
@@ -159,6 +160,7 @@ async function shutdown(signal: string) {
   app.log.info({ signal }, 'остановка')
   clearInterval(cleanupTimer)
   killAllChildren('SIGTERM') // дочерние процессы (du, smartctl, nmap…) не остаются сиротами
+  stopLive()
   stopCollector()
   stopDiskIoCollector()
   await app.close()
@@ -171,6 +173,7 @@ process.on('SIGINT', () => void shutdown('SIGINT'))
 if (!config.passwordHash) app.log.warn('PANEL_PASSWORD_HASH не задан — вход невозможен, запустите set-password')
 
 await app.listen({ host: config.host, port: config.port })
+startLive((m) => app.log.warn(m))
 // Событие о перезагрузке: синхронная часть (boot id, последняя метка метрик) выполняется здесь, до первого замера коллектора;
 // подписка уведомлений уже есть к моменту записи события (журнал читается асинхронно)
 startNotifier(app.log)

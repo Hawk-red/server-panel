@@ -5,7 +5,7 @@ import { sidebarData } from '../components/layout/data/sidebar-data.ts'
 import { applyOrder } from './layout-order.ts'
 import { buildPaletteItems, filterPaletteItems } from './palette.ts'
 import {
-  devicesByGroup, groupBlockId, runScene, sceneRunnable, SCENE_COLORS, SCENE_ICONS, SCENES_LAYOUT_PAGE, visibleScenes, type Scene, performToggle, withControlState, type SmartHomeData, groupLayoutPage, groupSummary, HA_STATUS_TEXT,
+  devicesByGroup, groupBlockId, runScene, sceneRunnable, SCENE_COLORS, SCENE_ICONS, SCENES_LAYOUT_PAGE, visibleScenes, type Scene, performToggle, withControlState, ToggleGuard, controlStateOf, WAIT_MS, type SmartHomeData, groupLayoutPage, groupSummary, HA_STATUS_TEXT,
   addressFields, ALL_ROOMS, deviceBlockId, emptyForm, filterByRoom, NO_ROOM, openUrl, roomsOf, SMARTHOME_LAYOUT_PAGE, statusLabel, summaryText, toPayload, validateForm,
   type DeviceForm, type SmartDevice,
 } from './smarthome.ts'
@@ -117,7 +117,7 @@ describe('форма: проверка на клиенте', () => {
 
 describe('страница', () => {
   const src = readFileSync(here('../features/smarthome/index.tsx'), 'utf8')
-  it('обновление статусов каждые 30 с', () => assert.match(src, /30_000/))
+  it('обновление статусов каждые 3 с (пока страница открыта)', () => assert.match(src, /: 3000\)/))
   it('пустое состояние с подсказкой и примерами; удаление с подтверждением', () => {
     assert.match(src, /Добавьте первое устройство/)
     assert.match(src, /ConfirmDialog/)
@@ -189,10 +189,10 @@ describe('переключатели switch/light', () => {
   })
   const mkData = (): SmartHomeData => ({ devices: [tx2c], hidden: [], groups: [], scenes: [], ha: { configured: true, status: 'ok', message: null, syncedAt: 1 }, now: 1 })
   const states = (d: SmartHomeData) => d.devices[0].ha!.controls!.map((c) => c.state)
-  const holder = (post: (e: string, a: 'on' | 'off') => Promise<{ state: 'on' | 'off' | 'unavailable' }>) => {
+  const holder = (post: (e: string, a: 'on' | 'off') => Promise<{ state: 'on' | 'off' | 'unavailable'; confirmed?: boolean }>) => {
     let data = mkData()
     const log: string[][] = []
-    return { get: () => data, set: (d: SmartHomeData) => (log.push(states(d)), (data = d)), post, log, now: () => data }
+    return { get: () => data, set: (d: SmartHomeData) => (log.push(states(d)), (data = d)), post: async (e: string, a: 'on' | 'off') => { const r = await post(e, a); return { confirmed: true, ...r } }, log, now: () => data }
   }
 
   it('withControlState: меняет одну сущность и пересчитывает итог', () => {
@@ -209,7 +209,7 @@ describe('переключатели switch/light', () => {
     const p = performToggle(h, 'switch.tx2c_balcon', true)
     assert.deepEqual(states(h.now()), ['on', 'off']) // до ответа
     release()
-    assert.equal(await p, 'on')
+    assert.equal((await p).state, 'on')
     assert.deepEqual(states(h.now()), ['on', 'off'])
   })
   it('реальное состояние из ответа важнее ожидаемого', async () => {
@@ -230,6 +230,72 @@ describe('переключатели switch/light', () => {
     await performToggle(h, 'switch.tx2c_lamp', true)
     await performToggle(h, 'switch.tx2c_lamp', false)
     assert.deepEqual(sent, ['switch.tx2c_lamp on', 'switch.tx2c_lamp off'])
+  })
+})
+
+describe('устаревший опрос и ожидание подтверждения', () => {
+  const dv = dev({
+    id: 7, source: 'homeassistant', haDeviceId: 'd',
+    ha: { manufacturer: null, model: null, integration: 'sonoff', area: null, available: true, summary: { text: 'выключено', tone: 'off', extras: [] }, controls: [{ entityId: 'switch.a', name: 'A', state: 'off' }] },
+  })
+  const snapshotData = (state: 'on' | 'off'): SmartHomeData => withControlState({ devices: [dv], hidden: [], groups: [], scenes: [], ha: { configured: true, status: 'ok', message: null, syncedAt: 1 }, now: 1 }, 'switch.a', state)
+  it('опрос, начатый до нажатия, не затирает оптимистичное значение', () => {
+    const g = new ToggleGuard()
+    const snap = g.snapshot() // опрос ушёл
+    g.begin('switch.a') // нажали
+    const cached = snapshotData('on')
+    const r = g.applyPoll(snapshotData('off'), snap, cached) // старый ответ пришёл, пока тумблер в полёте
+    assert.equal(controlStateOf(r.data, 'switch.a'), 'on')
+  })
+  it('опрос, начатый до нажатия, но пришедший после ответа на нажатие, тоже отбрасывается', () => {
+    const g = new ToggleGuard()
+    const snap = g.snapshot()
+    g.begin('switch.a')
+    g.end('switch.a')
+    assert.equal(controlStateOf(g.applyPoll(snapshotData('off'), snap, snapshotData('on')).data, 'switch.a'), 'on')
+  })
+  it('опрос, начатый после нажатия, принимается', () => {
+    const g = new ToggleGuard()
+    g.begin('switch.a')
+    g.end('switch.a')
+    const r = g.applyPoll(snapshotData('off'), g.snapshot(), snapshotData('on'))
+    assert.equal(controlStateOf(r.data, 'switch.a'), 'off')
+  })
+  it('без кэша ответ опроса принимается как есть', () => {
+    const g = new ToggleGuard()
+    g.begin('switch.a')
+    assert.equal(controlStateOf(g.applyPoll(snapshotData('off'), g.snapshot(), undefined).data, 'switch.a'), 'off')
+  })
+  it('confirmed=false: ожидаемое состояние держится поверх опроса, пока опрос не совпадёт', () => {
+    const g = new ToggleGuard()
+    g.hold('switch.a', 'on')
+    const a = g.applyPoll(snapshotData('off'), g.snapshot(), snapshotData('on'))
+    assert.equal(controlStateOf(a.data, 'switch.a'), 'on')
+    assert.deepEqual(a.released, [])
+    const b = g.applyPoll(snapshotData('on'), g.snapshot(), a.data) // устройство наконец сработало
+    assert.deepEqual(b.released, ['switch.a'])
+    const c = g.applyPoll(snapshotData('off'), g.snapshot(), b.data) // удержания больше нет: правда за опросом
+    assert.equal(controlStateOf(c.data, 'switch.a'), 'off')
+  })
+  it('после release() опрос показывает реальное состояние', () => {
+    const g = new ToggleGuard()
+    g.hold('switch.a', 'on')
+    g.release('switch.a')
+    assert.equal(controlStateOf(g.applyPoll(snapshotData('off'), g.snapshot(), snapshotData('on')).data, 'switch.a'), 'off')
+  })
+  it('ответ сервера (confirmed=false) приходит в performToggle как есть, индикатор не дольше 3 с', async () => {
+    let data = snapshotData('off')
+    const r = await performToggle({ get: () => data, set: (d) => (data = d), post: async () => ({ state: 'off' as const, confirmed: false }) }, 'switch.a', true)
+    assert.deepEqual(r, { state: 'off', confirmed: false })
+    assert.equal(WAIT_MS, 3000)
+  })
+  it('страница: опрос раз в 3 с, индикатор ожидания, toast «Устройство не подтвердило»', () => {
+    const idx = readFileSync(here('../features/smarthome/index.tsx'), 'utf8')
+    const card = readFileSync(here('../features/smarthome/device-card.tsx'), 'utf8')
+    assert.match(idx, /: 3000\)/)
+    assert.ok(!/refetchIntervalInBackground/.test(idx.replace(/\/\/.*$/gm, '')))
+    assert.match(idx, /Устройство не подтвердило/)
+    assert.match(card, /Ожидание подтверждения/)
   })
 })
 

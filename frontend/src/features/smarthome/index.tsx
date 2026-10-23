@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FolderPlus, KeyRound, Lightbulb, Plug, Plus, RefreshCw, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { useLinks } from '@/lib/links'
 import {
-  type ControlState, DEFAULT_ROOMS, type DeviceForm, devicesByGroup, emptyForm, EXAMPLES, groupBlockId, groupLayoutPage, HA_STATUS_TEXT, MAX_DEVICES, type Group,
-  performToggle, type SmartDevice, type SmartHomeData, SMARTHOME_LAYOUT_PAGE, SCENES_LAYOUT_PAGE, summaryText, toForm, visibleScenes,
+  type ControlState, controlStateOf, DEFAULT_ROOMS, type DeviceForm, devicesByGroup, emptyForm, EXAMPLES, groupBlockId, groupLayoutPage, HA_STATUS_TEXT, MAX_DEVICES, type Group,
+  performToggle, type SmartDevice, type SmartHomeData, SMARTHOME_LAYOUT_PAGE, SCENES_LAYOUT_PAGE, summaryText, toForm, ToggleGuard, type ToggleResult, visibleScenes, WAIT_MS, withControlState,
 } from '@/lib/smarthome'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -223,11 +223,20 @@ export function SmartHome() {
   const [groupDelete, setGroupDelete] = useState<Group | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const guard = useRef(new ToggleGuard())
+  const [waiting, setWaiting] = useState<ReadonlySet<string>>(new Set())
   const { data, isError, isPending } = useQuery({
     queryKey: ['smarthome'],
-    queryFn: async () => (await api.get<SmartHomeData>('/smarthome/devices')).data,
-    // Раз в 30 с, пока вкладка открыта; пока идёт первая проверка или загрузка из HA — чаще
-    refetchInterval: (q) => (q.state.data?.ha.status === 'pending' || q.state.data?.devices.some((d) => d.status.state === 'checking') ? 2000 : 30_000),
+    queryFn: async () => {
+      const snap = guard.current.snapshot()
+      const { data: fresh } = await api.get<SmartHomeData>('/smarthome/devices')
+      const r = guard.current.applyPoll(fresh, snap, qc.getQueryData<SmartHomeData>(['smarthome']))
+      if (r.released.length > 0) setWaiting((w) => new Set([...w].filter((x) => !r.released.includes(x))))
+      return r.data
+    },
+    // Раз в 3 с, пока страница открыта и вкладка видима; пока идёт первая проверка или загрузка из HA — чаще
+    refetchInterval: (q) => (q.state.data?.ha.status === 'pending' || q.state.data?.devices.some((d) => d.status.state === 'checking') ? 2000 : 3000),
+    // refetchIntervalInBackground по умолчанию выключен: на скрытой вкладке опрос стоит
   })
   const refresh = () => qc.invalidateQueries({ queryKey: ['smarthome'] })
   const fail = (e: unknown, fallback: string) => {
@@ -311,30 +320,51 @@ export function SmartHome() {
 
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
   const toggle = (entityId: string, on: boolean) => {
-    if (pending.has(entityId)) return
+    if (pending.has(entityId) || waiting.has(entityId)) return
+    const g = guard.current
+    g.begin(entityId)
     setPending((p) => new Set(p).add(entityId))
     performToggle(
       {
         get: () => qc.getQueryData<SmartHomeData>(['smarthome']),
         set: (d) => qc.setQueryData(['smarthome'], d),
-        post: async (id, action) => (await api.post<{ state: ControlState }>('/smarthome/ha/toggle', { entity_id: id, action })).data,
+        post: async (id, action) => (await api.post<ToggleResult>('/smarthome/ha/toggle', { entity_id: id, action })).data,
       },
       entityId,
       on
     )
+      .then((r) => {
+        if (r.confirmed) return
+        // Устройство не подтвердило сразу: до 3 с держим ожидаемое состояние с индикатором, затем показываем то, что вернёт опрос
+        const expected: ControlState = on ? 'on' : 'off'
+        g.hold(entityId, expected)
+        setWaiting((w) => new Set(w).add(entityId))
+        const cur = qc.getQueryData<SmartHomeData>(['smarthome'])
+        if (cur) qc.setQueryData(['smarthome'], withControlState(cur, entityId, expected))
+        setTimeout(() => {
+          g.release(entityId)
+          void qc.refetchQueries({ queryKey: ['smarthome'] }).then(() => {
+            setWaiting((w) => new Set([...w].filter((x) => x !== entityId)))
+            const real = controlStateOf(qc.getQueryData<SmartHomeData>(['smarthome']), entityId)
+            if (real !== expected) toast.message('Устройство не подтвердило')
+          })
+        }, WAIT_MS)
+      })
       .catch((e) => toast.error(apiError(e).message ?? 'Не удалось переключить'))
-      .finally(() =>
+      .finally(() => {
+        g.end(entityId)
         setPending((p) => {
           const n = new Set(p)
           n.delete(entityId)
           return n
         })
-      )
+      })
   }
 
   const actions: CardActions = {
     onToggle: toggle,
     pending,
+    waiting,
     onEdit: (d) => (d.source === 'manual' ? openDialog(d) : setRenaming(d)),
     onMove: (d) => {
       setFormError(null)
