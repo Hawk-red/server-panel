@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearch } from '@tanstack/react-router'
 import { AxiosError } from 'axios'
 import { ChevronDown, CircleCheck, CircleX, ClipboardCopy, Download, ExternalLink, Loader2, PackageCheck, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
+import { focusApply } from '@/lib/focus-apply'
 import { formatRelative } from '@/lib/format'
 import type { UpdatesSnapshot } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -289,6 +291,14 @@ export function Updates() {
     return () => clearInterval(t)
   }, [runningNow])
 
+  // Ссылка «Обновить» из Telegram (?focus=apply): прокрутка и подсветка блока с кнопкой «Обновить всё», один раз; запуска нет
+  const { focus } = useSearch({ strict: false }) as { focus?: string }
+  const applyRef = useRef<HTMLDivElement>(null)
+  const focused = useRef(false)
+  useEffect(() => {
+    if (focused.current) return
+    if (focusApply(focus, applyRef.current)) focused.current = true
+  }, [focus, allNames.length, data])
   if (isError) return <NoData reason='не удалось получить данные об обновлениях' />
   if (!data) return <p className='text-sm text-muted-foreground'>Загрузка…</p>
 
@@ -395,7 +405,7 @@ export function Updates() {
 
             {allNames.length > 0 && (
               <>
-                <div className='flex flex-col gap-2 rounded-lg bg-muted/40 p-2 sm:flex-row sm:items-center sm:justify-between'>
+                <div ref={applyRef} className='flex flex-col gap-2 rounded-lg bg-muted/40 p-2 transition-shadow sm:flex-row sm:items-center sm:justify-between'>
                   <label className='flex min-h-10 cursor-pointer items-center gap-2 px-2 text-sm'>
                     <Checkbox checked={allPicked} onCheckedChange={(v) => setSelected(v ? new Set(allNames) : new Set())} aria-label='выбрать все' disabled={running} />
                     <span>

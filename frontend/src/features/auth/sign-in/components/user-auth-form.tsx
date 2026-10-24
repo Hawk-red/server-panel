@@ -1,3 +1,4 @@
+import { safeRedirect } from '@/lib/safe-redirect'
 import { useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
@@ -56,7 +57,7 @@ export function UserAuthForm({
       await login(data.password, external ? data.code?.trim() : undefined)
       await queryClient.invalidateQueries({ queryKey: meQuery.queryKey })
       // redirect — только внутренние пути панели
-      const target = redirectTo?.startsWith('/') ? redirectTo : '/'
+      const target = safeRedirect(redirectTo)
       navigate({ to: target, replace: true })
     } catch (error) {
       const status = error instanceof AxiosError ? error.response?.status : 0

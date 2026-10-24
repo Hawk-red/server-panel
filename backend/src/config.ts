@@ -58,6 +58,8 @@ export const config = {
   // Адрес сервера в локальной сети: на него ведут ссылки на веб-интерфейсы служб (панель может быть открыта по panel.pulsdev.net,
   // а у такого имени этих портов нет, да и HSTS принудительно включает https). Задаётся LAN_HOST в .env, по умолчанию 192.168.31.112
   lanHost: env.LAN_HOST ?? '192.168.31.112',
+  // Адрес панели для ссылок в Telegram-уведомлениях (открывается с телефона из дома или через WireGuard). PANEL_PUBLIC_URL в .env
+  publicUrl: (env.PANEL_PUBLIC_URL ?? 'http://192.168.31.112:7575').trim().replace(/\/+$/, ''),
   torrentsDir: env.TORRENTS_DIR ?? '/home/torrents-tmp',
   // Бот уведомлений (этап 10.1); chat_id и правила — в настройках панели
   notifyToken: env.NOTIFY_BOT_TOKEN ?? '',

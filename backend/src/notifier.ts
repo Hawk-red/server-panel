@@ -155,6 +155,7 @@ export const __test = {
     burst.timer = undefined
     lastSent = null
   },
+  onServerEvent: (e: ServerEvent) => onServerEvent(e),
   reset() {
     transport = tg
     clock = () => Date.now()
@@ -267,22 +268,25 @@ function newDeviceText(e: ServerEvent) {
     .join('\n')
 }
 
+// Ссылка внизу сообщения об обновлениях: страница «Обновления», сразу на кнопке «Обновить всё» (запуск — только нажатием)
+export const updatesLink = () => `\n\n<a href="${esc(config.publicUrl).replace(/"/g, '&quot;')}/updates?focus=apply">Обновить</a>`
+
 type UpdDetails = { total?: number; security?: number; newCount?: number; reboot?: boolean; count?: number; names?: string[]; container?: string; repo?: string }
 function updatesAptText(e: ServerEvent) {
   const d = (e.details ?? {}) as UpdDetails
   const lines = [`📦 <b>Новые обновления системы:</b> ${d.total ?? '?'} пакетов`]
   if (d.security) lines.push(`🔴 из них безопасности: ${d.security}`)
   lines.push(`🔁 перезагрузка: ${d.reboot ? 'нужна' : 'не нужна'}`)
-  return lines.join('\n')
+  return lines.join('\n') + updatesLink()
 }
 function updatesSecurityText(e: ServerEvent) {
   const d = (e.details ?? {}) as UpdDetails
   const names = (d.names ?? []).map((n) => esc(n)).join(', ')
-  return `🔴 <b>${d.count ?? '?'} обновлений безопасности</b>${names ? `\n${names}` : ''}`
+  return `🔴 <b>${d.count ?? '?'} обновлений безопасности</b>${names ? `\n${names}` : ''}${updatesLink()}`
 }
 function updatesDockerText(e: ServerEvent) {
   const d = (e.details ?? {}) as UpdDetails
-  return `🐳 <b>Новая версия образа:</b> ${esc(d.container ?? e.target ?? '')}${d.repo ? ` (${esc(d.repo)})` : ''}`
+  return `🐳 <b>Новая версия образа:</b> ${esc(d.container ?? e.target ?? '')}${d.repo ? ` (${esc(d.repo)})` : ''}${updatesLink()}`
 }
 
 function dockerUpdateText(e: ServerEvent) {

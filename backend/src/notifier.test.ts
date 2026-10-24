@@ -179,3 +179,54 @@ describe('правила и общие настройки', () => {
     for (const id of ['torrents', 'updates', 'unit', 'disk', 'device']) assert.equal((r as Record<string, boolean>)[id], true)
   })
 })
+
+describe('ссылка «Обновить» в уведомлениях об обновлениях', () => {
+  const fire = async (kind: string, text: string, details?: unknown, target?: string) => {
+    n.__test.onServerEvent({ kind, level: 'info', text, details, target })
+    await new Promise((r) => setImmediate(r))
+    return sent.map((x) => String(x.body.text))
+  }
+  const LINK = '<a href="http://192.168.31.112:7575/updates?focus=apply">Обновить</a>'
+  it('apt, безопасность и Docker-образ заканчиваются ссылкой с адресом панели по умолчанию', async () => {
+    for (const [kind, details] of [
+      ['updates.apt', { total: 5, security: 1, reboot: false }],
+      ['updates.security', { count: 2, names: ['openssl'] }],
+      ['updates.docker', { container: 'jellyfin', repo: 'jellyfin/jellyfin' }],
+    ] as const) {
+      sent = []
+      const [msg] = await fire(kind, '', details)
+      assert.ok(msg.endsWith(`\n\n${LINK}`), `${kind}: ${msg}`)
+      assert.equal(sent[0].body.parse_mode, 'HTML')
+    }
+  })
+  it('имена пакетов и образов экранируются, ссылка остаётся целой', async () => {
+    const [msg] = await fire('updates.security', '', { count: 1, names: ['<b>x&y</b>'] })
+    assert.ok(msg.includes('&lt;b&gt;x&amp;y&lt;/b&gt;'))
+    assert.ok(!msg.includes('<b>x'))
+    assert.ok(msg.endsWith(LINK))
+  })
+  it('адрес из PANEL_PUBLIC_URL экранируется и не ломает атрибут', () => {
+    const c = process.env.PANEL_PUBLIC_URL
+    const cfg = (ex: unknown) => (ex as { config: { publicUrl: string } }).config
+    // config уже загружен: проверяем экранирование прямой подстановкой
+    return import('./config.js').then((m) => {
+      const old = cfg(m).publicUrl
+      cfg(m).publicUrl = 'http://h/?a=1&b="2"'
+      assert.equal(n.updatesLink(), '\n\n<a href="http://h/?a=1&amp;b=&quot;2&quot;/updates?focus=apply">Обновить</a>')
+      cfg(m).publicUrl = old
+      if (c !== undefined) process.env.PANEL_PUBLIC_URL = c
+    })
+  })
+  it('перезагрузка и остальные уведомления без ссылки', async () => {
+    for (const [kind, text, details] of [
+      ['updates.reboot', '', undefined],
+      ['docker.update', 'образ обновлён', undefined],
+      ['sync.error', 'синк упал', undefined],
+      ['torrents.paused', '', { freeGb: 5, thresholdGb: 20, path: '/home/torrents-tmp' }],
+    ] as const) {
+      sent = []
+      const msgs = await fire(kind, text, details)
+      assert.ok(msgs.length >= 1 && msgs.every((m) => !m.includes('focus=apply')), kind)
+    }
+  })
+})
