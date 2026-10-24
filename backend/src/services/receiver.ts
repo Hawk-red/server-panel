@@ -43,7 +43,7 @@ export const WRITABLE = {
 } as const
 export type WritableKey = keyof typeof WRITABLE
 
-export type CmdClass = 'power' | 'volume' | 'mute' | 'nav' | 'mode' | 'quick' | 'input'
+export type CmdClass = 'power' | 'volume' | 'mute' | 'nav' | 'mode' | 'quick' | 'input' | 'zone' | 'eco' | 'sleep' | 'tune'
 // Ровно эти команды пульта (абсолютная громкость MV<число> не допускается)
 export const FIXED: Record<string, CmdClass> = {
   PWON: 'power',
@@ -65,6 +65,30 @@ export const FIXED: Record<string, CmdClass> = {
   MSQUICK1: 'quick',
   MSQUICK2: 'quick',
   MSQUICK3: 'quick',
+  MSQUICK4: 'quick', // по документации Denon/Marantz семейство MSQUICK1..5; на ресивере в режиме ожидания не проверялось
+  MSSMART1: 'quick', // вариант названия для Marantz; в пульте по умолчанию не используется, выбирается в «Настроить пульт»
+  MSSMART2: 'quick',
+  MSSMART3: 'quick',
+  MSSMART4: 'quick',
+  ZMON: 'zone',
+  ZMOFF: 'zone',
+  Z2ON: 'zone',
+  Z2OFF: 'zone',
+  ECOON: 'eco',
+  ECOAUTO: 'eco',
+  ECOOFF: 'eco',
+  SLPOFF: 'sleep',
+  SLP010: 'sleep',
+  SLP020: 'sleep',
+  SLP030: 'sleep',
+  SLP060: 'sleep',
+  SLP090: 'sleep',
+  SLP120: 'sleep',
+  // Тюнер: ресивер отвечает на TFAN?/TPAN? (проверено чтением), шаг частоты и предустановки; действуют, когда источник — тюнер
+  TFANUP: 'tune',
+  TFANDOWN: 'tune',
+  TPANUP: 'tune',
+  TPANDOWN: 'tune',
   MSMOVIE: 'mode',
   MSMUSIC: 'mode',
   MSGAME: 'mode',
@@ -73,10 +97,22 @@ export const FIXED: Record<string, CmdClass> = {
   MSSTEREO: 'mode',
 }
 // Коды входов (SI<код>); реально доступны только те, что есть в списке самого ресивера (loadInputs)
-export const INPUT_CODES = ['SAT/CBL', 'DVD', 'BD', 'GAME', 'AUX1', 'AUX2', 'MPLAY', 'CD', 'TV', 'TUNER'] as const
+export const INPUT_CODES = ['SAT/CBL', 'DVD', 'BD', 'GAME', 'AUX1', 'AUX2', 'MPLAY', 'CD', 'TV', 'TUNER', 'IRADIO'] as const
+
+// Переключатели «по состоянию»: сервер сам читает состояние и выбирает конкретную команду из FIXED (одна кнопка пульта — одно нажатие)
+export const TOGGLES: Record<string, CmdClass> = {
+  PWTOGGLE: 'power', // PWON ↔ PWSTANDBY
+  MUTOGGLE: 'mute', // MUON ↔ MUOFF
+  ZMTOGGLE: 'zone', // ZMON ↔ ZMOFF
+  Z2TOGGLE: 'zone', // Z2ON ↔ Z2OFF
+  MENUTOGGLE: 'nav', // MNMEN ON ↔ MNMEN OFF (состояние меню запоминает сервер)
+  ECOCYCLE: 'eco', // ECOON → ECOAUTO → ECOOFF
+  SLPCYCLE: 'sleep', // SLP010 → 030 → 060 → 090 → 120 → OFF
+}
 
 export function classify(command: string): CmdClass {
   if (Object.hasOwn(FIXED, command)) return FIXED[command]
+  if (Object.hasOwn(TOGGLES, command)) return TOGGLES[command]
   const m = /^SI(.+)$/.exec(command)
   if (m && (INPUT_CODES as readonly string[]).includes(m[1])) return 'input'
   throw new ReceiverError('Эта команда недопустима', 'bad')
@@ -251,7 +287,7 @@ async function withSession<T>(fn: (s: Session) => Promise<T>): Promise<T> {
 
 // ---------- разбор ответов ----------
 const pick = (line: string | null, prefix: string) => (line && line.startsWith(prefix) ? line.slice(prefix.length).trim() : null)
-const RE = { pw: /^PW(ON|STANDBY)$/, mv: /^MV\d{2,3}$/, mu: /^MU(ON|OFF)$/, si: /^SI\S/, ms: /^MS\S/ }
+const RE = { pw: /^PW(ON|STANDBY)$/, mv: /^MV\d{2,3}$/, mu: /^MU(ON|OFF)$/, si: /^SI\S/, ms: /^MS\S/, zm: /^ZM(ON|OFF)$/, z2: /^Z2(ON|OFF)$/, slp: /^SLP(OFF|\d{3})$/, eco: /^ECO(ON|AUTO|OFF)$/ }
 
 export const parsePower = (lines: string[]): 'ON' | 'STANDBY' | null => {
   const l = lines.find((x) => RE.pw.test(x))
@@ -272,10 +308,12 @@ export function parseInputs(rename: string, hide: string): InputDef[] {
   for (const m of rename.matchAll(/name='textFuncRename(\w+)'\s+value="([^"]*)"/gi)) names.set(m[1] === 'SATCBL' ? 'SAT/CBL' : m[1], m[2].trim())
   const hidden = new Set<string>()
   for (const m of hide.matchAll(/<INPUT type='radio' name='([^']+)' value='DEL'[^>]*checked/gi)) hidden.add(m[1])
+  const present = new Set([...hide.matchAll(/<INPUT type='radio' name='([^']+)'/gi)].map((m) => m[1]))
   const list: InputDef[] = []
   for (const code of INPUT_CODES) {
     if (hidden.has(code)) continue
-    const name = names.get(code) ?? (code === 'TUNER' ? 'TUNER' : null)
+    // у TUNER и сетевых источников нет переименования; Internet Radio берём, только если страница скрытия источников его знает
+    const name = names.get(code) ?? (code === 'TUNER' ? 'TUNER' : code === 'IRADIO' && present.has('IRADIO') ? 'Internet Radio' : null)
     if (name) list.push({ code, name })
   }
   return list
@@ -372,6 +410,10 @@ const stats = { ok: 0, notAccepted: 0, rate: 0, busy: 0, other: 0 }
 export const getStats = () => ({ ...stats })
 const recent: number[] = [] // метки времени команд громкости/навигации
 export const resetRate = () => void (recent.length = 0)
+export const resetMemory = () => {
+  ecoLast = null
+  menuOpen = false
+}
 
 function rateCheck() {
   const now = Date.now()
@@ -396,19 +438,61 @@ export type CmdResult = {
 
 const notAccepted = (command: string) => `Ресивер не принял команду ${command}`
 
+const SLEEP_STEPS = ['SLPOFF', 'SLP010', 'SLP030', 'SLP060', 'SLP090', 'SLP120']
+const ECO_STEPS = ['ECOON', 'ECOAUTO', 'ECOOFF']
+let ecoLast: string | null = null // ECO? не отвечает надёжно — помним последнее принятое
+let menuOpen = false // меню ресивер не сообщает — помним последнее отправленное
+
+/** «Переключатель по состоянию» → конкретная команда из FIXED (читает состояние ресивера, ничего не пишет) */
+async function resolveToggle(name: string, s: Session): Promise<string> {
+  const need = async (q: string, re: RegExp, what: string) => {
+    const v = await s.query(q, re)
+    if (v) return v
+    const pw = parsePower([(await s.query('PW?', RE.pw)) ?? ''])
+    throw pw === 'STANDBY' ? new ReceiverError('Ресивер выключен — команды недоступны', 'standby') : new ReceiverError(`Ресивер не сообщил ${what}`, 'timeout')
+  }
+  switch (name) {
+    case 'PWTOGGLE':
+      return (await need('PW?', RE.pw, 'питание')) === 'PWON' ? 'PWSTANDBY' : 'PWON'
+    case 'MUTOGGLE':
+      return (await need('MU?', RE.mu, 'состояние звука')) === 'MUON' ? 'MUOFF' : 'MUON'
+    case 'ZMTOGGLE':
+      return (await need('ZM?', RE.zm, 'состояние главной зоны')) === 'ZMON' ? 'ZMOFF' : 'ZMON'
+    case 'Z2TOGGLE':
+      return (await need('Z2?', RE.z2, 'состояние зоны 2')) === 'Z2ON' ? 'Z2OFF' : 'Z2ON'
+    case 'MENUTOGGLE':
+      return menuOpen ? 'MNMEN OFF' : 'MNMEN ON'
+    case 'ECOCYCLE': {
+      const cur = (await s.query('ECO?', RE.eco)) ?? ecoLast
+      return ECO_STEPS[(ECO_STEPS.indexOf(cur ?? '') + 1) % ECO_STEPS.length]
+    }
+    default: {
+      // SLPCYCLE: нет данных — начинаем с первого шага таймера
+      const cur = await need('SLP?', RE.slp, 'таймер сна')
+      return SLEEP_STEPS[(SLEEP_STEPS.indexOf(cur) + 1) % SLEEP_STEPS.length]
+    }
+  }
+}
+
 export async function sendCommand(command: string): Promise<CmdResult> {
   const cls = classify(command)
+  if (Object.hasOwn(TOGGLES, command)) {
+    const concrete = await withSession((s) => resolveToggle(command, s))
+    const r = await sendCommand(concrete)
+    if (command === 'MENUTOGGLE' && r.accepted) menuOpen = concrete === 'MNMEN ON'
+    return r
+  }
   let target: InputDef | undefined
   if (cls === 'input') {
     const code = command.slice(2)
     target = (await loadInputs()).find((i) => i.code === code)
     if (!target) throw new ReceiverError('Этого входа нет в списке ресивера', 'bad')
   }
-  if (cls === 'volume' || cls === 'nav') rateCheck()
+  if (cls === 'volume' || cls === 'nav' || cls === 'tune') rateCheck()
   const r: CmdResult = { command, cls, accepted: true, message: null, before: null, after: null, volume: null, state: null }
   try {
     await withSession(async (s) => {
-      if (cls === 'nav') {
+      if (cls === 'nav' || cls === 'tune') {
         await s.write(command)
         return
       }
@@ -442,8 +526,16 @@ export async function sendCommand(command: string): Promise<CmdResult> {
         r.after = parsePower([(await s.query('PW?', RE.pw)) ?? ''])
         r.accepted = r.after === want
       } else {
-        if (pw !== 'ON') throw new ReceiverError('Ресивер выключен — команды недоступны', 'standby')
-        if (cls === 'mute') {
+        if (cls !== 'zone' && pw !== 'ON') throw new ReceiverError('Ресивер выключен — команды недоступны', 'standby')
+        if (cls === 'zone') {
+          const re = command.startsWith('Z2') ? RE.z2 : RE.zm
+          const q = command.startsWith('Z2') ? 'Z2?' : 'ZM?'
+          r.before = (await s.query(q, re)) ?? null
+          await s.write(command)
+          await s.settle(timing.settleMs)
+          r.after = (await s.query(q, re)) ?? null
+          r.accepted = r.after === command
+        } else if (cls === 'mute') {
           r.before = (await s.query('MU?', RE.mu)) ?? null
           await s.write(command)
           await s.settle(timing.settleMs)
@@ -462,13 +554,24 @@ export async function sendCommand(command: string): Promise<CmdResult> {
           await s.settle(timing.settleMs)
           r.after = (await s.query('SI?', RE.si)) ?? null
           r.accepted = r.after === command
+        } else if (cls === 'eco') {
+          // ECO? в режиме ожидания молчит, а в рабочем ответ не проверялся: принимаем, если ресивер что-то ответил
+          await s.write(command)
+          r.accepted = (await s.settle(600)).length > 0
+          if (r.accepted) ecoLast = command
+        } else if (cls === 'sleep') {
+          r.before = (await s.query('SLP?', RE.slp)) ?? null
+          await s.write(command)
+          await s.settle(timing.settleMs)
+          r.after = (await s.query('SLP?', RE.slp)) ?? null
+          r.accepted = r.after === command
         } else {
           // Quick Select: прочитать результат нечем — считаем принятой, если ресивер что-то ответил
           await s.write(command)
           r.accepted = (await s.settle(600)).length > 0
         }
       }
-      if (cls !== 'quick' || r.accepted) r.state = await readState(s)
+      if ((cls !== 'quick' && cls !== 'eco') || r.accepted) r.state = await readState(s)
     })
   } catch (e) {
     if ((e as ReceiverError).code === 'busy') stats.busy++

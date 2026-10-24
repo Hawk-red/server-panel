@@ -5,7 +5,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info, Loader2, Menu,
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { activeInput, activeMode, bumpVolume, createHold, formatDb, inputIcon, levelFraction, type CmdResult, type ReceiverFullState } from '@/lib/receiver-remote'
+import { activeInput, activeMode, bumpVolume, formatDb, inputIcon, levelFraction, type CmdResult, type ReceiverFullState } from '@/lib/receiver-remote'
 import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { RECEIVER_LAYOUT_PAGE } from '@/lib/receiver-layout'
@@ -13,6 +13,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ReceiverControls } from '@/features/media/receiver-controls'
 import { ReceiverSettingsLinks } from '@/features/media/receiver-settings-links'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { buzz, useHoldButton } from './use-hold'
+import { RemoteTab } from './remote-tab'
 
 type ApiError = { message?: string; code?: string }
 const errInfo = (e: unknown) => {
@@ -20,14 +23,6 @@ const errInfo = (e: unknown) => {
   const d = ax?.response?.data as ApiError | undefined
   return { status: ax?.response?.status ?? 0, message: d?.message ?? 'Не удалось связаться с ресивером', code: d?.code ?? (ax?.response ? '' : 'offline') }
 }
-const buzz = () => {
-  try {
-    navigator.vibrate?.(10)
-  } catch {
-    /* не поддерживается */
-  }
-}
-
 // Смысловые цвета: активное — залитое (белый текст на тёмном фоне ≥ 4,5:1), неактивное — контур
 const MODES = [
   { cmd: 'MSMOVIE', label: 'Movie', on: 'bg-blue-700 text-white border-blue-700 dark:bg-blue-600 dark:border-blue-600', off: 'text-blue-700 border-blue-700/40 dark:text-blue-300 dark:border-blue-300/40' },
@@ -79,30 +74,6 @@ function useRemote() {
     [qc, patch, scheduleRefresh],
   )
   return { q, pending, send, patch }
-}
-
-/** Кнопка с удержанием: pointerdown — команда и повтор, pointerup/leave/cancel — стоп */
-function useHoldButton(fire: () => void) {
-  const fireRef = useRef(fire)
-  const holdRef = useRef<ReturnType<typeof createHold> | null>(null)
-  useEffect(() => {
-    fireRef.current = fire
-  })
-  useEffect(() => {
-    holdRef.current = createHold(() => fireRef.current())
-    return () => holdRef.current?.stop()
-  }, [])
-  return {
-    onPointerDown: (e: React.PointerEvent) => {
-      e.preventDefault()
-      buzz()
-      holdRef.current?.start()
-    },
-    onPointerUp: () => holdRef.current?.stop(),
-    onPointerLeave: () => holdRef.current?.stop(),
-    onPointerCancel: () => holdRef.current?.stop(),
-    onContextMenu: (e: React.SyntheticEvent) => e.preventDefault(),
-  }
 }
 
 const touch = { touchAction: 'manipulation' } as const
@@ -443,9 +414,22 @@ export function ReceiverPage() {
 
   return (
     <Page title='Ресивер' description={header} layoutPage={RECEIVER_LAYOUT_PAGE}>
-      <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
-        <SortableBlocks grid stable blocks={blocks} className='grid gap-4 md:grid-cols-2 xl:grid-cols-3' />
-      </div>
+      <Tabs defaultValue='control' className='gap-4'>
+        <TabsList>
+          <TabsTrigger value='control'>Управление</TabsTrigger>
+          <TabsTrigger value='remote'>Пульт</TabsTrigger>
+        </TabsList>
+        <TabsContent value='control'>
+          <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
+            <SortableBlocks grid stable blocks={blocks} className='grid gap-4 md:grid-cols-2 xl:grid-cols-3' />
+          </div>
+        </TabsContent>
+        <TabsContent value='remote'>
+          <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
+            <RemoteTab st={st} send={send} patch={patch} />
+          </div>
+        </TabsContent>
+      </Tabs>
     </Page>
   )
 }

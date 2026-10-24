@@ -22,6 +22,10 @@ class Device {
   name = 'ANDROID' // имя входа в XML
   ignore = new Set<string>() // команды, на которые ресивер «не реагирует»
   quickEcho = true
+  zm = 'ON'
+  z2 = 'OFF'
+  slp = 'OFF'
+  eco: string | null = null // ECO? молчит, пока ECO не задан
   socks: Fake[] = []
   active = 0
   maxActive = 0
@@ -41,7 +45,16 @@ class Device {
       case 'PSTONE CTRL ?': return `PSTONE CTRL ${this.tone}\r`
       case 'PSMULTEQ: ?': return `PSMULTEQ:${this.multEq}\r`
     }
+    if (cmd === 'ZM?') return `ZM${this.zm}\r`
+    if (cmd === 'Z2?') return `Z2${this.z2}\r@MPW:1\rZ2NET\r`
+    if (cmd === 'SLP?') return `SLP${this.slp}\r`
+    if (cmd === 'ECO?') return this.eco ? `${this.eco}\r` : ''
     if (this.ignore.has(cmd)) return ''
+    if (cmd === 'ZMON' || cmd === 'ZMOFF') { this.zm = cmd.slice(2); return `${cmd}\r` }
+    if (cmd === 'Z2ON' || cmd === 'Z2OFF') { this.z2 = cmd.slice(2); return `${cmd}\r` }
+    if (cmd.startsWith('SLP')) { this.slp = cmd.slice(3); return `${cmd}\r` }
+    if (cmd.startsWith('ECO')) { this.eco = cmd; return `${cmd}\r` }
+    if (/^T[FP]AN/.test(cmd)) return `${cmd.slice(0, 4)}010215\r`
     if (cmd === 'PWON' || cmd === 'PWSTANDBY') { this.pw = cmd.slice(2); return `${cmd}\r` }
     if (cmd === 'MVUP') { this.mv += 0.5; return `${this.mvLine()}\r` }
     if (cmd === 'MVDOWN') { this.mv -= 0.5; return `${this.mvLine()}\r` }
@@ -136,12 +149,12 @@ describe('разбор', () => {
 
 describe('белый список', () => {
   it('допускает ровно разрешённые команды', () => {
-    for (const c of ['PWON', 'PWSTANDBY', 'MVUP', 'MVDOWN', 'MUON', 'MUOFF', 'MNCUP', 'MNCDN', 'MNCLT', 'MNCRT', 'MNENT', 'MNRTN', 'MNMEN ON', 'MNMEN OFF', 'MNINF', 'MNOPT', 'MSQUICK1', 'MSQUICK2', 'MSQUICK3', 'MSMOVIE', 'MSMUSIC', 'MSGAME', 'MSDIRECT', 'MSPURE DIRECT', 'MSSTEREO', 'SIBD', 'SISAT/CBL', 'SITV']) {
+    for (const c of ['PWON', 'PWSTANDBY', 'MVUP', 'MVDOWN', 'MUON', 'MUOFF', 'MNCUP', 'MNCDN', 'MNCLT', 'MNCRT', 'MNENT', 'MNRTN', 'MNMEN ON', 'MNMEN OFF', 'MNINF', 'MNOPT', 'MSQUICK1', 'MSQUICK2', 'MSQUICK3', 'MSQUICK4', 'MSSMART1', 'MSSMART4', 'MSMOVIE', 'MSMUSIC', 'MSGAME', 'MSDIRECT', 'MSPURE DIRECT', 'MSSTEREO', 'SIBD', 'SISAT/CBL', 'SITV', 'ZMON', 'ZMOFF', 'Z2ON', 'Z2OFF', 'ECOON', 'ECOAUTO', 'ECOOFF', 'SLPOFF', 'SLP010', 'SLP120', 'TFANUP', 'TFANDOWN', 'TPANUP', 'TPANDOWN', 'PWTOGGLE', 'MUTOGGLE', 'ZMTOGGLE', 'Z2TOGGLE', 'MENUTOGGLE', 'ECOCYCLE', 'SLPCYCLE', 'SIIRADIO']) {
       assert.doesNotThrow(() => r.classify(c), c)
     }
   })
   it('отклоняет всё остальное (MV<число>, PWRESET и т. п.) без открытия сокета', async () => {
-    for (const c of ['MV45', 'MV455', 'MV80', 'MVMAX', 'MV?', 'PWRESET', 'PW', 'PWON ', 'pwon', 'MSQUICK4', 'MSQUICK5', 'SIFOO', 'SI', 'MNMEN', 'MUTE', 'PWSTANDBY\rMV80', 'PSDYNEQ ON', 'PSRSTR', 'MNRST', 'CVFL UP', '', 'SI BD', 'SIBD\rMV99']) {
+    for (const c of ['MV45', 'MV455', 'MV80', 'MVMAX', 'MV?', 'PWRESET', 'PW', 'PWON ', 'pwon', 'MSQUICK5', 'MSSMART5', 'MSQUICK0', 'ECO', 'ECOX', 'SLP', 'SLP015', 'SLP130', 'SLPOFF ', 'ZM', 'ZMTOGGLE ', 'Z3ON', 'TFAN', 'TFANUP5', 'TPAN?', 'NS9A', 'NS9B', 'NS9C', 'TOGGLE', 'MVUP\rMVUP', 'SIFOO', 'SI', 'MNMEN', 'MUTE', 'PWSTANDBY\rMV80', 'PSDYNEQ ON', 'PSRSTR', 'MNRST', 'CVFL UP', '', 'SI BD', 'SIBD\rMV99']) {
       await assert.rejects(() => r.sendCommand(c), (e: r.ReceiverError) => e.code === 'bad', JSON.stringify(c))
     }
     assert.equal(dev.socks.length, 0)
@@ -394,5 +407,104 @@ describe('звук (переключатели)', () => {
     dev.pw = 'STANDBY'
     await assert.rejects(() => r.setValue('dynEq', 'OFF'), (e: r.ReceiverError) => e.code === 'standby')
     assert.deepEqual(dev.socks[0].written, ['PW?'])
+  })
+})
+
+describe('пульт RC042SR: новые команды', () => {
+  const logged = () => dev.all().filter((c) => !c.endsWith('?'))
+
+  it('parseInputs: Internet Radio добавляется, только если страница скрытия источников его знает и он не скрыт', () => {
+    const base = r.parseInputs(RENAME, HIDE).map((i) => i.code)
+    assert.ok(!base.includes('IRADIO'))
+    const withIr = r.parseInputs(RENAME, `${HIDE}\n<INPUT type='radio' name='IRADIO' value='USE'>\n<INPUT type='radio' name='IRADIO' value='DEL' onClick='radioBtn()'>`)
+    assert.equal(withIr.find((i) => i.code === 'IRADIO')?.name, 'Internet Radio')
+    const hidden = r.parseInputs(RENAME, `${HIDE}\n<INPUT type='radio' name='IRADIO' value='DEL' checked>`)
+    assert.ok(!hidden.some((i) => i.code === 'IRADIO'))
+  })
+  it('зоны: ZMOFF/Z2ON подтверждаются чтением ZM?/Z2?', async () => {
+    const a = await r.sendCommand('ZMOFF')
+    assert.equal(a.accepted, true)
+    assert.equal(a.after, 'ZMOFF')
+    const b = await r.sendCommand('Z2ON')
+    assert.equal(b.accepted, true)
+    assert.equal(dev.z2, 'ON')
+    dev.ignore.add('Z2OFF')
+    assert.equal((await r.sendCommand('Z2OFF')).accepted, false)
+  })
+  it('зона 2 работает и в режиме ожидания, главная зона и остальное — нет смысла менять: команда уходит, ответ читается', async () => {
+    dev.pw = 'STANDBY'
+    assert.equal((await r.sendCommand('Z2ON')).accepted, true)
+  })
+  it('переключатели по состоянию: питание, mute, зоны', async () => {
+    assert.equal((await r.sendCommand('PWTOGGLE')).command, 'PWSTANDBY')
+    assert.equal((await r.sendCommand('PWTOGGLE')).command, 'PWON')
+    assert.equal((await r.sendCommand('MUTOGGLE')).command, 'MUON')
+    assert.equal((await r.sendCommand('MUTOGGLE')).command, 'MUOFF')
+    assert.equal((await r.sendCommand('ZMTOGGLE')).command, 'ZMOFF')
+    assert.equal((await r.sendCommand('ZMTOGGLE')).command, 'ZMON')
+    assert.equal((await r.sendCommand('Z2TOGGLE')).command, 'Z2ON')
+    assert.equal((await r.sendCommand('Z2TOGGLE')).command, 'Z2OFF')
+    assert.deepEqual(logged(), ['PWSTANDBY', 'PWON', 'MUON', 'MUOFF', 'ZMOFF', 'ZMON', 'Z2ON', 'Z2OFF'])
+  })
+  it('mute-переключатель в режиме ожидания: «выключен», ничего не пишется', async () => {
+    dev.pw = 'STANDBY'
+    dev.mu = ''
+    dev.ignore.add('MU?')
+    await assert.rejects(() => r.sendCommand('MUTOGGLE'), (e: r.ReceiverError) => e.code === 'standby')
+    assert.deepEqual(logged(), [])
+  })
+  it('меню (Setup) переключается ON/OFF и запоминается на сервере', async () => {
+    r.resetMemory()
+    await r.sendCommand('MENUTOGGLE')
+    await r.sendCommand('MENUTOGGLE')
+    await r.sendCommand('MENUTOGGLE')
+    assert.deepEqual(logged(), ['MNMEN ON', 'MNMEN OFF', 'MNMEN ON'])
+  })
+  it('ECO по кругу: ON → AUTO → OFF → ON (даже если ECO? молчит)', async () => {
+    r.resetMemory()
+    const seq: string[] = []
+    for (let i = 0; i < 4; i++) {
+      dev.eco = null // ECO? не отвечает
+      seq.push((await r.sendCommand('ECOCYCLE')).command)
+    }
+    assert.deepEqual(seq, ['ECOON', 'ECOAUTO', 'ECOOFF', 'ECOON'])
+    dev.eco = 'ECOAUTO'
+    assert.equal((await r.sendCommand('ECOCYCLE')).command, 'ECOOFF') // если ECO? отвечает, верим ему
+  })
+  it('ECO: нет ответа ресивера → «не принял»', async () => {
+    dev.ignore.add('ECOON')
+    assert.equal((await r.sendCommand('ECOON')).accepted, false)
+  })
+  it('таймер сна: SLP подтверждается чтением, цикл идёт по шагам и замыкается', async () => {
+    const res = await r.sendCommand('SLP060')
+    assert.equal(res.accepted, true)
+    assert.equal(dev.slp, '060')
+    dev.slp = 'OFF'
+    const seq: string[] = []
+    for (let i = 0; i < 7; i++) seq.push((await r.sendCommand('SLPCYCLE')).command)
+    assert.deepEqual(seq, ['SLP010', 'SLP030', 'SLP060', 'SLP090', 'SLP120', 'SLPOFF', 'SLP010'])
+  })
+  it('сон в режиме ожидания не уходит', async () => {
+    dev.pw = 'STANDBY'
+    await assert.rejects(() => r.sendCommand('SLP030'), (e: r.ReceiverError) => e.code === 'standby')
+    assert.deepEqual(logged(), [])
+  })
+  it('тюнер: TFAN/TPAN уходят, входят в лимит 4 команд в секунду вместе с громкостью и навигацией', async () => {
+    let ok = 0
+    let limited = 0
+    for (const c of ['TFANUP', 'TPANDOWN', 'MVDOWN', 'MNCUP', 'TFANDOWN', 'TPANUP']) await r.sendCommand(c).then(() => ok++, (e: r.ReceiverError) => e.code === 'rate' && limited++)
+    assert.equal(ok, 4)
+    assert.equal(limited, 2)
+    assert.deepEqual(logged(), ['TFANUP', 'TPANDOWN', 'MVDOWN', 'MNCUP'])
+  })
+  it('потолок громкости действует и для кнопок пульта (MVUP на потолке → limit)', async () => {
+    config.marantz.maxVolume = 40
+    dev.mv = 40
+    await assert.rejects(() => r.sendCommand('MVUP'), (e: r.ReceiverError) => e.code === 'limit')
+    assert.ok(!dev.all().includes('MVUP'))
+  })
+  it('Smart Select 4: MSQUICK4 и MSSMART1 принимаются так же, как Quick Select', async () => {
+    assert.equal((await r.sendCommand('MSQUICK4')).accepted, true)
+    assert.equal((await r.sendCommand('MSSMART1')).accepted, true)
   })
 })

@@ -6,6 +6,7 @@ import * as docker from '../services/docker.js'
 import * as media from '../services/media.js'
 import * as qbt from '../services/qbittorrent.js'
 import * as receiver from '../services/receiver.js'
+import * as remote from '../services/receiverRemote.js'
 import { panelStoppedInfo, startPanelStopped, stopAllTorrents } from '../services/torrentControl.js'
 import { getSetting, setSetting } from '../settings.js'
 
@@ -101,7 +102,7 @@ export async function serviceRoutes(app: FastifyInstance) {
   })
   // Пульт: команда из белого списка (receiver.FIXED и SI<вход>), всё остальное — 400 без открытия сеанса.
   // В журнал: питание, вход, режим, Quick Select, mute; громкость и навигация — нет (шум), но считаются в stats
-  const AUDITED = new Set(['power', 'input', 'mode', 'quick', 'mute'])
+  const AUDITED = new Set(['power', 'input', 'mode', 'quick', 'mute', 'zone', 'eco', 'sleep'])
   app.post<{ Body: { command?: unknown } }>('/api/receiver/command', async (req, reply) => {
     const command = typeof req.body?.command === 'string' ? req.body.command : ''
     let cls: receiver.CmdClass
@@ -118,6 +119,20 @@ export async function serviceRoutes(app: FastifyInstance) {
       if (AUDITED.has(cls)) audit({ ...who(req), action: `receiver.${cls}`, target: command, result: 'error', details: { message: (e as Error).message } })
       return receiverFail(e, reply)
     }
+  })
+  // Экранный пульт: привязки кнопок (общие для всех устройств, настройка receiver.remote) и список допустимых команд
+  app.get('/api/receiver/remote', async () => ({ defaults: remote.REMOTE_DEFAULTS, bindings: remote.getBindings(), commands: remote.commandCatalog() }))
+  // command: строка из белого списка | null (без команды) | "default" (вернуть по умолчанию)
+  app.put<{ Params: { button: string }; Body: { command?: unknown } }>('/api/receiver/remote/:button', async (req, reply) => {
+    const c = req.body?.command
+    if (!(typeof c === 'string' || c === null)) return reply.code(400).send({ message: 'Нужна команда, null или "default"', code: 'bad' })
+    try {
+      remote.setBinding(req.params.button, c === 'default' ? undefined : c)
+    } catch (e) {
+      return receiverFail(e, reply)
+    }
+    audit({ ...who(req), action: 'receiver.remote', target: req.params.button, result: 'ok', details: { command: c } })
+    return { defaults: remote.REMOTE_DEFAULTS, bindings: remote.getBindings() }
   })
   app.post<{ Params: { key: string }; Body: { value?: unknown } }>('/api/receiver/:key', async (req, reply) => {
     const { key } = req.params
