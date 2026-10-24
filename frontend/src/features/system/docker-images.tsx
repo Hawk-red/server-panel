@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { lockHints } from '@/lib/docker-lock'
 import { formatRelative } from '@/lib/format'
 import type { DockerImageStatus, DockerJobView, UpdatesSnapshot } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -353,6 +354,7 @@ export function DockerImages({ docker, hidden, collapsed, onToggle, onHide }: { 
         <CardContent className='grid gap-2'>
           {docker.map((d) => {
             const canUpdate = d.managed && d.upToDate === false
+            const hints = lockHints(d)
             return (
               <div key={d.container} className='flex flex-col gap-2 rounded-lg border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3'>
                 <div className='min-w-0 space-y-0.5'>
@@ -368,12 +370,12 @@ export function DockerImages({ docker, hidden, collapsed, onToggle, onHide }: { 
                   <div className='font-mono text-xs break-words'>{imageDelta(d)}</div>
                   {d.error && <div className='text-[11px] break-words text-danger-foreground'>{d.error}</div>}
                   {d.checkedAt != null && <div className='text-[11px] text-muted-foreground'>проверено {formatRelative(d.checkedAt)}</div>}
-                  {d.lock && (
+                  {hints.lock && (
                     <div className='flex items-center gap-1 text-[11px] text-warn-foreground'>
-                      <Lock className='size-3 shrink-0' /> Замок: {d.lock}
+                      <Lock className='size-3 shrink-0' /> Замок: {hints.lock}
                     </div>
                   )}
-                  {d.note && <div className='text-[11px] text-muted-foreground'>{d.note}</div>}
+                  {hints.note && <div className='text-[11px] text-muted-foreground'>{hints.note}</div>}
                 </div>
                 <div className='flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end'>
                   <StatusOf d={d} />
