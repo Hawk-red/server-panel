@@ -331,6 +331,8 @@ export async function loadInputs(force = false): Promise<InputDef[]> {
   return list
 }
 export const resetInputsCache = () => void (inputsCache = null)
+/** Список входов из кэша, без обращения к ресиверу (null — кэш ещё пуст). Нужен универсальному пульту: его набор по умолчанию берёт живые входы */
+export const cachedInputs = (): InputDef[] | null => inputsCache?.list ?? null
 
 // Имя текущего входа — как его показывает сам ресивер (InputFuncSelect в XML); не из таблицы кодов: код telnet и имя не всегда совпадают
 async function currentInputName(): Promise<string | null> {

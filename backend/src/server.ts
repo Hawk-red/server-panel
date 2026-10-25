@@ -16,6 +16,7 @@ import { serviceRoutes } from './routes/services.js'
 import { aiRoutes } from './routes/ai.js'
 import { wirelessRoutes } from './routes/wireless.js'
 import { bluetoothRoutes } from './routes/bluetooth.js'
+import { homeassistantRoutes } from './routes/homeassistant.js'
 import { smarthomeRoutes } from './routes/smarthome.js'
 import { tvRoutes } from './routes/tv.js'
 import { universalRoutes } from './routes/universal.js'
@@ -118,6 +119,7 @@ await app.register(aiRoutes)
 await app.register(wirelessRoutes)
 await app.register(bluetoothRoutes)
 await app.register(smarthomeRoutes)
+await app.register(homeassistantRoutes)
 await app.register(tvRoutes)
 await app.register(universalRoutes)
 

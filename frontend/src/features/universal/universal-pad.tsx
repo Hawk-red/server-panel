@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SCENE_BG, SCENE_ICON } from '@/features/smarthome/scene-style'
 import { buzz, useHoldButton } from '@/features/receiver/use-hold'
 
-// Плитки универсального пульта: вид как у «Быстрых сцен», нажатие — как у экранных пультов
+// Плитки универсального пульта (столбец Samsung или Marantz): вид как у «Быстрых сцен», нажатие — как у экранных пультов
 // (вдавливание, вибрация, удержание с автоповтором у громкости и стрелок). Данные приходят готовыми, запросов здесь нет.
 export function UniTile({ b, st, editing, onPress, onEdit, onRemove }: {
   b: UniButtonView
@@ -91,7 +91,7 @@ export function UniversalPad({ buttons, st, editing, onPress, onEdit, onRemove, 
     return <p className='rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground'>Кнопок нет. Включите «Изменить» и добавьте нужные или сбросьте набор по умолчанию.</p>
   }
   return (
-    <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6'>
+    <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4'>
       {buttons.map((b) => {
         const node = <UniTile key={b.id} b={b} st={st} editing={editing} onPress={onPress} onEdit={onEdit} onRemove={onRemove} />
         return wrap ? <div key={b.id}>{wrap(b, node)}</div> : node

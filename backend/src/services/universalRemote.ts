@@ -1,15 +1,25 @@
-// Универсальный пульт («Медиа» → вкладка «Универсальный»): свой набор крупных плиток из кнопок ресивера, телевизора и сцен.
-// Хранится в настройке universal.remote (список и порядок, общие для всех устройств). Новых способов управления нет:
-// кнопка ссылается на кнопку уже существующего экранного пульта (её команду решают привязки receiver.remote / tv.remote)
-// либо на сцену панели, а исполняют их прежние маршруты со своими белыми списками, лимитами и журналом.
+// Универсальный пульт («Медиа» → вкладка «Универсальный»): два столбца крупных плиток — Samsung (телевизор и сцены)
+// и Marantz (ресивер). Каждый столбец хранится отдельно (universal.remote.tv и universal.remote.receiver) и правится
+// независимо. Новых способов управления нет: кнопка ссылается на кнопку уже существующего экранного пульта (её команду
+// решают привязки receiver.remote / tv.remote) либо на сцену панели, а исполняют их прежние маршруты со своими
+// белыми списками, лимитами и журналом.
 import { getSetting, setSetting } from '../settings.js'
 import { SCENE_COLORS, SCENE_ICONS, type SceneColor, type SceneIcon } from './smarthomeScenes.js'
 import * as receiverRemote from './receiverRemote.js'
 import * as tvRemote from './tvRemote.js'
+import { cachedInputs } from './receiver.js'
 import { findScene, listScenes } from './smarthome.js'
 
+/** Старое общее хранилище (один столбец). Остаётся на месте: из него один раз переносятся плитки */
 export const SETTING_KEY = 'universal.remote'
+export const MIGRATED_KEY = 'universal.remote.migrated'
 export const MAX_BUTTONS = 48
+
+export const COLUMNS = ['tv', 'receiver'] as const
+export type UniColumn = (typeof COLUMNS)[number]
+export const COLUMN_KEY: Record<UniColumn, string> = { tv: 'universal.remote.tv', receiver: 'universal.remote.receiver' }
+export const COLUMN_TITLE: Record<UniColumn, string> = { tv: 'Samsung', receiver: 'Marantz' }
+export const isColumn = (v: unknown): v is UniColumn => typeof v === 'string' && (COLUMNS as readonly string[]).includes(v)
 
 export type UniSource = 'receiver' | 'tv' | 'scene'
 export type UniButton = { id: string; source: UniSource; command: string; label: string; icon: SceneIcon; color: SceneColor }
@@ -20,29 +30,83 @@ const SOURCES: UniSource[] = ['receiver', 'tv', 'scene']
 const ID_RE = /^[a-z0-9-]{1,40}$/
 const SCENE_RE = /^scene\.[a-z0-9_]+$/
 
-// Набор по умолчанию: питание обоих устройств, громкость ресивера, навигация телевизора, входы и режимы звука
-export const DEFAULTS: UniButton[] = [
-  { id: 'tv-power', source: 'tv', command: 'power', label: 'Телевизор', icon: 'power', color: 'red' },
-  { id: 'av-power', source: 'receiver', command: 'power', label: 'Ресивер', icon: 'power', color: 'orange' },
-  { id: 'av-vol-up', source: 'receiver', command: 'vol-up', label: 'Громче', icon: 'volume', color: 'green' },
-  { id: 'av-vol-down', source: 'receiver', command: 'vol-down', label: 'Тише', icon: 'volume', color: 'green' },
-  { id: 'av-mute', source: 'receiver', command: 'mute', label: 'Без звука', icon: 'volume', color: 'slate' },
-  { id: 'tv-menu', source: 'tv', command: 'menu', label: 'Меню ТВ', icon: 'tv', color: 'slate' },
-  { id: 'tv-up', source: 'tv', command: 'nav-up', label: '▲', icon: 'monitor', color: 'slate' },
-  { id: 'tv-left', source: 'tv', command: 'nav-left', label: '◀', icon: 'monitor', color: 'slate' },
-  { id: 'tv-enter', source: 'tv', command: 'enter', label: 'OK', icon: 'monitor', color: 'blue' },
-  { id: 'tv-right', source: 'tv', command: 'nav-right', label: '▶', icon: 'monitor', color: 'slate' },
-  { id: 'tv-down', source: 'tv', command: 'nav-down', label: '▼', icon: 'monitor', color: 'slate' },
-  { id: 'tv-return', source: 'tv', command: 'return', label: 'Назад', icon: 'monitor', color: 'slate' },
-  { id: 'tv-exit', source: 'tv', command: 'exit', label: 'Выход', icon: 'monitor', color: 'slate' },
-  { id: 'av-in-tv', source: 'receiver', command: 'in-tv', label: 'Вход TV', icon: 'tv', color: 'cyan' },
-  { id: 'av-in-cblsat', source: 'receiver', command: 'in-cblsat', label: 'Вход CBL/SAT', icon: 'monitor', color: 'cyan' },
-  { id: 'av-in-mplay', source: 'receiver', command: 'in-mplay', label: 'Вход Media Player', icon: 'laptop', color: 'cyan' },
-  { id: 'av-sm-movie', source: 'receiver', command: 'sm-movie', label: 'Movie', icon: 'clapperboard', color: 'blue' },
-  { id: 'av-sm-music', source: 'receiver', command: 'sm-music', label: 'Music', icon: 'radio', color: 'violet' },
-  { id: 'av-sm-game', source: 'receiver', command: 'sm-game', label: 'Game', icon: 'gamepad', color: 'orange' },
-  { id: 'av-sm-pure', source: 'receiver', command: 'sm-pure', label: 'Pure Direct', icon: 'sparkles', color: 'emerald' },
+const b = (id: string, source: UniSource, command: string, label: string, icon: SceneIcon, color: SceneColor): UniButton => ({ id, source, command, label, icon, color })
+
+// Левый столбец: только кнопки Samsung — питание, громкость, Mute, источник, каналы, навигация, RETURN/EXIT/MENU/INFO, play/pause
+const TV_DEFAULTS: UniButton[] = [
+  b('tv-power', 'tv', 'power', 'Телевизор', 'power', 'red'),
+  b('tv-source', 'tv', 'source', 'Источник', 'tv', 'cyan'),
+  b('tv-vol-up', 'tv', 'vol-up', 'Громче', 'volume', 'green'),
+  b('tv-vol-down', 'tv', 'vol-down', 'Тише', 'volume', 'green'),
+  b('tv-mute', 'tv', 'mute', 'Без звука', 'volume', 'slate'),
+  b('tv-ch-up', 'tv', 'p-up', 'Канал +', 'monitor', 'blue'),
+  b('tv-ch-down', 'tv', 'p-down', 'Канал −', 'monitor', 'blue'),
+  b('tv-up', 'tv', 'nav-up', '▲', 'monitor', 'slate'),
+  b('tv-left', 'tv', 'nav-left', '◀', 'monitor', 'slate'),
+  b('tv-enter', 'tv', 'enter', 'OK', 'monitor', 'blue'),
+  b('tv-right', 'tv', 'nav-right', '▶', 'monitor', 'slate'),
+  b('tv-down', 'tv', 'nav-down', '▼', 'monitor', 'slate'),
+  b('tv-return', 'tv', 'return', 'Назад', 'monitor', 'slate'),
+  b('tv-exit', 'tv', 'exit', 'Выход', 'monitor', 'slate'),
+  b('tv-menu', 'tv', 'menu', 'Меню', 'tv', 'slate'),
+  b('tv-info', 'tv', 'info', 'Инфо', 'tv', 'slate'),
+  b('tv-play', 'tv', 'play', 'Play', 'monitor', 'emerald'),
+  b('tv-pause', 'tv', 'pause', 'Pause', 'monitor', 'orange'),
 ]
+
+// Правый столбец: только кнопки Marantz — питание, громкость, Mute, входы (живой список), режимы звука, Smart Select 1–4
+const AV_HEAD: UniButton[] = [
+  b('av-power', 'receiver', 'power', 'Ресивер', 'power', 'orange'),
+  b('av-vol-up', 'receiver', 'vol-up', 'Громче', 'volume', 'green'),
+  b('av-vol-down', 'receiver', 'vol-down', 'Тише', 'volume', 'green'),
+  b('av-mute', 'receiver', 'mute', 'Без звука', 'volume', 'slate'),
+]
+const AV_TAIL: UniButton[] = [
+  b('av-sm-movie', 'receiver', 'sm-movie', 'Movie', 'clapperboard', 'blue'),
+  b('av-sm-music', 'receiver', 'sm-music', 'Music', 'radio', 'violet'),
+  b('av-sm-game', 'receiver', 'sm-game', 'Game', 'gamepad', 'orange'),
+  b('av-sm-pure', 'receiver', 'sm-pure', 'Pure Direct', 'sparkles', 'emerald'),
+  b('av-ss-1', 'receiver', 'ss-1', 'Быстрый 1', 'sparkles', 'cyan'),
+  b('av-ss-2', 'receiver', 'ss-2', 'Быстрый 2', 'sparkles', 'cyan'),
+  b('av-ss-3', 'receiver', 'ss-3', 'Быстрый 3', 'sparkles', 'cyan'),
+  b('av-ss-4', 'receiver', 'ss-4', 'Быстрый 4', 'sparkles', 'cyan'),
+]
+// Входы без живого списка (ресивер ещё не отвечал): те же три, что были в прежнем общем наборе
+const FALLBACK_INPUTS = [
+  { code: 'TV', name: 'Вход TV' },
+  { code: 'SAT/CBL', name: 'Вход CBL/SAT' },
+  { code: 'MPLAY', name: 'Вход Media Player' },
+]
+
+// Кнопка пульта по коду входа: у ресивера вход — это команда SI<код> (SITV, SISAT/CBL, …)
+const inputButton = (code: string): string | null => Object.entries(receiverRemote.REMOTE_DEFAULTS).find(([, cmd]) => cmd === `SI${code}`)?.[0] ?? null
+const inputIcon = (name: string): SceneIcon => {
+  const n = name.toLowerCase()
+  if (/game|ps\d|xbox/.test(n)) return 'gamepad'
+  if (/mac|laptop|player|mplay|apple/.test(n)) return 'laptop'
+  if (/tv/.test(n)) return 'tv'
+  return 'monitor'
+}
+const slug = (code: string) => code.toLowerCase().replace(/[^a-z0-9]+/g, '')
+
+type Inputs = () => { code: string; name: string }[] | null
+const deps: { inputs: Inputs } = { inputs: cachedInputs }
+/** Подмена списка входов в тестах: живого ресивера там нет */
+export const setInputsSource = (f: Inputs) => void (deps.inputs = f)
+
+/** Плитки входов для набора по умолчанию: живой список входов ресивера, пока его нет — три обычных входа */
+function inputDefaults(): UniButton[] {
+  const list = deps.inputs() ?? FALLBACK_INPUTS
+  const out: UniButton[] = []
+  for (const i of list) {
+    const button = inputButton(i.code)
+    if (!button) continue
+    out.push(b(`av-in-${slug(i.code)}`, 'receiver', button, i.name.slice(0, 40), inputIcon(i.name), 'cyan'))
+  }
+  return out
+}
+
+export const defaults = (column: UniColumn): UniButton[] => (column === 'tv' ? TV_DEFAULTS : [...AV_HEAD, ...inputDefaults(), ...AV_TAIL])
 
 // ---------- справочник: что вообще можно положить на пульт ----------
 const bindings = (source: 'receiver' | 'tv') => (source === 'receiver' ? receiverRemote.getBindings() : tvRemote.getBindings())
@@ -62,7 +126,7 @@ export const isButton = (source: UniSource, command: string): boolean =>
 export type CatalogItem = { command: string; title: string; group: string }
 export function catalog(): { receiver: CatalogItem[]; tv: CatalogItem[]; scenes: { command: string; title: string; color: SceneColor; icon: SceneIcon; available: boolean }[] } {
   const pad = (source: 'receiver' | 'tv', group: string) =>
-    (source === 'receiver' ? receiverRemote.REMOTE_BUTTONS : tvRemote.REMOTE_BUTTONS).map((b) => ({ command: b, title: buttonTitle(source, b), group }))
+    (source === 'receiver' ? receiverRemote.REMOTE_BUTTONS : tvRemote.REMOTE_BUTTONS).map((button) => ({ command: button, title: buttonTitle(source, button), group }))
   return {
     receiver: pad('receiver', 'Пульт ресивера'),
     tv: pad('tv', 'Пульт ТВ'),
@@ -74,13 +138,13 @@ export function catalog(): { receiver: CatalogItem[]; tv: CatalogItem[]; scenes:
 
 // ---------- список кнопок ----------
 /** Во что развернётся кнопка: команда ресивера, ключ ТВ или сцена. null — команды нет, плитка серая */
-export function resolve(b: UniButton): { resolved: string | null; title: string; available: boolean } {
-  if (b.source === 'scene') {
-    const s = findScene(b.command)
-    return { resolved: s ? s.entityId : null, title: s?.name ?? b.command, available: Boolean(s?.available) }
+export function resolve(btn: UniButton): { resolved: string | null; title: string; available: boolean } {
+  if (btn.source === 'scene') {
+    const s = findScene(btn.command)
+    return { resolved: s ? s.entityId : null, title: s?.name ?? btn.command, available: Boolean(s?.available) }
   }
-  const cmd = bindings(b.source)[b.command] ?? null
-  return { resolved: cmd, title: cmd ? buttonTitle(b.source, b.command) : 'без команды', available: cmd !== null }
+  const cmd = bindings(btn.source)[btn.command] ?? null
+  return { resolved: cmd, title: cmd ? buttonTitle(btn.source, btn.command) : 'без команды', available: cmd !== null }
 }
 
 const clean = (v: unknown): UniButton[] => {
@@ -93,39 +157,55 @@ const clean = (v: unknown): UniButton[] => {
   return out
 }
 
-export const getButtons = (): UniButton[] => {
-  const stored = getSetting<unknown>(SETTING_KEY, null)
-  if (stored === null) return DEFAULTS
-  return clean(stored)
+/** Перенос прежнего общего списка в два столбца: телевизор и сцены — налево, ресивер — направо. Делается один раз */
+export function migrate(): void {
+  if (getSetting<boolean>(MIGRATED_KEY, false)) return
+  const old = getSetting<unknown>(SETTING_KEY, null)
+  if (old !== null) {
+    const list = clean(old)
+    setSetting(COLUMN_KEY.tv, list.filter((x) => x.source !== 'receiver'))
+    setSetting(COLUMN_KEY.receiver, list.filter((x) => x.source === 'receiver'))
+  }
+  setSetting(MIGRATED_KEY, true)
 }
-export const view = (): UniButtonView[] => getButtons().map((b) => ({ ...b, ...resolve(b) }))
-export const isDefault = () => getSetting<unknown>(SETTING_KEY, null) === null
 
-export function resetButtons(): UniButton[] {
-  setSetting(SETTING_KEY, null)
-  return DEFAULTS
+export function getButtons(column: UniColumn): UniButton[] {
+  migrate()
+  const stored = getSetting<unknown>(COLUMN_KEY[column], null)
+  return stored === null ? defaults(column) : clean(stored)
+}
+export const view = (column: UniColumn): UniButtonView[] => getButtons(column).map((x) => ({ ...x, ...resolve(x) }))
+export function isDefault(column: UniColumn): boolean {
+  migrate()
+  return getSetting<unknown>(COLUMN_KEY[column], null) === null
+}
+
+export function resetButtons(column: UniColumn): UniButton[] {
+  migrate()
+  setSetting(COLUMN_KEY[column], null)
+  return defaults(column)
 }
 
 type Parsed = { ok: true; value: UniButton } | { ok: false; message: string }
 export function parseButton(v: unknown, taken: { id: string }[] = []): Parsed {
-  const b = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
-  const id = typeof b.id === 'string' ? b.id : ''
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
+  const id = typeof o.id === 'string' ? o.id : ''
   if (!ID_RE.test(id)) return { ok: false, message: 'Идентификатор кнопки: латинские буквы, цифры и дефис, до 40 символов' }
   if (taken.some((x) => x.id === id)) return { ok: false, message: `Кнопка «${id}» повторяется` }
-  const source = b.source as UniSource
+  const source = o.source as UniSource
   if (!SOURCES.includes(source)) return { ok: false, message: 'Источник: ресивер, телевизор или сцена' }
-  const command = typeof b.command === 'string' ? b.command : ''
+  const command = typeof o.command === 'string' ? o.command : ''
   if (!isButton(source, command)) return { ok: false, message: source === 'scene' ? 'Такой сцены у панели нет' : 'Такой кнопки нет на этом пульте' }
-  const label = typeof b.label === 'string' ? b.label.trim() : ''
+  const label = typeof o.label === 'string' ? o.label.trim() : ''
   if (label.length < 1 || label.length > 40) return { ok: false, message: 'Подпись: от 1 до 40 символов' }
-  const icon = b.icon as SceneIcon
+  const icon = o.icon as SceneIcon
   if (!(SCENE_ICONS as readonly string[]).includes(icon)) return { ok: false, message: 'Неизвестный значок' }
-  const color = b.color as SceneColor
+  const color = o.color as SceneColor
   if (!(SCENE_COLORS as readonly string[]).includes(color)) return { ok: false, message: 'Неизвестный цвет' }
   return { ok: true, value: { id, source, command, label, icon, color } }
 }
 
-export function setButtons(v: unknown): { ok: true; value: UniButton[] } | { ok: false; message: string } {
+export function setButtons(column: UniColumn, v: unknown): { ok: true; value: UniButton[] } | { ok: false; message: string } {
   if (!Array.isArray(v)) return { ok: false, message: 'Нужен список кнопок' }
   if (v.length > MAX_BUTTONS) return { ok: false, message: `Кнопок не больше ${MAX_BUTTONS}` }
   const out: UniButton[] = []
@@ -134,6 +214,7 @@ export function setButtons(v: unknown): { ok: true; value: UniButton[] } | { ok:
     if (!r.ok) return r
     out.push(r.value)
   }
-  setSetting(SETTING_KEY, out)
+  migrate()
+  setSetting(COLUMN_KEY[column], out)
   return { ok: true, value: out }
 }

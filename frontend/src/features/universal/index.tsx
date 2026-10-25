@@ -10,7 +10,7 @@ import { api } from '@/lib/api'
 import { moveItem } from '@/lib/layout-order'
 import { bumpVolume } from '@/lib/receiver-remote'
 import { runScene } from '@/lib/smarthome'
-import { removeButton, stripView, uniRepeatable, upsertButton, type UniButton, type UniButtonView, type UniData } from '@/lib/universal-pad'
+import { removeButton, stripView, uniRepeatable, UNI_COLUMNS, UNI_COLUMN_TITLE, upsertButton, type DeviceState, type UniButton, type UniButtonView, type UniColumn, type UniData } from '@/lib/universal-pad'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -21,21 +21,21 @@ import { UniversalPad } from './universal-pad'
 
 const errText = (e: unknown, fallback: string) => ((e instanceof AxiosError ? (e.response?.data as { message?: string } | undefined)?.message : null) ?? fallback)
 
-/** Состав плиток с сервера (universal.remote) и его изменение: весь список сохраняется целиком */
+/** Состав плиток с сервера (universal.remote.tv и universal.remote.receiver): каждый столбец сохраняется целиком */
 function useUniversal() {
   const qc = useQueryClient()
   const key = ['universal-remote']
   const q = useQuery({ queryKey: key, queryFn: async () => (await api.get<UniData>('/universal/remote')).data, staleTime: 60_000 })
   const put = useMutation({
-    mutationFn: async (buttons: UniButton[]) => (await api.put<UniData>('/universal/remote', { buttons })).data,
+    mutationFn: async (v: { column: UniColumn; buttons: UniButton[] }) => (await api.put<UniData>(`/universal/remote/${v.column}`, { buttons: v.buttons })).data,
     onSuccess: (d) => qc.setQueryData(key, d),
     onError: (e) => toast.error(errText(e, 'Не удалось сохранить пульт')),
   })
   const reset = useMutation({
-    mutationFn: async () => (await api.post<UniData>('/universal/remote/reset')).data,
-    onSuccess: (d) => {
+    mutationFn: async (column: UniColumn) => (await api.post<UniData>(`/universal/remote/${column}/reset`)).data,
+    onSuccess: (d, column) => {
       qc.setQueryData(key, d)
-      toast.success('Набор кнопок возвращён к начальному')
+      toast.success(`Набор кнопок «${UNI_COLUMN_TITLE[column]}» возвращён к начальному`)
     },
     onError: (e) => toast.error(errText(e, 'Не удалось сбросить')),
   })
@@ -51,32 +51,26 @@ function SortableTile({ id, children }: { id: string; children: React.ReactNode 
   )
 }
 
-/** Вкладка «Универсальный»: частые кнопки ресивера, телевизора и сцен одной сеткой */
-export function UniversalTab() {
-  const { data, save, pending, reset } = useUniversal()
-  const { q: receiver, send, patch } = useReceiver()
-  const tv = useTvStatus()
-  const tvPress = useTvPress(tv.data)
+type ColumnProps = {
+  column: UniColumn
+  data: UniData | undefined
+  st: DeviceState
+  pending: boolean
+  onPress: (b: UniButtonView) => void
+  onSave: (column: UniColumn, buttons: UniButton[]) => void
+  onReset: (column: UniColumn) => void
+}
+
+/** Один столбец: свой переключатель «Изменить», своё добавление, перетаскивание и сброс */
+function Column({ column, data, st, pending, onPress, onSave, onReset }: ColumnProps) {
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editTile, setEditTile] = useState<{ b: UniButton; isNew: boolean } | null>(null)
-
-  const buttons = data?.buttons ?? []
-  const st = { receiver: receiver.data, tv: tv.data }
+  const col = data?.columns?.[column]
+  const buttons = col?.buttons ?? []
   const list = () => buttons.map(stripView)
-
-  const press = (b: UniButtonView) => {
-    if (!b.resolved) return
-    if (b.source === 'receiver') {
-      if (b.resolved === 'MVUP' || b.resolved === 'MVDOWN') patch((s) => bumpVolume(s, b.resolved as 'MVUP' | 'MVDOWN'))
-      void send(b.resolved, { quiet: uniRepeatable(b) })
-      return
-    }
-    if (b.source === 'tv') return void tvPress(b.id, b.resolved)
-    void runScene((id) => api.post('/smarthome/ha/scene', { entity_id: id }), b.resolved, (e) => errText(e, 'Не удалось запустить сцену')).then((r) =>
-      r.ok ? toast.success(`Сцена «${b.label}» запущена`) : toast.error(r.message),
-    )
-  }
+  const max = data?.max ?? 48
+  const sw = `universal-edit-${column}`
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -86,48 +80,44 @@ export function UniversalTab() {
   const onDragEnd = (e: DragEndEvent) => {
     if (!e.over || e.active.id === e.over.id) return
     const ids = buttons.map((b) => b.id)
-    save(moveItem(list(), ids.indexOf(String(e.active.id)), ids.indexOf(String(e.over.id))))
+    onSave(column, moveItem(list(), ids.indexOf(String(e.active.id)), ids.indexOf(String(e.over.id))))
   }
-
   const saveTile = (v: UniButton) => {
-    save(upsertButton(list(), v))
+    onSave(column, upsertButton(list(), v))
     setEditTile(null)
   }
-  const remove = (b: UniButtonView) => save(removeButton(list(), b.id))
 
   const grid = (
     <UniversalPad
       buttons={buttons}
       st={st}
       editing={editing}
-      onPress={press}
+      onPress={onPress}
       onEdit={(b) => setEditTile({ b: stripView(b), isNew: false })}
-      onRemove={remove}
+      onRemove={(b) => onSave(column, removeButton(list(), b.id))}
       wrap={editing ? (b, node) => <SortableTile id={b.id}>{node}</SortableTile> : undefined}
     />
   )
 
   return (
-    <div className='space-y-4'>
-      <div className='flex flex-wrap items-center justify-between gap-3'>
-        <p className='text-xs text-muted-foreground'>
-          {editing ? 'Перетащите плитки, чтобы поменять порядок. «⋯» на плитке — подпись, цвет, значок, удалить.' : 'Частые кнопки ресивера, телевизора и сцен. Команды те же, что на оригинальных пультах.'}
-        </p>
+    <section className='space-y-3 rounded-xl border p-3' aria-label={`Универсальный пульт: ${UNI_COLUMN_TITLE[column]}`} data-column={column}>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <h2 className='text-sm font-medium'>{UNI_COLUMN_TITLE[column]}</h2>
         <div className='flex shrink-0 items-center gap-2'>
           {editing && (
             <>
-              <Button type='button' size='sm' variant='outline' onClick={() => setAdding(true)} disabled={!data || buttons.length >= (data?.max ?? 48)}>
+              <Button type='button' size='sm' variant='outline' onClick={() => setAdding(true)} disabled={!data || buttons.length >= max}>
                 <Plus /> Добавить кнопку
               </Button>
-              <Button type='button' size='sm' variant='outline' onClick={() => reset()} disabled={data?.isDefault}>
-                <RotateCcw /> Сбросить по умолчанию
+              <Button type='button' size='sm' variant='outline' onClick={() => onReset(column)} disabled={col?.isDefault}>
+                <RotateCcw /> Сбросить
               </Button>
             </>
           )}
-          <Label htmlFor='universal-edit' className='text-sm'>
+          <Label htmlFor={sw} className='text-sm'>
             Изменить
           </Label>
-          <Switch id='universal-edit' checked={editing} onCheckedChange={setEditing} disabled={!data} />
+          <Switch id={sw} checked={editing} onCheckedChange={setEditing} disabled={!data} />
         </div>
       </div>
 
@@ -144,6 +134,7 @@ export function UniversalTab() {
       {adding && data && (
         <AddDialog
           catalog={data.catalog}
+          defaultSource={column}
           taken={buttons}
           onClose={() => setAdding(false)}
           onPick={(b) => {
@@ -155,6 +146,41 @@ export function UniversalTab() {
       {editTile && (
         <TileDialog b={editTile.b} title={editTile.isNew ? 'Новая кнопка' : `Кнопка «${editTile.b.label}»`} pending={pending} onSave={saveTile} onClose={() => setEditTile(null)} />
       )}
+    </section>
+  )
+}
+
+/** Вкладка «Универсальный»: два столбца частых кнопок — слева телевизор и сцены, справа ресивер */
+export function UniversalTab() {
+  const { data, save, pending, reset } = useUniversal()
+  const { q: receiver, send, patch } = useReceiver()
+  const tv = useTvStatus()
+  const tvPress = useTvPress(tv.data)
+  const st: DeviceState = { receiver: receiver.data, tv: tv.data }
+
+  const press = (b: UniButtonView) => {
+    if (!b.resolved) return
+    if (b.source === 'receiver') {
+      if (b.resolved === 'MVUP' || b.resolved === 'MVDOWN') patch((s) => bumpVolume(s, b.resolved as 'MVUP' | 'MVDOWN'))
+      void send(b.resolved, { quiet: uniRepeatable(b) })
+      return
+    }
+    if (b.source === 'tv') return void tvPress(b.id, b.resolved)
+    void runScene((id) => api.post('/smarthome/ha/scene', { entity_id: id }), b.resolved, (e) => errText(e, 'Не удалось запустить сцену')).then((r) =>
+      r.ok ? toast.success(`Сцена «${b.label}» запущена`) : toast.error(r.message),
+    )
+  }
+
+  return (
+    <div className='space-y-4'>
+      <p className='text-xs text-muted-foreground'>
+        Частые кнопки телевизора, сцен и ресивера. Команды те же, что на оригинальных пультах. Каждый столбец правится отдельно: «Изменить» → перетаскивание, «Добавить кнопку», «⋯» на плитке.
+      </p>
+      <div className='grid gap-6 md:grid-cols-2'>
+        {UNI_COLUMNS.map((c) => (
+          <Column key={c} column={c} data={data} st={st} pending={pending} onPress={press} onSave={(column, buttons) => save({ column, buttons })} onReset={reset} />
+        ))}
+      </div>
     </div>
   )
 }

@@ -1,21 +1,18 @@
 import { useNavigate } from '@tanstack/react-router'
 import { Page } from '@/components/layout/page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ReceiverSection } from '@/features/receiver'
-import { TvRemoteTab } from '@/features/tv-remote/tv-remote-tab'
-import { TvTab } from '@/features/tv-remote/tv-tab'
+import { MarantzTab } from '@/features/receiver/marantz-tab'
+import { SamsungTab } from '@/features/tv-remote/samsung-tab'
 import { UniversalTab } from '@/features/universal'
-import { RECEIVER_LAYOUT_PAGE } from '@/lib/receiver-layout'
 import { MEDIA_TABS, MEDIA_TAB_TITLES, parseMediaTab, type MediaTab } from '@/lib/media-tabs'
 
-/** Страница «Медиа»: ресивер, телевизор и их экранные пульты; активная вкладка — в адресе (?tab=) */
+/** Страница «Медиа»: универсальный пульт и оригинальные пульты телевизора и ресивера; активная вкладка — в адресе (?tab=) */
 export function MediaHubPage({ tab: raw }: { tab?: string }) {
   const tab = parseMediaTab(raw)
   const navigate = useNavigate()
   const setTab = (t: string) => void navigate({ to: '/media-control', search: { tab: t as MediaTab }, replace: true })
   return (
-    // «Изменить порядок» относится только к блокам вкладки «Ресивер»
-    <Page title='Медиа' description='Ресивер Marantz, телевизор Samsung и экранные пульты' layoutPage={tab === 'receiver' ? RECEIVER_LAYOUT_PAGE : undefined}>
+    <Page title='Медиа' description='Универсальный пульт, телевизор Samsung и ресивер Marantz'>
       <Tabs value={tab} onValueChange={setTab} className='gap-4'>
         <div className='-mx-1 overflow-x-auto px-1'>
           <TabsList>
@@ -26,20 +23,14 @@ export function MediaHubPage({ tab: raw }: { tab?: string }) {
             ))}
           </TabsList>
         </div>
-        <TabsContent value='receiver'>
-          <ReceiverSection view='control' />
-        </TabsContent>
-        <TabsContent value='tv'>
-          <TvTab />
-        </TabsContent>
-        <TabsContent value='receiver-remote'>
-          <ReceiverSection view='remote' />
-        </TabsContent>
-        <TabsContent value='tv-remote'>
-          <TvRemoteTab />
-        </TabsContent>
         <TabsContent value='universal'>
           <UniversalTab />
+        </TabsContent>
+        <TabsContent value='samsung'>
+          <SamsungTab />
+        </TabsContent>
+        <TabsContent value='marantz'>
+          <MarantzTab />
         </TabsContent>
       </Tabs>
     </Page>

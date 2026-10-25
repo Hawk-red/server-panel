@@ -1,5 +1,6 @@
-// Универсальный пульт: хранение списка, проверка кнопок и то, что исполнять нечего кроме уже разрешённых команд.
-// Устройства не трогаются: сервис только решает, во что развернётся кнопка.
+// Универсальный пульт: два столбца (Samsung и Marantz), их хранение, перенос прежнего общего списка, проверка кнопок
+// и то, что исполнять нечего кроме уже разрешённых команд. Устройства не трогаются: сервис только решает,
+// во что развернётся кнопка.
 import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,31 +29,93 @@ before(async () => {
   addScene('scene.fire', 'FIRE', false)
 })
 beforeEach(() => {
-  st.setSetting(uni.SETTING_KEY, null)
+  for (const k of [uni.SETTING_KEY, uni.MIGRATED_KEY, uni.COLUMN_KEY.tv, uni.COLUMN_KEY.receiver]) st.setSetting(k, null)
   st.setSetting(rr.SETTING_KEY, {})
   st.setSetting(tr.SETTING_KEY, {})
+  uni.setInputsSource(() => null)
 })
 
 const btn = (over: Partial<import('../services/universalRemote.js').UniButton> = {}) => ({ id: 'my-1', source: 'tv' as const, command: 'power', label: 'ТВ', icon: 'power' as const, color: 'red' as const, ...over })
 
-describe('набор по умолчанию', () => {
-  it('пустые настройки — начальный набор: питание обоих, громкость ресивера, навигация ТВ, входы и режимы', () => {
-    const d = uni.getButtons()
-    assert.equal(uni.isDefault(), true)
-    assert.deepEqual(d, uni.DEFAULTS)
-    const by = (source: string, command: string) => d.find((b) => b.source === source && b.command === command)
-    for (const c of ['power', 'vol-up', 'vol-down', 'mute', 'in-tv', 'in-cblsat', 'in-mplay', 'sm-movie', 'sm-music', 'sm-game', 'sm-pure']) assert.ok(by('receiver', c), `ресивер ${c}`)
-    for (const c of ['power', 'nav-up', 'nav-down', 'nav-left', 'nav-right', 'enter', 'return', 'exit', 'menu']) assert.ok(by('tv', c), `ТВ ${c}`)
-    assert.equal(new Set(d.map((b) => b.id)).size, d.length) // идентификаторы не повторяются
+describe('наборы по умолчанию', () => {
+  it('левый столбец — только кнопки Samsung: питание, громкость, Mute, источник, каналы, навигация, RETURN/EXIT/MENU/INFO, play/pause', () => {
+    const d = uni.getButtons('tv')
+    assert.equal(uni.isDefault('tv'), true)
+    assert.deepEqual(d, uni.defaults('tv'))
+    assert.deepEqual([...new Set(d.map((b) => b.source))], ['tv'])
+    const cmds = d.map((b) => b.command)
+    for (const c of ['power', 'vol-up', 'vol-down', 'mute', 'source', 'p-up', 'p-down', 'nav-up', 'nav-down', 'nav-left', 'nav-right', 'enter', 'return', 'exit', 'menu', 'info', 'play', 'pause']) {
+      assert.ok(cmds.includes(c), `ТВ ${c}`)
+    }
+    assert.equal(new Set(d.map((b) => b.id)).size, d.length)
   })
-  it('каждая кнопка набора есть на своём пульте', () => {
-    for (const b of uni.DEFAULTS) assert.equal(uni.isButton(b.source, b.command), true, `${b.source}:${b.command}`)
+  it('правый столбец — только кнопки Marantz: питание, громкость, Mute, входы, режимы звука и Smart Select 1–4', () => {
+    const d = uni.getButtons('receiver')
+    assert.deepEqual([...new Set(d.map((b) => b.source))], ['receiver'])
+    const cmds = d.map((b) => b.command)
+    for (const c of ['power', 'vol-up', 'vol-down', 'mute', 'sm-movie', 'sm-music', 'sm-game', 'sm-pure', 'ss-1', 'ss-2', 'ss-3', 'ss-4']) assert.ok(cmds.includes(c), `ресивер ${c}`)
+    assert.equal(new Set(d.map((b) => b.id)).size, d.length)
   })
-  it('«Сбросить по умолчанию» убирает настройку', () => {
-    uni.setButtons([btn()])
-    assert.equal(uni.isDefault(), false)
-    assert.deepEqual(uni.resetButtons(), uni.DEFAULTS)
-    assert.equal(uni.isDefault(), true)
+  it('входы правого столбца берутся из живого списка ресивера', () => {
+    uni.setInputsSource(() => [
+      { code: 'TV', name: 'PS4 & TV' },
+      { code: 'SAT/CBL', name: 'ANDROID' },
+      { code: 'CD', name: 'MacMini' },
+      { code: 'НЕТ-ТАКОГО', name: 'Выдумка' },
+    ])
+    const d = uni.defaults('receiver')
+    const inputs = d.filter((b) => b.command.startsWith('in-'))
+    assert.deepEqual(inputs.map((b) => b.command), ['in-tv', 'in-cblsat', 'in-cd'])
+    assert.deepEqual(inputs.map((b) => b.label), ['PS4 & TV', 'ANDROID', 'MacMini'])
+    assert.equal(inputs[0].icon, 'gamepad') // «PS4 & TV» — значок как на странице ресивера
+  })
+  it('без живого списка входов — три обычных входа', () => {
+    assert.deepEqual(uni.defaults('receiver').filter((b) => b.command.startsWith('in-')).map((b) => b.command), ['in-tv', 'in-cblsat', 'in-mplay'])
+  })
+  it('каждая кнопка обоих наборов есть на своём пульте', () => {
+    for (const c of uni.COLUMNS) for (const b of uni.defaults(c)) assert.equal(uni.isButton(b.source, b.command), true, `${c}: ${b.source}:${b.command}`)
+  })
+  it('«Сбросить по умолчанию» действует на один столбец', () => {
+    uni.setButtons('tv', [btn()])
+    uni.setButtons('receiver', [btn({ id: 'av-1', source: 'receiver', command: 'mute' })])
+    assert.equal(uni.isDefault('tv'), false)
+    assert.deepEqual(uni.resetButtons('tv'), uni.defaults('tv'))
+    assert.equal(uni.isDefault('tv'), true)
+    assert.equal(uni.isDefault('receiver'), false) // соседний столбец не тронут
+  })
+})
+
+describe('перенос прежнего общего списка', () => {
+  const old = [
+    btn({ id: 'tv-power' }),
+    btn({ id: 'av-mute', source: 'receiver', command: 'mute', label: 'Тихо', icon: 'volume', color: 'slate' }),
+    btn({ id: 'sc-1', source: 'scene', command: SCENE, label: 'Кино', icon: 'sparkles', color: 'green' }),
+    btn({ id: 'av-vol', source: 'receiver', command: 'vol-up', label: 'Громче', icon: 'volume', color: 'green' }),
+  ]
+  it('ТВ и сцены уходят влево, ресивер — вправо, порядок и вид сохраняются', () => {
+    st.setSetting(uni.SETTING_KEY, old)
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['tv-power', 'sc-1'])
+    assert.deepEqual(uni.getButtons('receiver').map((b) => b.id), ['av-mute', 'av-vol'])
+    assert.deepEqual(uni.getButtons('tv')[1], old[2])
+    assert.equal(uni.getButtons('tv').length + uni.getButtons('receiver').length, old.length) // ничего не потеряли
+    assert.equal(uni.isDefault('tv'), false)
+    assert.equal(uni.isDefault('receiver'), false)
+  })
+  it('переносится один раз: после сброса столбца прежний список не возвращается', () => {
+    st.setSetting(uni.SETTING_KEY, old)
+    uni.getButtons('tv')
+    uni.resetButtons('tv')
+    assert.deepEqual(uni.getButtons('tv'), uni.defaults('tv'))
+    assert.deepEqual(uni.getButtons('receiver').map((b) => b.id), ['av-mute', 'av-vol']) // правый остался перенесённым
+  })
+  it('прежней настройки не было — оба столбца начальные', () => {
+    assert.equal(uni.isDefault('tv'), true)
+    assert.equal(uni.isDefault('receiver'), true)
+  })
+  it('в прежнем списке мусор — переносится только годное', () => {
+    st.setSetting(uni.SETTING_KEY, [old[0], 'мусор', { id: 'bad' }, old[1]])
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['tv-power'])
+    assert.deepEqual(uni.getButtons('receiver').map((b) => b.id), ['av-mute'])
   })
 })
 
@@ -79,13 +142,19 @@ describe('во что разворачивается кнопка', () => {
 })
 
 describe('проверка списка при сохранении', () => {
-  it('сохраняется и читается обратно, порядок сохраняется', () => {
+  it('столбцы хранятся порознь, порядок сохраняется', () => {
     const list = [btn({ id: 'a' }), btn({ id: 'b', source: 'receiver', command: 'mute', label: 'Тихо', icon: 'volume', color: 'slate' }), btn({ id: 'c', source: 'scene', command: SCENE, label: 'Кино' })]
-    const r = uni.setButtons(list)
-    assert.equal(r.ok, true)
-    assert.deepEqual(uni.getButtons().map((b) => b.id), ['a', 'b', 'c'])
-    uni.setButtons([list[2], list[0]])
-    assert.deepEqual(uni.getButtons().map((b) => b.id), ['c', 'a'])
+    assert.equal(uni.setButtons('tv', list).ok, true)
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['a', 'b', 'c'])
+    assert.deepEqual(uni.getButtons('receiver'), uni.defaults('receiver')) // соседний столбец не изменился
+    uni.setButtons('tv', [list[2], list[0]])
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['c', 'a'])
+    assert.equal(uni.setButtons('receiver', [list[1]]).ok, true)
+    assert.deepEqual(uni.getButtons('receiver').map((b) => b.id), ['b'])
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['c', 'a'])
+  })
+  it('в любом столбце можно держать кнопку другого устройства или сцену', () => {
+    assert.equal(uni.setButtons('receiver', [btn({ id: 'x', source: 'tv', command: 'power' }), btn({ id: 'y', source: 'scene', command: SCENE, label: 'Кино' })]).ok, true)
   })
   it('неизвестная команда, чужой пульт и несуществующая сцена отклоняются', () => {
     const bad = [
@@ -100,31 +169,32 @@ describe('проверка списка при сохранении', () => {
       { ...btn({ command: '__proto__' }) },
     ]
     for (const b of bad) {
-      const r = uni.setButtons([b])
-      assert.equal(r.ok, false, JSON.stringify(b))
+      for (const c of uni.COLUMNS) assert.equal(uni.setButtons(c, [b]).ok, false, `${c}: ${JSON.stringify(b)}`)
     }
-    assert.equal(uni.isDefault(), true) // ничего не сохранилось
+    assert.equal(uni.isDefault('tv'), true) // ничего не сохранилось
+    assert.equal(uni.isDefault('receiver'), true)
   })
   it('подпись, значок, цвет и идентификатор проверяются', () => {
     for (const b of [btn({ label: '' }), btn({ label: 'x'.repeat(41) }), btn({ icon: 'нет' as never }), btn({ color: 'ЧЁРНЫЙ' as never }), btn({ id: 'Плохой ID' }), btn({ id: '' })]) {
-      assert.equal(uni.setButtons([b]).ok, false, JSON.stringify(b))
+      assert.equal(uni.setButtons('tv', [b]).ok, false, JSON.stringify(b))
     }
-    assert.equal(uni.setButtons([btn({ label: '  Кино  ' })]).ok, true)
-    assert.equal(uni.getButtons()[0].label, 'Кино')
+    assert.equal(uni.setButtons('tv', [btn({ label: '  Кино  ' })]).ok, true)
+    assert.equal(uni.getButtons('tv')[0].label, 'Кино')
   })
   it('повторяющиеся идентификаторы и слишком длинный список отклоняются', () => {
-    assert.equal(uni.setButtons([btn({ id: 'x' }), btn({ id: 'x' })]).ok, false)
-    assert.equal(uni.setButtons(Array.from({ length: uni.MAX_BUTTONS + 1 }, (_, i) => btn({ id: `k-${i}` }))).ok, false)
-    assert.equal(uni.setButtons(Array.from({ length: uni.MAX_BUTTONS }, (_, i) => btn({ id: `k-${i}` }))).ok, true)
+    assert.equal(uni.setButtons('tv', [btn({ id: 'x' }), btn({ id: 'x' })]).ok, false)
+    assert.equal(uni.setButtons('tv', Array.from({ length: uni.MAX_BUTTONS + 1 }, (_, i) => btn({ id: `k-${i}` }))).ok, false)
+    assert.equal(uni.setButtons('tv', Array.from({ length: uni.MAX_BUTTONS }, (_, i) => btn({ id: `k-${i}` }))).ok, true)
   })
   it('не список и мусор внутри — отказ, пустой список допустим', () => {
-    for (const v of [null, 'строка', 42, { id: 'a' }]) assert.equal(uni.setButtons(v).ok, false, String(v))
-    assert.equal(uni.setButtons([]).ok, true)
-    assert.deepEqual(uni.getButtons(), [])
+    for (const v of [null, 'строка', 42, { id: 'a' }]) assert.equal(uni.setButtons('tv', v).ok, false, String(v))
+    assert.equal(uni.setButtons('tv', []).ok, true)
+    assert.deepEqual(uni.getButtons('tv'), [])
   })
   it('испорченная настройка не ломает страницу: негодные записи просто выпадают', () => {
-    st.setSetting(uni.SETTING_KEY, [btn({ id: 'ok-1' }), { id: 'bad' }, 'мусор', btn({ id: 'ok-2', source: 'scene', command: 'scene.нет' })])
-    assert.deepEqual(uni.getButtons().map((b) => b.id), ['ok-1'])
+    st.setSetting(uni.MIGRATED_KEY, true)
+    st.setSetting(uni.COLUMN_KEY.tv, [btn({ id: 'ok-1' }), { id: 'bad' }, 'мусор', btn({ id: 'ok-2', source: 'scene', command: 'scene.нет' })])
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['ok-1'])
   })
 })
 

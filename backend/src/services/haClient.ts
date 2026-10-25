@@ -396,6 +396,17 @@ export async function readScenes(opts: { url: string; token: string }): Promise<
   }
 }
 
+// Только чтение: версия Home Assistant и имя дома (/api/config) — для страницы «Home Assistant»
+export async function readVersion(opts: { url: string; token: string }): Promise<{ version: string | null; locationName: string | null }> {
+  if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
+  try {
+    const r = rec(await getJson(parseBase(opts.url), '/api/config', opts.token, { timeout: 4000 }))
+    return { version: str(r.version), locationName: str(r.location_name) }
+  } catch (e) {
+    throw kindOf(e)
+  }
+}
+
 // Запуск сцены: scene.turn_on. Домен проверяется здесь независимо от маршрута.
 export async function activateScene(opts: { url: string; token: string; entityId: string; api?: HaControlApi }): Promise<void> {
   if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')

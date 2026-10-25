@@ -82,9 +82,10 @@ export function TileDialog({ b, title, pending, onSave, onClose }: { b: UniButto
   )
 }
 
-/** Выбор источника и кнопки (или сцены) с поиском — первый шаг добавления плитки */
-export function AddDialog({ catalog, taken, onPick, onClose }: { catalog: UniCatalog; taken: { id: string }[]; onPick: (b: UniButton) => void; onClose: () => void }) {
-  const [source, setSource] = useState<UniSource>('receiver')
+/** Выбор источника и кнопки (или сцены) с поиском — первый шаг добавления плитки; источник по умолчанию задаёт столбец */
+export function AddDialog({ catalog, taken, defaultSource = 'receiver', onPick, onClose }: { catalog: UniCatalog; taken: { id: string }[]; defaultSource?: UniSource; onPick: (b: UniButton) => void; onClose: () => void }) {
+  // столбец предлагает кнопки своего устройства, но можно выбрать и другое устройство или сцену
+  const [source, setSource] = useState<UniSource>(defaultSource)
   const [q, setQ] = useState('')
   type Item = { command: string; title: string; color?: SceneColor; icon?: SceneIcon; available?: boolean }
   const items: Item[] = source === 'scene' ? catalog.scenes : source === 'tv' ? catalog.tv : catalog.receiver

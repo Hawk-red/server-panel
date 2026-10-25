@@ -27,13 +27,13 @@ describe('страница «Ресивер»: блоки', () => {
     assert.equal(RECEIVER_LAYOUT_PAGE, 'receiver')
     assert.match(RECEIVER_LAYOUT_PAGE, /^[a-z0-9-]{1,30}$/)
   })
-  it('страница использует тот же SortableBlocks с этим ключом и теми же id блоков', () => {
+  it('код блоков с теми же id на месте, но в навигации их больше нет', () => {
     const src = readFileSync(here('../features/receiver/index.tsx'), 'utf8')
     assert.match(src, /SortableBlocks/)
     for (const b of RECEIVER_BLOCKS) assert.ok(src.includes(`id: '${b.id}'`), b.id)
-    // Page с ключом порядка теперь ставит страница «Медиа», и только на вкладке «Ресивер»
+    // Вкладки «Ресивер» (блоками) на странице «Медиа» нет, поэтому ключ порядка она больше не ставит
     const hub = readFileSync(here('../features/media-hub/index.tsx'), 'utf8')
-    assert.match(hub, /layoutPage=\{tab === 'receiver' \? RECEIVER_LAYOUT_PAGE : undefined\}/)
+    assert.doesNotMatch(hub, /layoutPage=/)
   })
 })
 
@@ -69,8 +69,13 @@ describe('главное меню: «Медиа» и «Медиа-серверы
     assert.equal(items[1].url, '/media')
     assert.equal(items[1].title, 'Медиа-серверы')
   })
-  it('«Умный дом» на месте', () => {
-    assert.ok(all.some((x) => x.i.url === '/smarthome' && x.i.title === 'Умный дом'))
+  it('«Умный дом» на месте, сразу за ним «Home Assistant»', () => {
+    const items = sidebarData.navGroups.find((g) => g.title === 'Сервисы')!.items
+    const i = items.findIndex((x) => x.url === '/smarthome')
+    assert.ok(i >= 0 && items[i].title === 'Умный дом')
+    assert.equal(items[i + 1].url, '/homeassistant')
+    assert.equal(items[i + 1].title, 'Home Assistant')
+    assert.ok(items[i + 1].icon)
   })
   it('адреса пунктов уникальны (меню не ломается дублем)', () => {
     const urls = all.map((x) => x.i.url)
@@ -83,11 +88,11 @@ describe('главное меню: «Медиа» и «Медиа-серверы
 })
 
 describe('редиректы старых адресов', () => {
-  it('/receiver ведёт на /media-control с переносом вкладки, /media/remote — на «Пульт ресивера»', () => {
+  it('/receiver ведёт на /media-control с переносом вкладки, /media/remote — на «Marantz»', () => {
     const r = readFileSync(here('../routes/_authenticated/receiver/index.tsx'), 'utf8')
     assert.match(r, /redirect\(\{ to: '\/media-control', search: \{ tab: legacyReceiverTab\(search\.tab\) \}/)
     const old = readFileSync(here('../routes/_authenticated/media/remote.tsx'), 'utf8')
-    assert.match(old, /to: '\/media-control', search: \{ tab: 'receiver-remote' \}/)
+    assert.match(old, /to: '\/media-control', search: \{ tab: 'marantz' \}/)
     const tree = readFileSync(here('../routeTree.gen.ts'), 'utf8')
     assert.match(tree, /'\/_authenticated\/receiver\/'/)
     assert.match(tree, /'\/_authenticated\/media-control\/'/)

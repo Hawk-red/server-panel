@@ -23,8 +23,8 @@ export type PaletteItem = {
   title: string
   subtitle?: string
   keywords: string[] // title первым; по ним ищет фильтр
-  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/media-control' | '/smarthome' // выбор только переходит на страницу
-  search?: { tab: 'services' } | { tab: 'receiver' | 'tv' | 'receiver-remote' | 'tv-remote' | 'universal' }
+  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/media-control' | '/smarthome' | '/homeassistant' // выбор только переходит на страницу
+  search?: { tab: 'services' } | { tab: 'universal' | 'samsung' | 'marantz' }
   scene?: string // entity_id сцены: выбор запускает её (без перехода)
 }
 
@@ -67,16 +67,21 @@ export function buildPaletteItems(d: PaletteData): PaletteItem[] {
     { id: 'media:jellyfin', group: 'media', title: 'Jellyfin', subtitle: 'медиасервер', keywords: ['Jellyfin', 'медиасервер', m?.jellyfin.container.data?.name ?? '', jf?.name ?? '', jf?.version ?? ''], to: '/media' },
     { id: 'media:minimserver', group: 'media', title: 'MinimServer', subtitle: 'UPnP/DLNA', keywords: ['MinimServer', 'UPnP DLNA медиасервер', m?.minimserver.container.data?.name ?? ''], to: '/media' },
     { id: 'media:bubbleupnp', group: 'media', title: 'BubbleUPnP Server', subtitle: 'UPnP', keywords: ['BubbleUPnP Server', 'UPnP', m?.bubbleupnpserver.container.data?.name ?? ''], to: '/media' },
-    { id: 'media:marantz', group: 'mediahub', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', 'Marantz', 'марантз', 'пульт ресивера', 'громкость', m?.marantz.data?.host ?? MARANTZ_IP], to: '/media-control', search: { tab: 'receiver' } },
-    { id: 'mediahub:receiver-remote', group: 'mediahub', title: 'Пульт ресивера', subtitle: 'Marantz RC042SR', keywords: ['Пульт ресивера', 'пульт marantz', 'RC042SR', 'ресивер пульт'], to: '/media-control', search: { tab: 'receiver-remote' } },
-    { id: 'mediahub:tv', group: 'mediahub', title: 'Телевизор Samsung', subtitle: '55″, управление', keywords: ['Телевизор', 'Samsung', 'самсунг', 'ТВ', 'tv', 'телек'], to: '/media-control', search: { tab: 'tv' } },
-    { id: 'mediahub:tv-remote', group: 'mediahub', title: 'Пульт ТВ', subtitle: 'Samsung AA59-00602A', keywords: ['Пульт ТВ', 'пульт телевизора', 'AA59-00602A', 'samsung пульт'], to: '/media-control', search: { tab: 'tv-remote' } },
+    { id: 'media:marantz', group: 'mediahub', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', 'Marantz', 'марантз', 'пульт ресивера', 'громкость', m?.marantz.data?.host ?? MARANTZ_IP], to: '/media-control', search: { tab: 'marantz' } },
+    { id: 'mediahub:receiver-remote', group: 'mediahub', title: 'Пульт ресивера', subtitle: 'Marantz RC042SR', keywords: ['Пульт ресивера', 'пульт marantz', 'RC042SR', 'ресивер пульт'], to: '/media-control', search: { tab: 'marantz' } },
+    { id: 'mediahub:tv', group: 'mediahub', title: 'Телевизор Samsung', subtitle: '55″, управление', keywords: ['Телевизор', 'Samsung', 'самсунг', 'ТВ', 'tv', 'телек'], to: '/media-control', search: { tab: 'samsung' } },
+    { id: 'mediahub:tv-remote', group: 'mediahub', title: 'Пульт ТВ', subtitle: 'Samsung AA59-00602A', keywords: ['Пульт ТВ', 'пульт телевизора', 'AA59-00602A', 'samsung пульт'], to: '/media-control', search: { tab: 'samsung' } },
     { id: 'mediahub:universal', group: 'mediahub', title: 'Универсальный пульт', subtitle: 'частые кнопки ресивера, ТВ и сцен', keywords: ['Универсальный пульт', 'универсальный', 'общий пульт', 'частые кнопки', 'мой пульт'], to: '/media-control', search: { tab: 'universal' } }
   )
   // Страница «Умный дом»: по этим словам выбор ведёт на /smarthome
   out.push({
     id: 'smarthome:page', group: 'smarthome', title: 'Умный дом', subtitle: 'устройства дома',
     keywords: ['Умный дом', 'SmartHome', 'smart home', 'smarthome', 'гаджеты', 'гаджет', 'устройства дома', 'умные устройства', 'лампы розетки камеры'], to: '/smarthome',
+  })
+  // Страница «Home Assistant»: статус и быстрые ссылки в сам HA
+  out.push({
+    id: 'smarthome:homeassistant', group: 'smarthome', title: 'Home Assistant', subtitle: 'статус и переход в HA',
+    keywords: ['Home Assistant', 'homeassistant', 'хоум ассистент', 'хасс', 'hass', 'HA', 'автоматизации', 'интеграции', 'HACS'], to: '/homeassistant',
   })
   // «Сцена: <имя>» — запуск сцены Home Assistant прямо из палитры
   for (const sc of d.scenes ?? [])

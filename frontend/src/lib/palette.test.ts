@@ -118,22 +118,28 @@ describe('палитра ⌘K: разделы и порядок выдачи', (
 
 describe('палитра ⌘K: страница «Медиа» (/media-control)', () => {
   for (const q of ['ресивер', 'marantz', 'марантз', 'пульт', 'громкость']) {
-    it(`«${q}» ведёт на вкладку «Ресивер» страницы /media-control`, () => {
+    it(`«${q}» ведёт на вкладку «Marantz» страницы /media-control`, () => {
       const hit = buildPaletteItems(data).find((i) => i.id === 'media:marantz')
       assert.equal(hit?.to, '/media-control')
-      assert.deepEqual(hit?.search, { tab: 'receiver' })
+      assert.deepEqual(hit?.search, { tab: 'marantz' })
       assert.ok(titles(q).includes('mediahub:Marantz NR1604'), q)
     })
   }
-  it('пункты «Телевизор», «Пульт ресивера», «Пульт ТВ» ведут на свои вкладки', () => {
+  it('пункты телевизора и пультов ведут на свои вкладки: ТВ → «Samsung», ресиверные → «Marantz»', () => {
     const items = buildPaletteItems(data)
     const tab = (id: string) => (items.find((i) => i.id === id)?.search as { tab: string } | undefined)?.tab
-    assert.equal(tab('mediahub:tv'), 'tv')
-    assert.equal(tab('mediahub:receiver-remote'), 'receiver-remote')
-    assert.equal(tab('mediahub:tv-remote'), 'tv-remote')
+    assert.equal(tab('mediahub:tv'), 'samsung')
+    assert.equal(tab('mediahub:tv-remote'), 'samsung')
+    assert.equal(tab('mediahub:receiver-remote'), 'marantz')
     assert.ok(titles('самсунг').includes('mediahub:Телевизор Samsung'))
     assert.ok(titles('пульт тв').includes('mediahub:Пульт ТВ'))
     assert.ok(titles('AA59-00602A').includes('mediahub:Пульт ТВ'))
+  })
+  it('пункт «Home Assistant» ведёт на свою страницу и находится по словам', () => {
+    const hit = buildPaletteItems(data).find((i) => i.id === 'smarthome:homeassistant')
+    assert.equal(hit?.to, '/homeassistant')
+    assert.equal(hit?.search, undefined)
+    for (const q of ['home assistant', 'homeassistant', 'хоум ассистент', 'hacs', 'интеграции']) assert.ok(titles(q).includes('smarthome:Home Assistant'), q)
   })
   it('«Универсальный пульт» ведёт на свою вкладку и находится по словам', () => {
     const items = buildPaletteItems(data)

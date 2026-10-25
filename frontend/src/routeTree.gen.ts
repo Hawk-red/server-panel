@@ -28,6 +28,7 @@ import { Route as AuthenticatedDisksIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDockerIndexRouteImport } from './routes/_authenticated/docker/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedGitIndexRouteImport } from './routes/_authenticated/git/index'
+import { Route as AuthenticatedHomeassistantIndexRouteImport } from './routes/_authenticated/homeassistant/index'
 import { Route as AuthenticatedInternetIndexRouteImport } from './routes/_authenticated/internet/index'
 import { Route as AuthenticatedMediaControlIndexRouteImport } from './routes/_authenticated/media-control/index'
 import { Route as AuthenticatedMediaIndexRouteImport } from './routes/_authenticated/media/index'
@@ -143,6 +144,12 @@ const AuthenticatedGitIndexRoute = AuthenticatedGitIndexRouteImport.update({
   path: '/git/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedHomeassistantIndexRoute =
+  AuthenticatedHomeassistantIndexRouteImport.update({
+    id: '/homeassistant/',
+    path: '/homeassistant/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedInternetIndexRoute =
   AuthenticatedInternetIndexRouteImport.update({
     id: '/internet/',
@@ -252,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/disks/': typeof AuthenticatedDisksIndexRoute
   '/docker/': typeof AuthenticatedDockerIndexRoute
   '/git/': typeof AuthenticatedGitIndexRoute
+  '/homeassistant/': typeof AuthenticatedHomeassistantIndexRoute
   '/internet/': typeof AuthenticatedInternetIndexRoute
   '/media-control/': typeof AuthenticatedMediaControlIndexRoute
   '/media/': typeof AuthenticatedMediaIndexRoute
@@ -287,6 +295,7 @@ export interface FileRoutesByTo {
   '/disks': typeof AuthenticatedDisksIndexRoute
   '/docker': typeof AuthenticatedDockerIndexRoute
   '/git': typeof AuthenticatedGitIndexRoute
+  '/homeassistant': typeof AuthenticatedHomeassistantIndexRoute
   '/internet': typeof AuthenticatedInternetIndexRoute
   '/media-control': typeof AuthenticatedMediaControlIndexRoute
   '/media': typeof AuthenticatedMediaIndexRoute
@@ -324,6 +333,7 @@ export interface FileRoutesById {
   '/_authenticated/disks/': typeof AuthenticatedDisksIndexRoute
   '/_authenticated/docker/': typeof AuthenticatedDockerIndexRoute
   '/_authenticated/git/': typeof AuthenticatedGitIndexRoute
+  '/_authenticated/homeassistant/': typeof AuthenticatedHomeassistantIndexRoute
   '/_authenticated/internet/': typeof AuthenticatedInternetIndexRoute
   '/_authenticated/media-control/': typeof AuthenticatedMediaControlIndexRoute
   '/_authenticated/media/': typeof AuthenticatedMediaIndexRoute
@@ -361,6 +371,7 @@ export interface FileRouteTypes {
     | '/disks/'
     | '/docker/'
     | '/git/'
+    | '/homeassistant/'
     | '/internet/'
     | '/media-control/'
     | '/media/'
@@ -396,6 +407,7 @@ export interface FileRouteTypes {
     | '/disks'
     | '/docker'
     | '/git'
+    | '/homeassistant'
     | '/internet'
     | '/media-control'
     | '/media'
@@ -432,6 +444,7 @@ export interface FileRouteTypes {
     | '/_authenticated/disks/'
     | '/_authenticated/docker/'
     | '/_authenticated/git/'
+    | '/_authenticated/homeassistant/'
     | '/_authenticated/internet/'
     | '/_authenticated/media-control/'
     | '/_authenticated/media/'
@@ -595,6 +608,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGitIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/homeassistant/': {
+      id: '/_authenticated/homeassistant/'
+      path: '/homeassistant'
+      fullPath: '/homeassistant/'
+      preLoaderRoute: typeof AuthenticatedHomeassistantIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/internet/': {
       id: '/_authenticated/internet/'
       path: '/internet'
@@ -715,6 +735,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDisksIndexRoute: typeof AuthenticatedDisksIndexRoute
   AuthenticatedDockerIndexRoute: typeof AuthenticatedDockerIndexRoute
   AuthenticatedGitIndexRoute: typeof AuthenticatedGitIndexRoute
+  AuthenticatedHomeassistantIndexRoute: typeof AuthenticatedHomeassistantIndexRoute
   AuthenticatedInternetIndexRoute: typeof AuthenticatedInternetIndexRoute
   AuthenticatedMediaControlIndexRoute: typeof AuthenticatedMediaControlIndexRoute
   AuthenticatedMediaIndexRoute: typeof AuthenticatedMediaIndexRoute
@@ -743,6 +764,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDisksIndexRoute: AuthenticatedDisksIndexRoute,
   AuthenticatedDockerIndexRoute: AuthenticatedDockerIndexRoute,
   AuthenticatedGitIndexRoute: AuthenticatedGitIndexRoute,
+  AuthenticatedHomeassistantIndexRoute: AuthenticatedHomeassistantIndexRoute,
   AuthenticatedInternetIndexRoute: AuthenticatedInternetIndexRoute,
   AuthenticatedMediaControlIndexRoute: AuthenticatedMediaControlIndexRoute,
   AuthenticatedMediaIndexRoute: AuthenticatedMediaIndexRoute,
