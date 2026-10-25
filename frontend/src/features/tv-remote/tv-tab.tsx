@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { AxiosError } from 'axios'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { isTvRepeatable, tvKeyStatus, tvStatusLabel, type TvStatus } from '@/lib/tv-pad'
+import { isTvRepeatable, tvKeyStatus, tvPairLabel, tvStatusLabel, TV_ACCESS_HINT, type TvStatus } from '@/lib/tv-pad'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { BasePadKey, Cap } from '@/features/receiver/pad-key'
@@ -26,14 +26,16 @@ export function TvTab() {
   const press = useTvPress(st)
   const qc = useQueryClient()
   const pair = useMutation({
-    mutationFn: async () => (await api.post('/tv/pair')).data,
-    onSuccess: () => {
-      toast.success('Телевизор сопряжён')
+    mutationFn: async () => (await api.post<{ paired: boolean; mode: 'token' | 'open' }>('/tv/pair')).data,
+    onSuccess: (d) => {
+      toast.success(d.mode === 'open' ? 'Телевизор принимает команды без токена' : 'Телевизор сопряжён')
       void qc.invalidateQueries({ queryKey: ['tv-status'] })
     },
-    onError: (e) => toast.error((e instanceof AxiosError ? (e.response?.data as { message?: string } | undefined)?.message : null) ?? 'Не удалось сопрячь'),
+    // сопряжение не удалось — текст с сервера говорит, что сделать на телевизоре
+    onError: (e) => toast.error((e instanceof AxiosError ? (e.response?.data as { message?: string } | undefined)?.message : null) ?? 'Не удалось сопрячь', { duration: 12_000 }),
   })
   const conn = tvStatusLabel(st, q.isError)
+  const pairing = tvPairLabel(st)
   const big = 'h-14 rounded-xl'
   return (
     <Card className='mx-auto max-w-md'>
@@ -43,6 +45,14 @@ export function TvTab() {
             <h2 className='text-sm font-medium'>Samsung 55″</h2>
             <div className='mt-1 flex items-center gap-2 text-sm' role='status'>
               <span className={cn('inline-block size-2 rounded-full', conn.cls)} aria-hidden /> {conn.label}
+              {pairing && (
+                <>
+                  <span className='text-muted-foreground' aria-hidden>
+                    ·
+                  </span>
+                  <span className={pairing.cls}>{pairing.label}</span>
+                </>
+              )}
               <span className='text-xs text-muted-foreground'>{st?.host ?? '192.168.31.181'}</span>
             </div>
             {st && !st.online && <p className='mt-1 text-xs text-muted-foreground'>Питание включит сцену {st.sceneOn}</p>}
@@ -53,7 +63,12 @@ export function TvTab() {
             </Button>
           )}
         </div>
-        {st?.online && !st.paired && <p className='text-xs text-muted-foreground'>Нажмите «Сопрячь» и разрешите подключение на экране телевизора (30 с).</p>}
+        {st?.online && !st.paired && (
+          <div className='space-y-1 text-xs text-muted-foreground'>
+            <p>Без сопряжения телевизор молча игнорирует команды. Нажмите «Сопрячь» и подтвердите окно на экране телевизора (ждём до 30 с).</p>
+            <p>Окно не появляется? {TV_ACCESS_HINT}</p>
+          </div>
+        )}
         <div className='rounded-3xl bg-gradient-to-b from-zinc-900 to-black p-4 text-zinc-100'>
           <div className='flex items-center justify-between'>
             <KeyBtn st={st} press={press} id='power' label='Питание' k='KEY_POWER' className='size-12 rounded-full from-red-500 to-red-800 text-white'>

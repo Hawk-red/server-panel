@@ -16,7 +16,8 @@ let cfg: typeof import('../config.js')
 const SECRET = '12345678'
 let open: Set<number>
 let socks: (EventEmitter & { sent: string[]; url: string; closed: boolean })[]
-let behaviour: 'ok' | 'unauthorized' | 'silent' | 'noToken' | 'error'
+let behaviour: 'ok' | 'unauthorized' | 'silent' | 'noToken' | 'lateToken' | 'error'
+let tokenAuth: boolean | null // что ТВ отвечает про TokenAuthSupport
 
 const fakeFactory = (url: string) => {
   const ws = new EventEmitter() as EventEmitter & { sent: string[]; url: string; closed: boolean; send: (d: string, cb?: (e?: Error) => void) => void; close: () => void; terminate: () => void }
@@ -33,6 +34,11 @@ const fakeFactory = (url: string) => {
   setTimeout(() => {
     if (behaviour === 'ok') ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.connect', data: { token: SECRET } })))
     else if (behaviour === 'noToken') ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.connect', data: {} })))
+    else if (behaviour === 'lateToken') {
+      // как настоящий Tizen: сначала connect без токена, токен — только после «Разрешить» на экране
+      ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.connect', data: {} })))
+      setTimeout(() => ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.connect', data: { token: SECRET } }))), 10)
+    }
     else if (behaviour === 'unauthorized') ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.unauthorized' })))
     else if (behaviour === 'error') ws.emit('error', new Error(`connect ECONNREFUSED ${url}`))
   }, 1)
@@ -51,12 +57,15 @@ beforeEach(() => {
   open = new Set([8001, 8002])
   socks = []
   behaviour = 'ok'
+  tokenAuth = true
   tv.forgetPairing()
   tv.resetStatus()
+  tv.resetInfo()
   tv.resetRate()
-  Object.assign(tv.timing, { probeMs: 20, statusCacheMs: 0, connectMs: 100, pairMs: 120, sendMs: 100, rateWindowMs: 1000, rateMax: 5 })
+  Object.assign(tv.timing, { probeMs: 20, statusCacheMs: 0, connectMs: 100, pairMs: 120, lateTokenMs: 40, sendMs: 100, afterSendMs: 20, rateWindowMs: 1000, rateMax: 5, infoMs: 20, infoCacheMs: 0 })
   tv.setProbe(async (_h, port) => open.has(port))
   tv.setWsFactory(fakeFactory)
+  tv.setInfoFetch(async () => (tokenAuth === null ? Promise.reject(new Error('ТВ не ответил')) : { device: { TokenAuthSupport: tokenAuth, modelName: 'UE55TU7090' } }))
 })
 const pairNow = () => tv.pair()
 const sentKeys = () => socks.flatMap((s) => s.sent.map((x) => JSON.parse(x).params.DataOfCmd))
@@ -92,6 +101,18 @@ describe('статус', () => {
     assert.equal((await tv.getStatus(true)).port, 8002)
     open.delete(8002)
     assert.equal((await tv.getStatus(true)).port, 8001)
+  })
+  it('в статусе видно, нужен ли ТВ токен; «в сети» и «сопряжён» — разные поля', async () => {
+    const s = await tv.getStatus(true)
+    assert.equal(s.online, true)
+    assert.equal(s.tokenAuth, true)
+    assert.equal(s.paired, false) // сокет открывается у всех, но сопряжения ещё нет
+    tokenAuth = false
+    tv.resetInfo()
+    assert.equal((await tv.getStatus(true)).tokenAuth, false)
+    tokenAuth = null // ТВ не ответил
+    tv.resetInfo()
+    assert.equal((await tv.getStatus(true)).tokenAuth, null)
   })
   it('в статусе нет токена', async () => {
     await pairNow()
@@ -156,11 +177,49 @@ describe('отправка ключа', () => {
   })
   it('лимит восстанавливается через окно', async () => {
     await pairNow()
-    tv.timing.rateWindowMs = 30
+    tv.timing.afterSendMs = 0
     for (let i = 0; i < 5; i++) await tv.sendKey('KEY_UP')
     await assert.rejects(() => tv.sendKey('KEY_UP'), (e: { code?: string }) => e.code === 'rate')
-    await new Promise((r) => setTimeout(r, 40))
+    tv.timing.rateWindowMs = 10 // окно прошло
+    await new Promise((r) => setTimeout(r, 20))
     await tv.sendKey('KEY_UP')
+  })
+  it('ТВ ответил ошибкой на команду — это не «ок»', async () => {
+    await pairNow()
+    const base = fakeFactory
+    tv.setWsFactory((url) => {
+      const w = base(url) as unknown as EventEmitter & { send: (d: string, cb?: (e?: Error) => void) => void }
+      const orig = w.send.bind(w)
+      w.send = (d, cb) => {
+        orig(d, cb)
+        setTimeout(() => w.emit('message', Buffer.from(JSON.stringify({ event: 'ms.error', data: { message: 'unrecognized method value' } }))), 1)
+      }
+      return w as never
+    })
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string; message: string }) => e.code === 'denied' && /отклонил команду/.test(e.message))
+  })
+  it('ТВ ответил unauthorized после команды — понятная ошибка, а не «ок»', async () => {
+    await pairNow()
+    const base = fakeFactory
+    tv.setWsFactory((url) => {
+      const w = base(url) as unknown as EventEmitter & { send: (d: string, cb?: (e?: Error) => void) => void }
+      const orig = w.send.bind(w)
+      w.send = (d, cb) => {
+        orig(d, cb)
+        setTimeout(() => w.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.unauthorized' }))), 1)
+      }
+      return w as never
+    })
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string; message: string }) => e.code === 'denied' && /Менеджер подключения устройств/.test(e.message))
+  })
+  it('сокет закрывается не сразу: ТВ успевает выполнить команду', async () => {
+    await pairNow()
+    socks.length = 0
+    tv.timing.afterSendMs = 60
+    const t0 = Date.now()
+    await tv.sendKey('KEY_MUTE')
+    assert.ok(Date.now() - t0 >= 55, 'ждали ответа ТВ перед закрытием')
+    assert.equal(socks[0].closed, true)
   })
   it('KEY_POWER при недоступном ТВ не открывает сокет (питание в этом случае — сцена, решает страница)', async () => {
     await pairNow()
@@ -190,12 +249,49 @@ describe('сопряжение и токен', () => {
     open.clear()
     await assert.rejects(() => pairNow(), (e: { code?: string }) => e.code === 'offline')
   })
-  it('ТВ без токенов (старая модель): сопряжённым считается без токена', async () => {
+  it('ТВ без токенов (TokenAuthSupport=false): сопряжение проходит в режиме «open», ключи идут без токена', async () => {
     behaviour = 'noToken'
-    await pairNow()
+    tokenAuth = false
+    assert.deepEqual(await pairNow(), { paired: true, mode: 'open' })
     assert.equal(tv.isPaired(), true)
     await tv.sendKey('KEY_MUTE')
     assert.ok(!socks.at(-1)!.url.includes('token='))
+  })
+  it('ТВ требует токен, но не выдал его: сопряжения нет, в ошибке — что сделать на телевизоре', async () => {
+    behaviour = 'noToken' // то, что делает UE55TU7090: сокет пускает, окна «Разрешить» нет, токена нет
+    await assert.rejects(
+      () => pairNow(),
+      (e: { code?: string; message: string }) => e.code === 'denied' && /Менеджер подключения устройств/.test(e.message) && /Разрешить/.test(e.message),
+    )
+    assert.equal(tv.isPaired(), false)
+    assert.equal(st.getSetting('tv.token', null), null)
+  })
+  it('ТВ не ответил о себе (tokenAuth неизвестен): без токена сопряжения тоже нет', async () => {
+    behaviour = 'noToken'
+    tokenAuth = null
+    await assert.rejects(() => pairNow(), (e: { code?: string }) => e.code === 'denied')
+    assert.equal(tv.isPaired(), false)
+  })
+  it('токен пришёл поздно (владелец нажал «Разрешить»): сопряжение удалось', async () => {
+    behaviour = 'lateToken'
+    assert.deepEqual(await pairNow(), { paired: true, mode: 'token' })
+    assert.equal(tv.isPaired(), true)
+    socks.length = 0
+    behaviour = 'ok'
+    await tv.sendKey('KEY_MUTE')
+    assert.match(socks[0].url, /token=12345678$/)
+  })
+  it('ТВ отказал (unauthorized): сопряжения нет, в ошибке — что сделать на телевизоре', async () => {
+    behaviour = 'unauthorized'
+    await assert.rejects(() => pairNow(), (e: { code?: string; message: string }) => e.code === 'denied' && /Менеджер подключения устройств/.test(e.message))
+    assert.equal(tv.isPaired(), false)
+  })
+  it('остатки первой версии (tv.paired=true с пустым токеном) сопряжением не считаются', async () => {
+    st.setSetting('tv.paired', true)
+    st.setSetting('tv.token', null)
+    assert.equal(tv.isPaired(), false)
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string; message: string }) => e.code === 'unpaired' && /Сопрячь/.test(e.message))
+    assert.equal(socks.length, 0)
   })
   it('обновлённый токен из ответа ТВ сохраняется', async () => {
     await pairNow()

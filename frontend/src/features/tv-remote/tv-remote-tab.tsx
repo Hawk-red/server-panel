@@ -15,7 +15,11 @@ export function TvRemoteTab() {
   return (
     <div className='space-y-4'>
       <ConfigureBar configure={configure} onChange={setConfigure} disabled={!cfg} error={isError} />
-      {st && !st.online && !configure && <p className='mx-auto max-w-[360px] text-center text-xs text-muted-foreground'>Телевизор не отвечает: кнопки серые, питание запускает сцену включения.</p>}
+      {st && !configure && (!st.online || !st.paired) && (
+        <p className='mx-auto max-w-[360px] text-center text-xs text-muted-foreground'>
+          {st.online ? 'Телевизор не сопряжён: кнопки серые. Сопряжение — на вкладке «Телевизор».' : 'Телевизор не отвечает: кнопки серые, питание запускает сцену включения.'}
+        </p>
+      )}
       <TvPad st={st} cfg={cfg} configure={configure} onPress={(id, k) => void press(id, k)} onPick={setPicking} />
       {cfg && (
         <CommandPicker

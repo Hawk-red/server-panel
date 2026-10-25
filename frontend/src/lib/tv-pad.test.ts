@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { isTvRepeatable, powerVia, tvKeyStatus, tvStatusLabel } from './tv-pad.ts'
+import { isTvRepeatable, powerVia, tvKeyStatus, tvPairLabel, tvStatusLabel, TV_ACCESS_HINT } from './tv-pad.ts'
 
 const on = { online: true, paired: true }
 describe('телевизор: правила кнопок', () => {
@@ -28,6 +28,14 @@ describe('телевизор: правила кнопок', () => {
   it('удержание только у громкости и стрелок', () => {
     for (const k of ['KEY_VOLUP', 'KEY_VOLDOWN', 'KEY_UP', 'KEY_DOWN', 'KEY_LEFT', 'KEY_RIGHT']) assert.equal(isTvRepeatable(k), true, k)
     for (const k of ['KEY_POWER', 'KEY_CHUP', 'KEY_MUTE', 'KEY_ENTER', null]) assert.equal(isTvRepeatable(k), false, String(k))
+  })
+  it('«в сети» и «сопряжён» — разные подписи', () => {
+    assert.equal(tvStatusLabel(on).label, 'в сети')
+    assert.equal(tvPairLabel(on)?.label, 'сопряжён')
+    assert.equal(tvPairLabel({ online: true, paired: false })?.label, 'не сопряжён')
+    assert.equal(tvPairLabel({ online: false, paired: true }), null) // выключенный ТВ: про сопряжение молчим
+    assert.equal(tvPairLabel(undefined), null)
+    assert.match(TV_ACCESS_HINT, /Менеджер подключения устройств/)
   })
   it('подпись статуса', () => {
     assert.equal(tvStatusLabel(on).label, 'в сети')

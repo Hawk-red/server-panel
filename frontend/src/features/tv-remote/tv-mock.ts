@@ -2,7 +2,8 @@
 import type { RemoteConfig } from '@/lib/receiver-pad'
 import type { TvStatus } from '@/lib/tv-pad'
 
-export const TV_ONLINE: TvStatus = { online: true, port: 8002, paired: true, host: '192.168.31.181', sceneOn: 'scene.tv_on' }
+export const TV_ONLINE: TvStatus = { online: true, port: 8002, paired: true, tokenAuth: true, host: '192.168.31.181', sceneOn: 'scene.tv_on' }
+export const TV_UNPAIRED: TvStatus = { ...TV_ONLINE, paired: false }
 export const TV_OFFLINE: TvStatus = { ...TV_ONLINE, online: false, port: null }
 
 const defaults: Record<string, string | null> = {

@@ -34,9 +34,9 @@ export async function tvRoutes(app: FastifyInstance) {
 
   app.post('/api/tv/pair', async (req, reply) => {
     try {
-      await tv.pair()
-      audit({ ...who(req), action: 'tv.pair', target: 'samsung', result: 'ok' })
-      return { paired: true }
+      const r = await tv.pair()
+      audit({ ...who(req), action: 'tv.pair', target: 'samsung', result: 'ok', details: { mode: r.mode } })
+      return { paired: true, mode: r.mode }
     } catch (e) {
       audit({ ...who(req), action: 'tv.pair', target: 'samsung', result: 'error', details: { message: errText(e) } })
       return fail(e, reply)
