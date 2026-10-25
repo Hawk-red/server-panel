@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ReceiverSection } from '@/features/receiver'
 import { TvRemoteTab } from '@/features/tv-remote/tv-remote-tab'
 import { TvTab } from '@/features/tv-remote/tv-tab'
+import { UniversalTab } from '@/features/universal'
 import { RECEIVER_LAYOUT_PAGE } from '@/lib/receiver-layout'
 import { MEDIA_TABS, MEDIA_TAB_TITLES, parseMediaTab, type MediaTab } from '@/lib/media-tabs'
 
@@ -36,6 +37,9 @@ export function MediaHubPage({ tab: raw }: { tab?: string }) {
         </TabsContent>
         <TabsContent value='tv-remote'>
           <TvRemoteTab />
+        </TabsContent>
+        <TabsContent value='universal'>
+          <UniversalTab />
         </TabsContent>
       </Tabs>
     </Page>

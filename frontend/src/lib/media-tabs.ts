@@ -1,7 +1,7 @@
 // Страница «Медиа» (/media-control): вкладки и совместимость со старым адресом /receiver.
-export const MEDIA_TABS = ['receiver', 'tv', 'receiver-remote', 'tv-remote'] as const
+export const MEDIA_TABS = ['receiver', 'tv', 'receiver-remote', 'tv-remote', 'universal'] as const
 export type MediaTab = (typeof MEDIA_TABS)[number]
-export const MEDIA_TAB_TITLES: Record<MediaTab, string> = { receiver: 'Ресивер', tv: 'Телевизор', 'receiver-remote': 'Пульт ресивера', 'tv-remote': 'Пульт ТВ' }
+export const MEDIA_TAB_TITLES: Record<MediaTab, string> = { receiver: 'Ресивер', tv: 'Телевизор', 'receiver-remote': 'Пульт ресивера', 'tv-remote': 'Пульт ТВ', universal: 'Универсальный' }
 
 export const isMediaTab = (v: unknown): v is MediaTab => typeof v === 'string' && (MEDIA_TABS as readonly string[]).includes(v)
 /** Значение ?tab= из адреса; неизвестное — «Ресивер» */

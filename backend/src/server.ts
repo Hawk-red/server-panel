@@ -18,6 +18,7 @@ import { wirelessRoutes } from './routes/wireless.js'
 import { bluetoothRoutes } from './routes/bluetooth.js'
 import { smarthomeRoutes } from './routes/smarthome.js'
 import { tvRoutes } from './routes/tv.js'
+import { universalRoutes } from './routes/universal.js'
 import { startLive, stopLive } from './services/smarthome.js'
 import { accessRoutes } from './routes/access.js'
 import { auditRoutes } from './routes/audit.js'
@@ -118,6 +119,7 @@ await app.register(wirelessRoutes)
 await app.register(bluetoothRoutes)
 await app.register(smarthomeRoutes)
 await app.register(tvRoutes)
+await app.register(universalRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',

@@ -135,6 +135,13 @@ describe('палитра ⌘K: страница «Медиа» (/media-control)'
     assert.ok(titles('пульт тв').includes('mediahub:Пульт ТВ'))
     assert.ok(titles('AA59-00602A').includes('mediahub:Пульт ТВ'))
   })
+  it('«Универсальный пульт» ведёт на свою вкладку и находится по словам', () => {
+    const items = buildPaletteItems(data)
+    const hit = items.find((i) => i.id === 'mediahub:universal')
+    assert.equal(hit?.to, '/media-control')
+    assert.deepEqual(hit?.search, { tab: 'universal' })
+    for (const q of ['универсальный', 'универсальный пульт', 'частые кнопки']) assert.ok(titles(q).includes('mediahub:Универсальный пульт'), q)
+  })
   it('серверы медиа остаются на /media и называются «Медиа-серверы»', () => {
     assert.equal(buildPaletteItems(data).find((i) => i.id === 'media:jellyfin')?.to, '/media')
     assert.equal(GROUP_HEADING.media, 'Медиа-серверы')

@@ -24,7 +24,7 @@ export type PaletteItem = {
   subtitle?: string
   keywords: string[] // title первым; по ним ищет фильтр
   to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/media-control' | '/smarthome' // выбор только переходит на страницу
-  search?: { tab: 'services' } | { tab: 'receiver' | 'tv' | 'receiver-remote' | 'tv-remote' }
+  search?: { tab: 'services' } | { tab: 'receiver' | 'tv' | 'receiver-remote' | 'tv-remote' | 'universal' }
   scene?: string // entity_id сцены: выбор запускает её (без перехода)
 }
 
@@ -70,7 +70,8 @@ export function buildPaletteItems(d: PaletteData): PaletteItem[] {
     { id: 'media:marantz', group: 'mediahub', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', 'Marantz', 'марантз', 'пульт ресивера', 'громкость', m?.marantz.data?.host ?? MARANTZ_IP], to: '/media-control', search: { tab: 'receiver' } },
     { id: 'mediahub:receiver-remote', group: 'mediahub', title: 'Пульт ресивера', subtitle: 'Marantz RC042SR', keywords: ['Пульт ресивера', 'пульт marantz', 'RC042SR', 'ресивер пульт'], to: '/media-control', search: { tab: 'receiver-remote' } },
     { id: 'mediahub:tv', group: 'mediahub', title: 'Телевизор Samsung', subtitle: '55″, управление', keywords: ['Телевизор', 'Samsung', 'самсунг', 'ТВ', 'tv', 'телек'], to: '/media-control', search: { tab: 'tv' } },
-    { id: 'mediahub:tv-remote', group: 'mediahub', title: 'Пульт ТВ', subtitle: 'Samsung AA59-00602A', keywords: ['Пульт ТВ', 'пульт телевизора', 'AA59-00602A', 'samsung пульт'], to: '/media-control', search: { tab: 'tv-remote' } }
+    { id: 'mediahub:tv-remote', group: 'mediahub', title: 'Пульт ТВ', subtitle: 'Samsung AA59-00602A', keywords: ['Пульт ТВ', 'пульт телевизора', 'AA59-00602A', 'samsung пульт'], to: '/media-control', search: { tab: 'tv-remote' } },
+    { id: 'mediahub:universal', group: 'mediahub', title: 'Универсальный пульт', subtitle: 'частые кнопки ресивера, ТВ и сцен', keywords: ['Универсальный пульт', 'универсальный', 'общий пульт', 'частые кнопки', 'мой пульт'], to: '/media-control', search: { tab: 'universal' } }
   )
   // Страница «Умный дом»: по этим словам выбор ведёт на /smarthome
   out.push({
