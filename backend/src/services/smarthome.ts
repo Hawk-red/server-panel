@@ -7,6 +7,7 @@ import { accentForNewGroup, newGroupId, resolveGroups, type CustomGroup, type Gr
 import { applyHaSync, applySceneSync } from './smarthomeSync.js'
 import { defaultColor, defaultIcon, displayName, sceneBlockId, sortScenes, type SceneColor, type SceneIcon, type ScenePatch } from './smarthomeScenes.js'
 import { startHaLive, type LiveEvent } from './haLive.js'
+import { applyTvLive } from './tvHa.js'
 import { createStatusCache, type DeviceInput, type Status } from './smarthomeCore.js'
 
 export type HaInfo = { manufacturer: string | null; model: string | null; integration: string; area: string | null; available: boolean; summary: HaSummary; controls?: HaControl[] }
@@ -232,6 +233,7 @@ export function applyLiveState(entityId: string, state: string, now = Date.now()
 
 export function onLiveEvent(e: LiveEvent, now = Date.now()) {
   liveSeen.set(e.entityId, { state: e.state, at: now })
+  applyTvLive(e.entityId, e.state) // карточка «Телевизор»: состояние сущности ТВ без лишнего чтения HA
   applyLiveState(e.entityId, e.state, now)
 }
 

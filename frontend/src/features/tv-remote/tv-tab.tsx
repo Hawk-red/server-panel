@@ -36,6 +36,7 @@ export function TvTab() {
   })
   const conn = tvStatusLabel(st, q.isError)
   const pairing = tvPairLabel(st)
+  const direct = st?.driver === 'direct' // в режиме Home Assistant сопрягать нечего: ТВ сопряжён с самим HA
   const big = 'h-14 rounded-xl'
   return (
     <Card className='mx-auto max-w-md'>
@@ -57,17 +58,20 @@ export function TvTab() {
             </div>
             {st && !st.online && <p className='mt-1 text-xs text-muted-foreground'>Питание включит сцену {st.sceneOn}</p>}
           </div>
-          {st?.online && !st.paired && (
+          {direct && st?.online && !st.paired && (
             <Button size='sm' variant='outline' disabled={pair.isPending} onClick={() => pair.mutate()}>
               {pair.isPending && <Loader2 className='animate-spin' />} Сопрячь
             </Button>
           )}
         </div>
-        {st?.online && !st.paired && (
+        {direct && st?.online && !st.paired && (
           <div className='space-y-1 text-xs text-muted-foreground'>
             <p>Без сопряжения телевизор молча игнорирует команды. Нажмите «Сопрячь» и подтвердите окно на экране телевизора (ждём до 30 с).</p>
             <p>Окно не появляется? {TV_ACCESS_HINT}</p>
           </div>
+        )}
+        {!direct && st && !st.paired && (
+          <p className='text-xs text-muted-foreground'>Телевизора нет в Home Assistant: добавьте интеграцию «Samsung Smart TV» для {st.host} — команды идут через неё.</p>
         )}
         <div className='rounded-3xl bg-gradient-to-b from-zinc-900 to-black p-4 text-zinc-100'>
           <div className='flex items-center justify-between'>

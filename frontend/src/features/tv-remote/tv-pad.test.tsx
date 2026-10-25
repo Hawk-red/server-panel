@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { CommandPicker } from '@/features/receiver/remote-tab'
 import { TvPad } from './tv-pad'
-import { TV_CFG, TV_OFFLINE, TV_ONLINE } from './tv-mock'
+import { TV_CFG, TV_MEDIA_ONLY, TV_OFFLINE, TV_ONLINE } from './tv-mock'
 
 const noop = () => {}
 const html = (over: { st?: typeof TV_ONLINE | undefined; configure?: boolean; cfg?: typeof TV_CFG | undefined } = {}) =>
@@ -42,6 +42,13 @@ describe('пульт Samsung AA59-00602A: рендер', () => {
     assert.equal(state(h, 'power'), 'on')
     assert.equal((h.match(/data-state="on"/g) ?? []).length, 1)
     assert.match(h, /VOL \+ — ТВ не отвечает/)
+  })
+  it('через Home Assistant без remote-сущности: активны только кнопки с сервисом', () => {
+    const h = html({ st: TV_MEDIA_ONLY })
+    assert.equal((h.match(/data-state="on"/g) ?? []).length, 7) // громкость ×2, mute, питание, play, pause, stop
+    assert.equal(state(h, 'vol-up'), 'on')
+    assert.equal(state(h, 'num-1'), 'off')
+    assert.match(h, /1 — через Home Assistant недоступно/)
   })
   it('кнопка без ключа серая с подсказкой «команда не назначена»', () => {
     const cfg = { ...TV_CFG, bindings: { ...TV_CFG.bindings, ad: null } }

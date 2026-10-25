@@ -7,6 +7,8 @@ import { config } from '../config.js'
 import { errText } from '../mask.js'
 import { decryptSecret, encryptSecret } from '../secretbox.js'
 import { getSetting, setSetting } from '../settings.js'
+import { HaError } from './haClient.js'
+import * as ha from './tvHa.js'
 
 export class TvError extends Error {
   constructor(
@@ -98,6 +100,19 @@ let probe: Probe = defaultProbe
 export const setWsFactory = (f: WsFactory | null) => void (factory = f ?? defaultFactory)
 export const setProbe = (p: Probe | null) => void (probe = p ?? defaultProbe)
 
+// ---------- режим работы ----------
+// ha — команды идут через Home Assistant (интеграция Samsung Smart TV уже сопряжена с ТВ и хранит его токен);
+// direct — прямой WebSocket к телевизору, запасной путь: этот ТВ (UE55TU7090) сопряжение панели не подтверждает.
+export type Driver = 'ha' | 'direct'
+const DRIVER_KEY = 'tv.driver'
+export const driver = (): Driver => (getSetting<string | null>(DRIVER_KEY, null) === 'direct' ? 'direct' : 'ha')
+export const setDriver = (d: Driver) => setSetting(DRIVER_KEY, d)
+
+const haErr = (e: unknown): TvError =>
+  e instanceof HaError
+    ? new TvError(e.status === 'no-token' ? 'Home Assistant не настроен в панели' : e.status === 'unauthorized' ? 'Home Assistant отклонил токен панели' : `Home Assistant не выполнил команду: ${errText(e)}`, 'offline')
+    : new TvError(`Ошибка связи с Home Assistant: ${errText(e)}`, 'offline')
+
 // ---------- сведения о телевизоре ----------
 // TokenAuthSupport из GET http://ТВ:8001/api/v2/ решает, нужен ли токен: современные Tizen (true) без токена
 // команды молча игнорируют, старые модели (false) принимают их и так.
@@ -169,17 +184,35 @@ const DENIED_MSG = `Телевизор запретил управление п�
 const UNPAIRED_MSG = `Телевизор не сопряжён: нет токена, без него команды он молча игнорирует. Нажмите «Сопрячь» и подтвердите окно на экране ТВ. Если окно не появляется — ${TV_MENU}.`
 
 // ---------- статус ----------
-export type TvStatus = { online: boolean; port: 8001 | 8002 | null; paired: boolean; tokenAuth: boolean | null; host: string; at: number }
+export type TvStatus = { online: boolean; port: 8001 | 8002 | null; paired: boolean; tokenAuth: boolean | null; driver: Driver; entity: string | null; keys: string[]; host: string; at: number }
 let statusCache: TvStatus | null = null
 export const resetStatus = () => void (statusCache = null)
 
 export async function getStatus(force = false): Promise<TvStatus> {
-  if (!force && statusCache && Date.now() - statusCache.at < timing.statusCacheMs) return { ...statusCache, paired: isPaired() }
+  const fresh = !force && statusCache && Date.now() - statusCache.at < timing.statusCacheMs
+  if (fresh && statusCache!.driver === driver()) return { ...statusCache!, paired: driver() === 'ha' ? statusCache!.paired : isPaired() }
+  statusCache = driver() === 'ha' ? await haStatus() : await directStatus()
+  return statusCache
+}
+
+/** Через Home Assistant: «в сети» — сущность ТВ отвечает и не выключена, «сопряжён» — сущность есть и доступна */
+async function haStatus(): Promise<TvStatus> {
+  const base = { port: null, tokenAuth: null, driver: 'ha' as const, host: config.tv.host, at: Date.now() }
+  let v: ha.TvHaView
+  try {
+    v = await ha.findTv()
+  } catch {
+    return { ...base, online: false, paired: false, entity: null, keys: [] } // HA не ответил: кнопки серые, причина — в ошибке команды
+  }
+  const e = ha.entityOf(v)
+  return { ...base, online: ha.isOnline(v), paired: ha.isLinked(v), entity: e?.entityId ?? null, keys: ha.supportedKeys(Object.keys(KEYS), v) }
+}
+
+async function directStatus(): Promise<TvStatus> {
   const [p2, p1] = await Promise.all([probe(config.tv.host, 8002, timing.probeMs), probe(config.tv.host, 8001, timing.probeMs)])
   const online = p1 || p2
   const info = online ? await deviceInfo() : { tokenAuth: null, model: null }
-  statusCache = { online, port: p2 ? 8002 : p1 ? 8001 : null, paired: isPaired(), tokenAuth: info.tokenAuth, host: config.tv.host, at: Date.now() }
-  return statusCache
+  return { online, port: p2 ? 8002 : p1 ? 8001 : null, paired: isPaired(), tokenAuth: info.tokenAuth, driver: 'direct', entity: null, keys: Object.keys(KEYS), host: config.tv.host, at: Date.now() }
 }
 
 // ---------- сокет ----------
@@ -294,12 +327,38 @@ const settle = (ws: WsLike) =>
     })
   })
 
-export type KeyResult = { key: string; port: number }
+export type KeyResult = { key: string; via: string }
 
 export async function sendKey(key: string): Promise<KeyResult> {
   if (!isKey(key)) throw new TvError('Эта кнопка недопустима', 'bad')
   rateCheck()
-  return queued(async () => {
+  return driver() === 'ha' ? queued(() => sendViaHa(key)) : queued(() => sendDirect(key))
+}
+
+/** Через Home Assistant: кнопка → сервис HA (remote.send_command или медиаплеер), только для найденной сущности ТВ */
+async function sendViaHa(key: string): Promise<KeyResult> {
+  let v: ha.TvHaView
+  try {
+    v = await ha.findTv()
+  } catch (e) {
+    throw haErr(e)
+  }
+  if (!ha.entityOf(v)) throw new TvError('Телевизор не найден в Home Assistant: добавьте интеграцию «Samsung Smart TV» или укажите сущность в настройке tv.haRemote', 'unpaired')
+  if (!ha.isLinked(v)) throw new TvError('Home Assistant не видит телевизор (сущность недоступна)', 'offline')
+  if (!ha.planKey(key, v)) throw new TvError('Эта кнопка через Home Assistant недоступна', 'bad')
+  if (!ha.isOnline(v) && key !== 'KEY_POWER') throw new TvError('Телевизор выключен', 'offline')
+  try {
+    const plan = await ha.callKey(key, v)
+    ha.resetHa() // состояние ТВ могло измениться (громкость, питание)
+    statusCache = null
+    return { key, via: `Home Assistant, ${plan.domain}.${plan.service}` }
+  } catch (e) {
+    throw haErr(e)
+  }
+}
+
+async function sendDirect(key: string): Promise<KeyResult> {
+  return (async () => {
     const st = await getStatus()
     if (!st.online || !st.port) throw new TvError('Телевизор не отвечает в сети', 'offline')
     const token = readToken()
@@ -313,7 +372,7 @@ export async function sendKey(key: string): Promise<KeyResult> {
           if (fresh && fresh !== token) saveToken(fresh)
           await send(ws, key)
           await settle(ws)
-          return { key, port }
+          return { key, via: `прямое подключение, порт ${port}` }
         } finally {
           try {
             ws.close()
@@ -328,7 +387,7 @@ export async function sendKey(key: string): Promise<KeyResult> {
     }
     statusCache = null
     throw last instanceof TvError ? last : wsErr(last)
-  })
+  })()
 }
 
 /**
@@ -336,6 +395,7 @@ export async function sendKey(key: string): Promise<KeyResult> {
  * Открытый сокет сам по себе ничего не значит: Tizen пускает любого, а команды без токена молча игнорирует.
  */
 export async function pair(): Promise<{ paired: true; mode: 'token' | 'open' }> {
+  if (driver() === 'ha') throw new TvError('В режиме Home Assistant сопряжение не нужно: телевизор сопряжён с самим HA', 'bad')
   return queued(async () => {
     const st = await getStatus(true)
     if (!st.online || !st.port) throw new TvError('Телевизор не отвечает в сети: включите его и повторите', 'offline')

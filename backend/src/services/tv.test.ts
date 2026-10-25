@@ -1,4 +1,4 @@
-// Тесты драйвера телевизора на подставном сокете и подставной проверке портов: белый список, лимит, статус, токен, сопряжение.
+// Тесты драйвера телевизора: прямое подключение (подставной сокет и проверка портов) и режим Home Assistant (подставной HA).
 // Настоящий телевизор не трогается.
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
@@ -47,6 +47,7 @@ const fakeFactory = (url: string) => {
 
 before(async () => {
   process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), 'tv-test-'))
+  process.env.HA_TOKEN = 'подставной-токен-для-тестов' // config читает env при импорте; без токена режим HA сразу отвечает «сущностей нет»
   tv = await import('./tv.js')
   remote = await import('./tvRemote.js')
   st = await import('../settings.js')
@@ -63,6 +64,7 @@ beforeEach(() => {
   tv.resetInfo()
   tv.resetRate()
   Object.assign(tv.timing, { probeMs: 20, statusCacheMs: 0, connectMs: 100, pairMs: 120, lateTokenMs: 40, sendMs: 100, afterSendMs: 20, rateWindowMs: 1000, rateMax: 5, infoMs: 20, infoCacheMs: 0 })
+  tv.setDriver('direct') // наборы ниже проверяют прямое подключение; режим Home Assistant — в конце файла
   tv.setProbe(async (_h, port) => open.has(port))
   tv.setWsFactory(fakeFactory)
   tv.setInfoFetch(async () => (tokenAuth === null ? Promise.reject(new Error('ТВ не ответил')) : { device: { TokenAuthSupport: tokenAuth, modelName: 'UE55TU7090' } }))
@@ -345,5 +347,124 @@ describe('привязки tv.remote', () => {
     assert.equal(b.ad, 'KEY_AD')
     assert.equal(b.play, 'KEY_PAUSE')
     assert.ok(!('nope' in b))
+  })
+})
+
+// ---------- режим Home Assistant (по умолчанию) ----------
+const TV_MEDIA = 'media_player.samsung_7_series_55_ue55tu7090uxua'
+const TV_REMOTE = 'remote.samsung_7_series_55_ue55tu7090uxua'
+const entity = (entityId: string, state = 'on', features = 0, muted: boolean | null = null) => ({
+  entityId,
+  name: entityId.includes('marantz') ? 'Marantz NR1604' : 'Samsung 7 Series (55)',
+  state,
+  features,
+  sourceList: [],
+  muted,
+})
+const MEDIA_FULL = 1 + 8 + 128 + 256 + 1024 + 2048 + 4096 + 16_384
+
+describe('телевизор через Home Assistant', () => {
+  let sent: { domain: string; service: string; entityId: string; data?: Record<string, unknown> }[]
+  let entities: ReturnType<typeof entity>[]
+  let haFail: Error | null
+
+  beforeEach(async () => {
+    sent = []
+    haFail = null
+    entities = [entity('media_player.marantz', 'off', MEDIA_FULL), entity(TV_MEDIA, 'on', MEDIA_FULL, false), entity(TV_REMOTE)]
+    const ha = await import('./tvHa.js')
+    ha.resetHa()
+    ha.setHaReader(async () => {
+      if (haFail) throw haFail
+      return entities
+    })
+    ha.setHaService(async (o) => void sent.push({ domain: o.domain, service: o.service, entityId: o.entityId, data: o.data }))
+    tv.setDriver('ha')
+    tv.resetStatus()
+  })
+
+  it('кнопки идут в HA как remote.send_command, сокет к телевизору не открывается', async () => {
+    const r = await tv.sendKey('KEY_VOLUP')
+    assert.deepEqual(sent, [{ domain: 'remote', service: 'send_command', entityId: TV_REMOTE, data: { command: ['KEY_VOLUP'] } }])
+    assert.match(r.via, /Home Assistant/)
+    assert.equal(socks.length, 0)
+  })
+  it('только медиаплеер: громкость идёт сервисом, цифры и стрелки — недопустимая кнопка', async () => {
+    entities = [entity(TV_MEDIA, 'on', MEDIA_FULL, false)]
+    await tv.sendKey('KEY_VOLDOWN')
+    assert.deepEqual(sent, [{ domain: 'media_player', service: 'volume_down', entityId: TV_MEDIA, data: undefined }])
+    await assert.rejects(() => tv.sendKey('KEY_1'), (e: { code?: string; message: string }) => e.code === 'bad' && /через Home Assistant недоступна/.test(e.message))
+    assert.equal(sent.length, 1)
+  })
+  it('чужие ключи не уходят в HA', async () => {
+    for (const k of ['KEY_HDMI', '__proto__', 'volume_up']) await assert.rejects(() => tv.sendKey(k), (e: { code?: string }) => e.code === 'bad')
+    assert.equal(sent.length, 0)
+  })
+  it('статус: в сети, связь через HA, список рабочих кнопок', async () => {
+    const s = await tv.getStatus(true)
+    assert.equal(s.driver, 'ha')
+    assert.equal(s.online, true)
+    assert.equal(s.paired, true)
+    assert.equal(s.entity, TV_MEDIA)
+    assert.ok(s.keys.includes('KEY_1') && s.keys.includes('KEY_MENU'))
+    assert.equal(s.port, null)
+  })
+  it('статус без remote-сущности: часть кнопок в списке отсутствует', async () => {
+    entities = [entity(TV_MEDIA, 'on', MEDIA_FULL, false)]
+    const s = await tv.getStatus(true)
+    assert.ok(s.keys.includes('KEY_VOLUP'))
+    assert.ok(!s.keys.includes('KEY_1'))
+    assert.ok(!s.keys.includes('KEY_UP'))
+  })
+  it('телевизора нет в HA: статус не «в сети», ключи не уходят', async () => {
+    entities = [entity('media_player.marantz', 'on', MEDIA_FULL)]
+    const s = await tv.getStatus(true)
+    assert.equal(s.online, false)
+    assert.equal(s.paired, false)
+    assert.deepEqual(s.keys, [])
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string; message: string }) => e.code === 'unpaired' && /Home Assistant/.test(e.message))
+    assert.equal(sent.length, 0)
+  })
+  it('выключенный ТВ: обычные кнопки не уходят (питание поднимает сцена)', async () => {
+    entities = [entity(TV_MEDIA, 'off', MEDIA_FULL, false)]
+    assert.equal((await tv.getStatus(true)).online, false)
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string; message: string }) => e.code === 'offline' && /выключен/.test(e.message))
+    assert.equal(sent.length, 0)
+    assert.equal(cfg.config.tv.sceneOn, 'scene.tv_on') // сцену запускает страница
+  })
+  it('HA не ответил: понятная ошибка, статус серый', async () => {
+    haFail = new Error('connect ECONNREFUSED 127.0.0.1:8123')
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string; message: string }) => e.code === 'offline' && /Home Assistant/.test(e.message))
+    const s = await tv.getStatus(true)
+    assert.equal(s.online, false)
+    assert.deepEqual(s.keys, [])
+  })
+  it('не больше 5 ключей в секунду', async () => {
+    let ok = 0
+    let limited = 0
+    for (let i = 0; i < 9; i++) await tv.sendKey('KEY_UP').then(() => ok++, (e: { code?: string }) => e.code === 'rate' && limited++)
+    assert.equal(ok, 5)
+    assert.equal(limited, 4)
+    assert.equal(sent.length, 5)
+  })
+  it('сопряжение в этом режиме не нужно и ничего не делает', async () => {
+    await assert.rejects(() => tv.pair(), (e: { code?: string; message: string }) => e.code === 'bad' && /сопряжение не нужно/.test(e.message))
+    assert.equal(socks.length, 0)
+  })
+  it('в статусе и в ответе нет токена', async () => {
+    const r = await tv.sendKey('KEY_MUTE')
+    const json = JSON.stringify({ status: await tv.getStatus(true), key: r, sent })
+    assert.ok(!json.includes('подставной-токен'))
+    assert.ok(!/"token"/i.test(json)) // tokenAuth (нужен ли ТВ токен) — не секрет, самого токена нет
+  })
+  it('переключение обратно в прямой режим ничего не ломает', async () => {
+    tv.setDriver('direct')
+    tv.resetStatus()
+    await pairNow()
+    socks.length = 0
+    await tv.sendKey('KEY_MUTE')
+    assert.equal(sent.length, 0)
+    assert.equal(socks.length, 1)
+    assert.match((await tv.getStatus(true)).driver, /direct/)
   })
 })

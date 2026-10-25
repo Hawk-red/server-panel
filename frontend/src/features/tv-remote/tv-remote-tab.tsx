@@ -17,7 +17,11 @@ export function TvRemoteTab() {
       <ConfigureBar configure={configure} onChange={setConfigure} disabled={!cfg} error={isError} />
       {st && !configure && (!st.online || !st.paired) && (
         <p className='mx-auto max-w-[360px] text-center text-xs text-muted-foreground'>
-          {st.online ? 'Телевизор не сопряжён: кнопки серые. Сопряжение — на вкладке «Телевизор».' : 'Телевизор не отвечает: кнопки серые, питание запускает сцену включения.'}
+          {!st.paired
+            ? st.driver === 'ha'
+              ? 'Телевизора нет в Home Assistant: кнопки серые. Подробности — на вкладке «Телевизор».'
+              : 'Телевизор не сопряжён: кнопки серые. Сопряжение — на вкладке «Телевизор».'
+            : 'Телевизор не отвечает: кнопки серые, питание запускает сцену включения.'}
         </p>
       )}
       <TvPad st={st} cfg={cfg} configure={configure} onPress={(id, k) => void press(id, k)} onPick={setPicking} />

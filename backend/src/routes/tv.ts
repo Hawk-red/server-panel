@@ -24,7 +24,7 @@ export async function tvRoutes(app: FastifyInstance) {
     const quiet = tv.QUIET_KEYS.has(key)
     try {
       const r = await tv.sendKey(key)
-      if (!quiet) audit({ ...who(req), action: 'tv.key', target: key, result: 'ok', details: { port: r.port } })
+      if (!quiet) audit({ ...who(req), action: 'tv.key', target: key, result: 'ok', details: { via: r.via } })
       return { key, ok: true }
     } catch (e) {
       if (!quiet) audit({ ...who(req), action: 'tv.key', target: key, result: 'error', details: { message: errText(e) } })

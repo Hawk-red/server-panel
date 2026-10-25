@@ -402,3 +402,53 @@ export async function activateScene(opts: { url: string; token: string; entityId
   if (!/^scene\.[a-z0-9_]+$/.test(opts.entityId)) throw new HaError('error', 'Это не сцена')
   await (opts.api ?? liveControlApi).call(opts.url, opts.token, SCENE_DOMAIN, 'on', opts.entityId)
 }
+
+// ---------- телевизор через Home Assistant ----------
+// Только сущности ТВ и только эти сервисы. Домены проверяются здесь независимо от маршрута и драйвера.
+export const TV_DOMAINS = ['media_player', 'remote'] as const
+export const TV_SERVICES: Record<(typeof TV_DOMAINS)[number], readonly string[]> = {
+  remote: ['send_command'],
+  media_player: ['volume_up', 'volume_down', 'volume_mute', 'turn_on', 'turn_off', 'select_source', 'media_play', 'media_pause', 'media_stop', 'media_next_track', 'media_previous_track'],
+}
+
+export type TvEntity = { entityId: string; name: string; state: string; features: number; sourceList: string[]; muted: boolean | null }
+
+/** Чтение: сущности доменов media_player и remote с их состоянием и возможностями (supported_features) */
+export async function readTvEntities(opts: { url: string; token: string }): Promise<TvEntity[]> {
+  if (!opts.token) throw new HaError('no-token', 'Токен Home Assistant не задан')
+  try {
+    const list = await getJson(parseBase(opts.url), '/api/states', opts.token)
+    return (Array.isArray(list) ? list : [])
+      .map(rec)
+      .filter((r) => typeof r.entity_id === 'string' && (TV_DOMAINS as readonly string[]).includes(domainOf(r.entity_id)))
+      .map((r) => {
+        const a = rec(r.attributes)
+        return {
+          entityId: r.entity_id as string,
+          name: str(a.friendly_name) ?? (r.entity_id as string),
+          state: typeof r.state === 'string' ? r.state : 'unknown',
+          features: typeof a.supported_features === 'number' ? a.supported_features : 0,
+          sourceList: Array.isArray(a.source_list) ? a.source_list.filter((s): s is string => typeof s === 'string') : [],
+          muted: typeof a.is_volume_muted === 'boolean' ? a.is_volume_muted : null,
+        }
+      })
+  } catch (e) {
+    throw kindOf(e)
+  }
+}
+
+export type TvServiceApi = (opts: { url: string; token: string; domain: string; service: string; entityId: string; data?: Record<string, unknown> }) => Promise<void>
+
+/** Вызов сервиса для сущности телевизора. Разрешены только домены и сервисы из TV_SERVICES */
+export const liveTvService: TvServiceApi = async ({ url, token, domain, service, entityId, data }) => {
+  if (!token) throw new HaError('no-token', 'Токен Home Assistant не задан')
+  const allowed = (TV_SERVICES as Record<string, readonly string[] | undefined>)[domain]
+  if (!allowed?.includes(service) || domainOf(entityId) !== domain || !/^[a-z_]+\.[a-z0-9_]+$/.test(entityId)) {
+    throw new HaError('error', 'Это действие нельзя выполнить из панели')
+  }
+  try {
+    await getJson(parseBase(url), `/api/services/${domain}/${service}`, token, { method: 'POST', body: { entity_id: entityId, ...data }, timeout: CONTROL_TIMEOUT_MS })
+  } catch (e) {
+    throw kindOf(e)
+  }
+}

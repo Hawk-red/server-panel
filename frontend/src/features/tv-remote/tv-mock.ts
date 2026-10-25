@@ -2,9 +2,17 @@
 import type { RemoteConfig } from '@/lib/receiver-pad'
 import type { TvStatus } from '@/lib/tv-pad'
 
-export const TV_ONLINE: TvStatus = { online: true, port: 8002, paired: true, tokenAuth: true, host: '192.168.31.181', sceneOn: 'scene.tv_on' }
+const KEYS_ALL = [
+  'KEY_POWER', ...Array.from({ length: 10 }, (_, i) => `KEY_${i}`), 'KEY_SOURCE', 'KEY_VOLUP', 'KEY_VOLDOWN', 'KEY_MUTE', 'KEY_CHUP', 'KEY_CHDOWN', 'KEY_CH_LIST', 'KEY_PRECH', 'KEY_TTX_MIX',
+  'KEY_CONTENTS', 'KEY_MENU', 'KEY_GUIDE', 'KEY_TOOLS', 'KEY_INFO', 'KEY_UP', 'KEY_DOWN', 'KEY_LEFT', 'KEY_RIGHT', 'KEY_ENTER', 'KEY_RETURN', 'KEY_EXIT', 'KEY_RED', 'KEY_GREEN', 'KEY_YELLOW',
+  'KEY_CYAN', 'KEY_EMANUAL', 'KEY_PICTURE_SIZE', 'KEY_AD', 'KEY_TOPMENU', 'KEY_CAPTION', 'KEY_STOP', 'KEY_REWIND', 'KEY_PLAY', 'KEY_PAUSE', 'KEY_FF',
+]
+/** ТВ через Home Assistant: есть remote-сущность, работают все кнопки */
+export const TV_ONLINE: TvStatus = { online: true, port: null, paired: true, tokenAuth: null, driver: 'ha', entity: 'media_player.samsung_7_series_55', keys: KEYS_ALL, host: '192.168.31.181', sceneOn: 'scene.tv_on' }
 export const TV_UNPAIRED: TvStatus = { ...TV_ONLINE, paired: false }
-export const TV_OFFLINE: TvStatus = { ...TV_ONLINE, online: false, port: null }
+/** Только медиаплеер (remote-сущности нет): работают громкость, mute, питание и воспроизведение */
+export const TV_MEDIA_ONLY: TvStatus = { ...TV_ONLINE, keys: ['KEY_VOLUP', 'KEY_VOLDOWN', 'KEY_MUTE', 'KEY_POWER', 'KEY_PLAY', 'KEY_PAUSE', 'KEY_STOP'] }
+export const TV_OFFLINE: TvStatus = { ...TV_ONLINE, online: false }
 
 const defaults: Record<string, string | null> = {
   power: 'KEY_POWER', source: 'KEY_SOURCE', ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`num-${i}`, `KEY_${i}`])),

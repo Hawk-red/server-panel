@@ -1,14 +1,15 @@
 import WebSocket from 'ws'
 import { errText } from '../mask.js'
 import { guardedLookup, parseUrl } from './smarthomeCore.js'
-import { CONTROL_DOMAINS, SCENE_DOMAIN } from './haClient.js'
+import { CONTROL_DOMAINS, SCENE_DOMAIN, TV_DOMAINS } from './haClient.js'
 
 // Живые события Home Assistant: подписка на state_changed по WebSocket. Только чтение; наружу отдаются лишь entity_id и состояние сущностей
-// из белого списка (switch, light, scene). Токен нигде не логируется. При обрыве — переподключение с нарастающей паузой.
+// из белого списка (switch, light, scene, media_player, remote). Токен нигде не логируется. При обрыве — переподключение с нарастающей паузой.
 
 export type LiveEvent = { entityId: string; state: string }
 
-const WATCH = new Set<string>([...CONTROL_DOMAINS, SCENE_DOMAIN])
+// media_player и remote — состояние телевизора для карточки «Телевизор» (services/tvHa.ts)
+const WATCH = new Set<string>([...CONTROL_DOMAINS, SCENE_DOMAIN, ...TV_DOMAINS])
 
 // Из сообщения WebSocket — событие state_changed белого списка (или null)
 export function parseStateChanged(m: unknown): LiveEvent | null {
