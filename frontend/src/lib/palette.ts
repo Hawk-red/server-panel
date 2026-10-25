@@ -4,7 +4,7 @@ import { createMatcher, TIER, type Matcher } from './search.ts'
 import { sceneRunnable, type Scene } from './smarthome.ts'
 import type { DiskInfo, DockerData, MediaData, NetworkData, ServiceRow, TorrentsData } from './types.ts'
 
-export type PaletteGroup = 'torrents' | 'docker' | 'services' | 'disks' | 'devices' | 'media' | 'smarthome'
+export type PaletteGroup = 'torrents' | 'docker' | 'services' | 'disks' | 'devices' | 'media' | 'mediahub' | 'smarthome'
 
 export const GROUP_HEADING: Record<PaletteGroup, string> = {
   torrents: 'Торренты (активные)',
@@ -12,7 +12,8 @@ export const GROUP_HEADING: Record<PaletteGroup, string> = {
   services: 'Службы',
   disks: 'Диски',
   devices: 'Устройства сети',
-  media: 'Медиа',
+  media: 'Медиа-серверы',
+  mediahub: 'Медиа',
   smarthome: 'Умный дом',
 }
 
@@ -22,8 +23,8 @@ export type PaletteItem = {
   title: string
   subtitle?: string
   keywords: string[] // title первым; по ним ищет фильтр
-  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/receiver' | '/smarthome' // выбор только переходит на страницу
-  search?: { tab: 'services' }
+  to: '/torrents' | '/docker' | '/system' | '/disks' | '/network' | '/media' | '/media-control' | '/smarthome' // выбор только переходит на страницу
+  search?: { tab: 'services' } | { tab: 'receiver' | 'tv' | 'receiver-remote' | 'tv-remote' }
   scene?: string // entity_id сцены: выбор запускает её (без перехода)
 }
 
@@ -59,14 +60,17 @@ export function buildPaletteItems(d: PaletteData): PaletteItem[] {
       id: `device:${v.mac}`, group: 'devices', title: v.name || v.hostname || v.vendor || v.mac, subtitle: v.ip,
       keywords: [v.name ?? '', v.hostname ?? '', v.vendor ?? '', v.ip, v.mac, v.location ?? '', v.note ?? ''], to: '/network',
     })
-  // «Медиа»: названия карточек страницы + то, что страница уже получила из /media (контейнеры, версия Jellyfin, адрес ресивера)
+  // «Медиа-серверы»: названия карточек страницы + то, что страница уже получила из /media (контейнеры, версия Jellyfin, адрес ресивера)
   const m = d.media
   const jf = m?.jellyfin.info.data
   out.push(
     { id: 'media:jellyfin', group: 'media', title: 'Jellyfin', subtitle: 'медиасервер', keywords: ['Jellyfin', 'медиасервер', m?.jellyfin.container.data?.name ?? '', jf?.name ?? '', jf?.version ?? ''], to: '/media' },
     { id: 'media:minimserver', group: 'media', title: 'MinimServer', subtitle: 'UPnP/DLNA', keywords: ['MinimServer', 'UPnP DLNA медиасервер', m?.minimserver.container.data?.name ?? ''], to: '/media' },
     { id: 'media:bubbleupnp', group: 'media', title: 'BubbleUPnP Server', subtitle: 'UPnP', keywords: ['BubbleUPnP Server', 'UPnP', m?.bubbleupnpserver.container.data?.name ?? ''], to: '/media' },
-    { id: 'media:marantz', group: 'media', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', 'Marantz', 'марантз', 'пульт ресивера', 'громкость', m?.marantz.data?.host ?? MARANTZ_IP], to: '/receiver' }
+    { id: 'media:marantz', group: 'mediahub', title: 'Marantz NR1604', subtitle: `AV-ресивер, ${m?.marantz.data?.host ?? MARANTZ_IP}`, keywords: ['Marantz NR1604', 'AV-ресивер ресивер', 'Marantz', 'марантз', 'пульт ресивера', 'громкость', m?.marantz.data?.host ?? MARANTZ_IP], to: '/media-control', search: { tab: 'receiver' } },
+    { id: 'mediahub:receiver-remote', group: 'mediahub', title: 'Пульт ресивера', subtitle: 'Marantz RC042SR', keywords: ['Пульт ресивера', 'пульт marantz', 'RC042SR', 'ресивер пульт'], to: '/media-control', search: { tab: 'receiver-remote' } },
+    { id: 'mediahub:tv', group: 'mediahub', title: 'Телевизор Samsung', subtitle: '55″, управление', keywords: ['Телевизор', 'Samsung', 'самсунг', 'ТВ', 'tv', 'телек'], to: '/media-control', search: { tab: 'tv' } },
+    { id: 'mediahub:tv-remote', group: 'mediahub', title: 'Пульт ТВ', subtitle: 'Samsung AA59-00602A', keywords: ['Пульт ТВ', 'пульт телевизора', 'AA59-00602A', 'samsung пульт'], to: '/media-control', search: { tab: 'tv-remote' } }
   )
   // Страница «Умный дом»: по этим словам выбор ведёт на /smarthome
   out.push({

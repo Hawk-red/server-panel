@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPaletteItems, filterPaletteItems, paletteFilter, type PaletteData } from './palette.ts'
+import { buildPaletteItems, filterPaletteItems, GROUP_HEADING, paletteFilter, type PaletteData } from './palette.ts'
 import type { Device, MediaData, NetworkData } from './types.ts'
 import { sidebarData } from '../components/layout/data/sidebar-data.ts'
 
@@ -21,10 +21,10 @@ const titles = (q: string, d: PaletteData = data) => filterPaletteItems(buildPal
 
 describe('палитра ⌘K: устройство Marantz NR1604', () => {
   for (const q of ['marantz', 'марантз', 'NR1604', 'nr1604', '192.168.31.94', 'vfhfynp']) {
-    it(`«${q}» находит устройство сети и карточку «Медиа»`, () => {
+    it(`«${q}» находит устройство сети и пункт «Медиа»`, () => {
       const r = titles(q)
       assert.ok(r.includes('devices:Marantz NR1604'), `devices: ${r.join(' | ')}`)
-      assert.ok(r.includes('media:Marantz NR1604'), `media: ${r.join(' | ')}`)
+      assert.ok(r.includes('mediahub:Marantz NR1604'), `mediahub: ${r.join(' | ')}`)
     })
   }
   it('производитель «D&M Holdings» находит устройство сети', () => assert.ok(titles('D&M Holdings').includes('devices:Marantz NR1604')))
@@ -38,21 +38,21 @@ describe('палитра ⌘K: устройство Marantz NR1604', () => {
   })
   it('выбор только переходит на страницу (без действий)', () => {
     const items = buildPaletteItems(data).filter((i) => /marantz/i.test(i.title))
-    assert.deepEqual(items.map((i) => i.to).sort(), ['/network', '/receiver'])
+    assert.deepEqual(items.map((i) => i.to).sort(), ['/media-control', '/network'])
   })
 })
 
-describe('палитра ⌘K: раздел «Медиа»', () => {
+describe('палитра ⌘K: раздел «Медиа-серверы»', () => {
   it('карточки Jellyfin, MinimServer, BubbleUPnP Server, Marantz находятся по названию, описанию и IP', () => {
     assert.ok(titles('jellyfin').includes('media:Jellyfin'))
     assert.ok(titles('джеллифин').includes('media:Jellyfin'))
     assert.ok(titles('minim').includes('media:MinimServer'))
     assert.ok(titles('bubbleupnp').includes('media:BubbleUPnP Server'))
-    assert.ok(titles('ресивер').includes('media:Marantz NR1604'))
-    assert.ok(titles('192.168.31.94').includes('media:Marantz NR1604'))
+    assert.ok(titles('ресивер').includes('mediahub:Marantz NR1604'))
+    assert.ok(titles('192.168.31.94').includes('mediahub:Marantz NR1604'))
   })
   it('карточки есть и пока /media ещё не загрузился (статические названия)', () => {
-    assert.ok(titles('marantz', {}).includes('media:Marantz NR1604'))
+    assert.ok(titles('marantz', {}).includes('mediahub:Marantz NR1604'))
   })
 })
 
@@ -108,7 +108,7 @@ describe('палитра ⌘K: разделы и порядок выдачи', (
     assert.ok(best('services') > Math.max(...navItems.map((n) => paletteFilter(n.title, 'ssh', n.keywords)).filter((s) => s < 2), 0))
   })
   it('прежние запросы находят то же', () => {
-    for (const q of ['marantz', 'марантз', 'vfhfynp']) assert.ok(titles(q).includes('media:Marantz NR1604'), q)
+    for (const q of ['marantz', 'марантз', 'vfhfynp']) assert.ok(titles(q).includes('mediahub:Marantz NR1604'), q)
     assert.ok(titles('ipad', { network: { ...network, devices: [{ ...other, name: 'iPad Алины' } as Device] } }).includes('devices:iPad Алины'))
     assert.ok(titles('hummingbird', { network: { ...network, devices: [{ ...other, name: 'Колибри', hostname: 'Hummingbird' } as Device] } }).length > 0)
     assert.ok(titles('хаммингберд', { network: { ...network, devices: [{ ...other, name: null, hostname: 'Hummingbird' } as Device] } }).length > 0)
@@ -116,12 +116,28 @@ describe('палитра ⌘K: разделы и порядок выдачи', (
   })
 })
 
-describe('палитра ⌘K: страница «Ресивер»', () => {
+describe('палитра ⌘K: страница «Медиа» (/media-control)', () => {
   for (const q of ['ресивер', 'marantz', 'марантз', 'пульт', 'громкость']) {
-    it(`«${q}» ведёт на /receiver`, () => {
+    it(`«${q}» ведёт на вкладку «Ресивер» страницы /media-control`, () => {
       const hit = buildPaletteItems(data).find((i) => i.id === 'media:marantz')
-      assert.equal(hit?.to, '/receiver')
-      assert.ok(titles(q).includes('media:Marantz NR1604'), q)
+      assert.equal(hit?.to, '/media-control')
+      assert.deepEqual(hit?.search, { tab: 'receiver' })
+      assert.ok(titles(q).includes('mediahub:Marantz NR1604'), q)
     })
   }
+  it('пункты «Телевизор», «Пульт ресивера», «Пульт ТВ» ведут на свои вкладки', () => {
+    const items = buildPaletteItems(data)
+    const tab = (id: string) => (items.find((i) => i.id === id)?.search as { tab: string } | undefined)?.tab
+    assert.equal(tab('mediahub:tv'), 'tv')
+    assert.equal(tab('mediahub:receiver-remote'), 'receiver-remote')
+    assert.equal(tab('mediahub:tv-remote'), 'tv-remote')
+    assert.ok(titles('самсунг').includes('mediahub:Телевизор Samsung'))
+    assert.ok(titles('пульт тв').includes('mediahub:Пульт ТВ'))
+    assert.ok(titles('AA59-00602A').includes('mediahub:Пульт ТВ'))
+  })
+  it('серверы медиа остаются на /media и называются «Медиа-серверы»', () => {
+    assert.equal(buildPaletteItems(data).find((i) => i.id === 'media:jellyfin')?.to, '/media')
+    assert.equal(GROUP_HEADING.media, 'Медиа-серверы')
+    assert.equal(GROUP_HEADING.mediahub, 'Медиа')
+  })
 })

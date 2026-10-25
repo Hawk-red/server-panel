@@ -30,8 +30,10 @@ describe('страница «Ресивер»: блоки', () => {
   it('страница использует тот же SortableBlocks с этим ключом и теми же id блоков', () => {
     const src = readFileSync(here('../features/receiver/index.tsx'), 'utf8')
     assert.match(src, /SortableBlocks/)
-    assert.match(src, /layoutPage=\{RECEIVER_LAYOUT_PAGE\}/)
     for (const b of RECEIVER_BLOCKS) assert.ok(src.includes(`id: '${b.id}'`), b.id)
+    // Page с ключом порядка теперь ставит страница «Медиа», и только на вкладке «Ресивер»
+    const hub = readFileSync(here('../features/media-hub/index.tsx'), 'utf8')
+    assert.match(hub, /layoutPage=\{tab === 'receiver' \? RECEIVER_LAYOUT_PAGE : undefined\}/)
   })
 })
 
@@ -54,34 +56,47 @@ describe('кнопка питания', () => {
   })
 })
 
-describe('главное меню: пункт «Ресивер»', () => {
+describe('главное меню: «Медиа» и «Медиа-серверы»', () => {
   const all = sidebarData.navGroups.flatMap((g) => g.items.map((i) => ({ group: g.title, i })))
-  it('есть пункт с адресом /receiver и подзаголовком Marantz NR1604', () => {
-    const r = all.find((x) => x.i.url === '/receiver')
-    assert.ok(r)
-    assert.equal(r.i.title, 'Ресивер')
-    assert.equal(r.i.subtitle, 'Marantz NR1604')
-    assert.ok(r.i.icon)
+  it('отдельного пункта «Ресивер» нет', () => {
+    assert.ok(!all.some((x) => x.i.url === '/receiver' || x.i.title === 'Ресивер'))
   })
-  it('стоит рядом с «Медиа» (сразу после него) в той же группе', () => {
-    const items = sidebarData.navGroups.find((g) => g.items.some((i) => i.url === '/media'))!.items
-    const media = items.findIndex((i) => i.url === '/media')
-    assert.equal(items[media + 1].url, '/receiver')
+  it('«Медиа» (/media-control, со значком) стоит первым в «Сервисы», сразу за ним «Медиа-серверы» (/media)', () => {
+    const items = sidebarData.navGroups.find((g) => g.title === 'Сервисы')!.items
+    assert.equal(items[0].url, '/media-control')
+    assert.equal(items[0].title, 'Медиа')
+    assert.ok(items[0].icon)
+    assert.equal(items[1].url, '/media')
+    assert.equal(items[1].title, 'Медиа-серверы')
+  })
+  it('«Умный дом» на месте', () => {
+    assert.ok(all.some((x) => x.i.url === '/smarthome' && x.i.title === 'Умный дом'))
   })
   it('адреса пунктов уникальны (меню не ломается дублем)', () => {
     const urls = all.map((x) => x.i.url)
     assert.equal(new Set(urls).size, urls.length)
   })
+  it('страница серверов называется «Медиа-серверы», маршрут /media прежний', () => {
+    assert.match(readFileSync(here('../features/media/index.tsx'), 'utf8'), /<Page title='Медиа-серверы'/)
+    assert.match(readFileSync(here('../routes/_authenticated/media/index.tsx'), 'utf8'), /'\/_authenticated\/media\/'/)
+  })
 })
 
-describe('редирект /media/remote → /receiver', () => {
-  it('маршрут /media/remote перенаправляет на /receiver, маршрут /receiver существует', () => {
+describe('редиректы старых адресов', () => {
+  it('/receiver ведёт на /media-control с переносом вкладки, /media/remote — на «Пульт ресивера»', () => {
+    const r = readFileSync(here('../routes/_authenticated/receiver/index.tsx'), 'utf8')
+    assert.match(r, /redirect\(\{ to: '\/media-control', search: \{ tab: legacyReceiverTab\(search\.tab\) \}/)
     const old = readFileSync(here('../routes/_authenticated/media/remote.tsx'), 'utf8')
-    assert.match(old, /redirect\(\{ to: '\/receiver'/)
+    assert.match(old, /to: '\/media-control', search: \{ tab: 'receiver-remote' \}/)
     const tree = readFileSync(here('../routeTree.gen.ts'), 'utf8')
     assert.match(tree, /'\/_authenticated\/receiver\/'/)
+    assert.match(tree, /'\/_authenticated\/media-control\/'/)
   })
-  it('внутренних ссылок на /media/remote не осталось', () => {
-    for (const f of ['../features/media/index.tsx', '../features/receiver/index.tsx', '../lib/palette.ts']) assert.doesNotMatch(readFileSync(here(f), 'utf8'), /media\/remote/)
+  it('внутренних ссылок на /receiver и /media/remote не осталось', () => {
+    for (const f of ['../features/media/index.tsx', '../features/receiver/index.tsx', '../features/media-hub/index.tsx', '../lib/palette.ts', '../components/layout/data/sidebar-data.ts']) {
+      const t = readFileSync(here(f), 'utf8')
+      assert.doesNotMatch(t, /media\/remote/, f)
+      assert.doesNotMatch(t, /to: '\/receiver'|url: '\/receiver'|to='\/receiver'/, f)
+    }
   })
 })

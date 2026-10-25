@@ -1,8 +1,4 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AxiosError } from 'axios'
-import { toast } from 'sonner'
-import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { bumpVolume, type CmdResult, type ReceiverFullState } from '@/lib/receiver-remote'
 import { commandTitle, filterCommands, isRepeatable, type RemoteConfig } from '@/lib/receiver-pad'
@@ -12,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { RemotePad } from './remote-pad'
+import { useBindings } from './use-bindings'
 
 type Send = (command: string, opts?: { quiet?: boolean }) => Promise<CmdResult | null>
 type Patch = (fn: (s: ReceiverFullState) => ReceiverFullState) => unknown
@@ -64,19 +61,26 @@ export function CommandPicker({ button, cfg, onClose, onChoose }: { button: stri
   )
 }
 
-const errText = (e: unknown) => ((e instanceof AxiosError ? (e.response?.data as { message?: string } | undefined)?.message : null) ?? 'Не удалось сохранить')
+
+/** Шапка режима настройки: подсказка и переключатель «Настроить пульт» */
+export function ConfigureBar({ configure, onChange, disabled, error }: { configure: boolean; onChange: (v: boolean) => void; disabled: boolean; error: boolean }) {
+  return (
+    <div className='mx-auto flex w-full max-w-[420px] items-center justify-between gap-3'>
+      <p className='text-xs text-muted-foreground'>{configure ? 'Нажмите кнопку, чтобы выбрать для неё команду' : error ? 'Не удалось загрузить привязки кнопок' : ' '}</p>
+      <div className='flex shrink-0 items-center gap-2'>
+        <Label htmlFor='remote-configure' className='text-sm'>
+          Настроить пульт
+        </Label>
+        <Switch id='remote-configure' checked={configure} onCheckedChange={onChange} disabled={disabled} />
+      </div>
+    </div>
+  )
+}
 
 export function RemoteTab({ st, send, patch }: { st: ReceiverFullState | undefined; send: Send; patch: Patch }) {
-  const qc = useQueryClient()
   const [configure, setConfigure] = useState(false)
   const [picking, setPicking] = useState<string | null>(null)
-  const q = useQuery({ queryKey: ['receiver-remote'], queryFn: async () => (await api.get<RemoteConfig>('/receiver/remote')).data, staleTime: 60_000 })
-  const save = useMutation({
-    mutationFn: async (v: { button: string; command: string | null }) => (await api.put<Pick<RemoteConfig, 'defaults' | 'bindings'>>(`/receiver/remote/${v.button}`, { command: v.command })).data,
-    onSuccess: (d) => qc.setQueryData<RemoteConfig>(['receiver-remote'], (old) => (old ? { ...old, ...d } : old)),
-    onError: (e) => toast.error(errText(e)),
-  })
-  const cfg = q.data
+  const { cfg, isError, save } = useBindings('/receiver')
 
   const press = (_id: string, cmd: string) => {
     if (cmd === 'MVUP' || cmd === 'MVDOWN') patch((s) => bumpVolume(s, cmd))
@@ -85,15 +89,7 @@ export function RemoteTab({ st, send, patch }: { st: ReceiverFullState | undefin
 
   return (
     <div className='space-y-4'>
-      <div className='mx-auto flex w-full max-w-[420px] items-center justify-between gap-3'>
-        <p className='text-xs text-muted-foreground'>{configure ? 'Нажмите кнопку, чтобы выбрать для неё команду' : q.isError ? 'Не удалось загрузить привязки кнопок' : ' '}</p>
-        <div className='flex shrink-0 items-center gap-2'>
-          <Label htmlFor='remote-configure' className='text-sm'>
-            Настроить пульт
-          </Label>
-          <Switch id='remote-configure' checked={configure} onCheckedChange={setConfigure} disabled={!cfg} />
-        </div>
-      </div>
+      <ConfigureBar configure={configure} onChange={setConfigure} disabled={!cfg} error={isError} />
       <RemotePad st={st} cfg={cfg} configure={configure} onPress={press} onPick={setPicking} />
       {cfg && (
         <CommandPicker
@@ -103,7 +99,7 @@ export function RemoteTab({ st, send, patch }: { st: ReceiverFullState | undefin
           onChoose={(v) => {
             const button = picking
             setPicking(null)
-            if (button) save.mutate({ button, command: v })
+            if (button) save({ button, command: v })
           }}
         />
       )}

@@ -1,0 +1,253 @@
+// Тесты драйвера телевизора на подставном сокете и подставной проверке портов: белый список, лимит, статус, токен, сопряжение.
+// Настоящий телевизор не трогается.
+import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { before, beforeEach, describe, it } from 'node:test'
+
+let tv: typeof import('../services/tv.js')
+let remote: typeof import('../services/tvRemote.js')
+let st: typeof import('../settings.js')
+let mask: typeof import('../mask.js')
+let cfg: typeof import('../config.js')
+
+const SECRET = '12345678'
+let open: Set<number>
+let socks: (EventEmitter & { sent: string[]; url: string; closed: boolean })[]
+let behaviour: 'ok' | 'unauthorized' | 'silent' | 'noToken' | 'error'
+
+const fakeFactory = (url: string) => {
+  const ws = new EventEmitter() as EventEmitter & { sent: string[]; url: string; closed: boolean; send: (d: string, cb?: (e?: Error) => void) => void; close: () => void; terminate: () => void }
+  ws.sent = []
+  ws.url = url
+  ws.closed = false
+  ws.send = (d, cb) => {
+    ws.sent.push(d)
+    cb?.()
+  }
+  ws.close = () => void (ws.closed = true)
+  ws.terminate = () => void (ws.closed = true)
+  socks.push(ws)
+  setTimeout(() => {
+    if (behaviour === 'ok') ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.connect', data: { token: SECRET } })))
+    else if (behaviour === 'noToken') ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.connect', data: {} })))
+    else if (behaviour === 'unauthorized') ws.emit('message', Buffer.from(JSON.stringify({ event: 'ms.channel.unauthorized' })))
+    else if (behaviour === 'error') ws.emit('error', new Error(`connect ECONNREFUSED ${url}`))
+  }, 1)
+  return ws as never
+}
+
+before(async () => {
+  process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), 'tv-test-'))
+  tv = await import('./tv.js')
+  remote = await import('./tvRemote.js')
+  st = await import('../settings.js')
+  mask = await import('../mask.js')
+  cfg = await import('../config.js')
+})
+beforeEach(() => {
+  open = new Set([8001, 8002])
+  socks = []
+  behaviour = 'ok'
+  tv.forgetPairing()
+  tv.resetStatus()
+  tv.resetRate()
+  Object.assign(tv.timing, { probeMs: 20, statusCacheMs: 0, connectMs: 100, pairMs: 120, sendMs: 100, rateWindowMs: 1000, rateMax: 5 })
+  tv.setProbe(async (_h, port) => open.has(port))
+  tv.setWsFactory(fakeFactory)
+})
+const pairNow = () => tv.pair()
+const sentKeys = () => socks.flatMap((s) => s.sent.map((x) => JSON.parse(x).params.DataOfCmd))
+
+describe('белый список ключей', () => {
+  // KEY_TOPMENU и KEY_CAPTION — документированные замены для E-MANUAL и AD/SUBT., по умолчанию ни на одной кнопке не стоят
+  const WANT = ['KEY_POWER', ...Array.from({ length: 10 }, (_, i) => `KEY_${i}`), 'KEY_SOURCE', 'KEY_VOLUP', 'KEY_VOLDOWN', 'KEY_MUTE', 'KEY_CHUP', 'KEY_CHDOWN', 'KEY_CH_LIST', 'KEY_PRECH', 'KEY_TTX_MIX', 'KEY_CONTENTS', 'KEY_MENU', 'KEY_GUIDE', 'KEY_TOOLS', 'KEY_INFO', 'KEY_UP', 'KEY_DOWN', 'KEY_LEFT', 'KEY_RIGHT', 'KEY_ENTER', 'KEY_RETURN', 'KEY_EXIT', 'KEY_RED', 'KEY_GREEN', 'KEY_YELLOW', 'KEY_CYAN', 'KEY_EMANUAL', 'KEY_PICTURE_SIZE', 'KEY_AD', 'KEY_TOPMENU', 'KEY_CAPTION', 'KEY_STOP', 'KEY_REWIND', 'KEY_PLAY', 'KEY_PAUSE', 'KEY_FF']
+  it('ровно заданные ключи', () => {
+    assert.deepEqual(Object.keys(tv.KEYS).sort(), [...WANT].sort())
+  })
+  it('чужие ключи отклоняются без обращения к сети', async () => {
+    for (const k of ['KEY_POWEROFF', 'KEY_HDMI', 'key_power', 'KEY_', '', 'KEY_UP\nKEY_DOWN', '__proto__', 'constructor', 'KEY_FACTORY']) {
+      await assert.rejects(() => tv.sendKey(k), (e: { code?: string }) => e.code === 'bad', JSON.stringify(k))
+    }
+    assert.equal(socks.length, 0)
+  })
+  it('непроверенные ключи помечены, остальные — нет', () => {
+    const unv = Object.entries(tv.KEYS).filter(([, v]) => !v.verified).map(([k]) => k).sort()
+    assert.deepEqual(unv, ['KEY_AD', 'KEY_CAPTION', 'KEY_CH_LIST', 'KEY_CONTENTS', 'KEY_EMANUAL', 'KEY_PICTURE_SIZE', 'KEY_TOPMENU', 'KEY_TTX_MIX'])
+    assert.ok(remote.commandCatalog().filter((c) => !c.verified).every((c) => c.title.includes('не проверено')))
+  })
+})
+
+describe('статус', () => {
+  it('ТВ не отвечает: online=false, порт null', async () => {
+    open.clear()
+    const s = await tv.getStatus(true)
+    assert.equal(s.online, false)
+    assert.equal(s.port, null)
+    assert.equal(s.host, cfg.config.tv.host)
+  })
+  it('порт 8002 предпочтительнее 8001; только 8001 — ws', async () => {
+    assert.equal((await tv.getStatus(true)).port, 8002)
+    open.delete(8002)
+    assert.equal((await tv.getStatus(true)).port, 8001)
+  })
+  it('в статусе нет токена', async () => {
+    await pairNow()
+    const json = JSON.stringify(await tv.getStatus(true))
+    assert.ok(!json.includes(SECRET))
+    assert.equal(JSON.parse(json).paired, true)
+  })
+})
+
+describe('отправка ключа', () => {
+  it('ТВ не отвечает: понятная ошибка, сокет не открывается', async () => {
+    open.clear()
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string; message: string }) => e.code === 'offline' && /не отвечает/.test(e.message))
+    assert.equal(socks.length, 0)
+  })
+  it('без сопряжения ключ не уходит', async () => {
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: { code?: string }) => e.code === 'unpaired')
+    assert.equal(socks.length, 0)
+  })
+  it('после сопряжения: короткая сессия, формат команды как у Samsung, токен в адресе, сокет закрыт', async () => {
+    await pairNow()
+    socks.length = 0
+    await tv.sendKey('KEY_VOLUP')
+    assert.equal(socks.length, 1)
+    assert.match(socks[0].url, /^wss:\/\/.+:8002\/api\/v2\/channels\/samsung\.remote\.api\.v2\?name=U2VydmVyUGFuZWw=&token=12345678$/)
+    assert.deepEqual(JSON.parse(socks[0].sent[0]), { method: 'ms.remote.control', params: { Cmd: 'Click', DataOfCmd: 'KEY_VOLUP', Option: 'false', TypeOfRemote: 'SendRemoteKey' } })
+    assert.equal(socks[0].closed, true)
+  })
+  it('если открыт только 8001 — ws без шифрования', async () => {
+    await pairNow()
+    open.delete(8002)
+    socks.length = 0
+    await tv.sendKey('KEY_MENU')
+    assert.match(socks[0].url, /^ws:\/\/.+:8001\//)
+  })
+  it('обрыв: понятная русская ошибка без токена', async () => {
+    await pairNow()
+    behaviour = 'error'
+    await assert.rejects(() => tv.sendKey('KEY_INFO'), (e: Error) => /Ошибка связи с телевизором/.test(e.message) && !e.message.includes(SECRET))
+  })
+  it('ТВ не разрешил (unauthorized): ошибка denied', async () => {
+    await pairNow()
+    behaviour = 'unauthorized'
+    await assert.rejects(() => tv.sendKey('KEY_INFO'), (e: { code?: string }) => e.code === 'denied')
+  })
+  it('повтор после обрыва: следующая команда открывает новое соединение', async () => {
+    await pairNow()
+    behaviour = 'error'
+    await assert.rejects(() => tv.sendKey('KEY_INFO'))
+    behaviour = 'ok'
+    socks.length = 0
+    await tv.sendKey('KEY_INFO')
+    assert.equal(sentKeys().join(), 'KEY_INFO')
+  })
+  it('не больше 5 ключей в секунду', async () => {
+    await pairNow()
+    let ok = 0
+    let limited = 0
+    for (let i = 0; i < 9; i++) await tv.sendKey('KEY_UP').then(() => ok++, (e: { code?: string }) => e.code === 'rate' && limited++)
+    assert.equal(ok, 5)
+    assert.equal(limited, 4)
+  })
+  it('лимит восстанавливается через окно', async () => {
+    await pairNow()
+    tv.timing.rateWindowMs = 30
+    for (let i = 0; i < 5; i++) await tv.sendKey('KEY_UP')
+    await assert.rejects(() => tv.sendKey('KEY_UP'), (e: { code?: string }) => e.code === 'rate')
+    await new Promise((r) => setTimeout(r, 40))
+    await tv.sendKey('KEY_UP')
+  })
+  it('KEY_POWER при недоступном ТВ не открывает сокет (питание в этом случае — сцена, решает страница)', async () => {
+    await pairNow()
+    open.clear()
+    socks.length = 0
+    await assert.rejects(() => tv.sendKey('KEY_POWER'), (e: { code?: string }) => e.code === 'offline')
+    assert.equal(socks.length, 0)
+    assert.equal(cfg.config.tv.sceneOn, 'scene.tv_on')
+  })
+})
+
+describe('сопряжение и токен', () => {
+  it('токен сохраняется зашифрованным и не лежит в открытом виде', async () => {
+    await pairNow()
+    const raw = JSON.stringify(st.getSetting('tv.token', null))
+    assert.ok(raw.startsWith('"v1.'))
+    assert.ok(!raw.includes(SECRET))
+    assert.equal(tv.isPaired(), true)
+  })
+  it('сопряжение без токена в адресе; без разрешения — таймаут с понятным текстом', async () => {
+    behaviour = 'silent'
+    await assert.rejects(() => pairNow(), (e: { code?: string; message: string }) => e.code === 'timeout' && /Разрешить/.test(e.message))
+    assert.ok(!socks[0].url.includes('token='))
+    assert.equal(tv.isPaired(), false)
+  })
+  it('сопряжение при недоступном ТВ — offline', async () => {
+    open.clear()
+    await assert.rejects(() => pairNow(), (e: { code?: string }) => e.code === 'offline')
+  })
+  it('ТВ без токенов (старая модель): сопряжённым считается без токена', async () => {
+    behaviour = 'noToken'
+    await pairNow()
+    assert.equal(tv.isPaired(), true)
+    await tv.sendKey('KEY_MUTE')
+    assert.ok(!socks.at(-1)!.url.includes('token='))
+  })
+  it('обновлённый токен из ответа ТВ сохраняется', async () => {
+    await pairNow()
+    const before = st.getSetting('tv.token', '')
+    await tv.sendKey('KEY_MUTE')
+    assert.notEqual(st.getSetting('tv.token', ''), null)
+    assert.equal(typeof before, 'string')
+  })
+})
+
+describe('маскирование токена', () => {
+  it('в адресе сокета и в JSON токен скрывается', () => {
+    const s = mask.maskSecrets(`wss://tv:8002/api/v2/channels/samsung.remote.api.v2?name=x&token=${SECRET} {"token":"${SECRET}"}`)
+    assert.ok(!s.includes(SECRET))
+    assert.match(s, /token=<скрыто>/)
+  })
+  it('сообщения об ошибках драйвера проходят через mask', async () => {
+    await pairNow()
+    tv.setWsFactory((url) => {
+      const w = fakeFactory(url) as unknown as EventEmitter
+      setTimeout(() => w.emit('error', new Error(`bad ${url}`)), 0)
+      return w as never
+    })
+    behaviour = 'silent'
+    await assert.rejects(() => tv.sendKey('KEY_MUTE'), (e: Error) => !e.message.includes(SECRET) && e.message.includes('<скрыто>'))
+  })
+})
+
+describe('привязки tv.remote', () => {
+  beforeEach(() => st.setSetting(remote.SETTING_KEY, {}))
+  it('умолчания — из белого списка; кнопок 44', () => {
+    for (const [b, k] of Object.entries(remote.REMOTE_DEFAULTS)) assert.ok(k === null || tv.isKey(k), b)
+    assert.equal(remote.REMOTE_BUTTONS.length, 44)
+  })
+  it('назначение, null и сброс', () => {
+    remote.setBinding('emanual', 'KEY_MENU')
+    assert.equal(remote.getBindings().emanual, 'KEY_MENU')
+    remote.setBinding('emanual', null)
+    assert.equal(remote.getBindings().emanual, null)
+    remote.setBinding('emanual', undefined)
+    assert.equal(remote.getBindings().emanual, 'KEY_EMANUAL')
+    assert.deepEqual(st.getSetting(remote.SETTING_KEY, {}), {})
+  })
+  it('чужие ключи и кнопки отклоняются', () => {
+    for (const k of ['KEY_HDMI', '', 'MVUP']) assert.throws(() => remote.setBinding('ad', k), (e: { code?: string }) => e.code === 'bad')
+    for (const b of ['__proto__', 'nope']) assert.throws(() => remote.setBinding(b, 'KEY_MENU'), (e: { code?: string }) => e.code === 'bad')
+  })
+  it('испорченные записи игнорируются', () => {
+    st.setSetting(remote.SETTING_KEY, { ad: 'KEY_FACTORY', nope: 'KEY_MENU', stop: 5, play: 'KEY_PAUSE' })
+    const b = remote.getBindings()
+    assert.equal(b.ad, 'KEY_AD')
+    assert.equal(b.play, 'KEY_PAUSE')
+    assert.ok(!('nope' in b))
+  })
+})

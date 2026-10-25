@@ -2,17 +2,12 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Heart, Leaf, Play, P
 import { cn } from '@/lib/utils'
 import { activeInput, type ReceiverFullState } from '@/lib/receiver-remote'
 import { commandTitle, isCustom, isRepeatable, keyStatus, liveInputName, type RemoteConfig } from '@/lib/receiver-pad'
-import { buzz, useHoldButton } from './use-hold'
+import { BasePadKey, Cap } from './pad-key'
 
 // Экранная копия пульта Marantz RC042SR. Подписи — как на кнопках оригинала; команда каждой кнопки приходит с сервера (привязки).
-const KEY =
-  'relative flex min-w-0 select-none items-center justify-center bg-gradient-to-b from-zinc-600 to-zinc-800 text-center font-semibold uppercase leading-tight tracking-wide text-zinc-100 ' +
-  'shadow-[0_2px_0_0_#000,0_4px_5px_rgba(0,0,0,.55),inset_0_1px_0_rgba(255,255,255,.16)] transition-[transform,box-shadow,opacity] duration-75 ' +
-  'active:translate-y-[2px] active:shadow-[0_0_0_0_#000,inset_0_2px_6px_rgba(0,0,0,.75)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400'
-
 type KeyProps = {
   id: string
-  label: string // подпись для скринридера и подсказки
+  label: string
   cfg: RemoteConfig | undefined
   st: ReceiverFullState | undefined
   configure: boolean
@@ -23,49 +18,10 @@ type KeyProps = {
   children: React.ReactNode
 }
 
-function PadKey({ id, label, cfg, st, configure, onPress, onPick, className, active, children }: KeyProps) {
-  const cmd = cfg ? (cfg.bindings[id] ?? null) : null
-  const status = keyStatus(cmd, st)
-  const live = configure ? true : status.enabled
-  const repeat = !configure && live && isRepeatable(cmd)
-  const fire = () => {
-    if (cmd) onPress(id, cmd)
-  }
-  const hold = useHoldButton(fire)
-  const custom = cfg ? isCustom(cfg, id) : false
-  const title = configure ? `${label}: ${cfg ? commandTitle(cfg, cmd) : '…'}` : status.enabled ? label : `${label} — ${status.reason}`
-  return (
-    <button
-      type='button'
-      data-key={id}
-      data-command={cmd ?? ''}
-      data-state={configure ? 'configure' : status.enabled ? 'on' : 'off'}
-      aria-label={label}
-      aria-pressed={active === undefined ? undefined : active}
-      aria-disabled={!live}
-      title={title}
-      className={cn(KEY, !live && 'cursor-not-allowed opacity-40', configure && 'outline-dashed outline-2 outline-offset-2 outline-sky-400/80', className)}
-      style={{ touchAction: 'manipulation' }}
-      {...(repeat ? hold : {})}
-      onClick={
-        repeat
-          ? undefined
-          : () => {
-              if (configure) return onPick(id)
-              if (!status.enabled) return
-              buzz()
-              fire()
-            }
-      }
-    >
-      {children}
-      {configure && custom && <span aria-hidden className='absolute -right-1 -top-1 size-2.5 rounded-full bg-amber-400 ring-2 ring-zinc-900' />}
-      {!configure && active && <span aria-hidden className='absolute right-1 top-1 size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]' />}
-    </button>
-  )
+function PadKey({ cfg, st, ...p }: KeyProps) {
+  const cmd = cfg ? (cfg.bindings[p.id] ?? null) : null
+  return <BasePadKey {...p} cmd={cmd} status={keyStatus(cmd, st)} custom={cfg ? isCustom(cfg, p.id) : false} cmdTitle={cfg ? commandTitle(cfg, cmd) : '…'} repeatable={isRepeatable(cmd)} />
 }
-
-const Cap = ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={cn('mb-1 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-400', className)}>{children}</div>
 
 type PadProps = {
   st: ReceiverFullState | undefined

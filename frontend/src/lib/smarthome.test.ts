@@ -17,8 +17,8 @@ const form = (o: Partial<DeviceForm>): DeviceForm => ({ ...emptyForm(), name: '�
 
 describe('меню и поиск', () => {
   const items = sidebarData.navGroups.find((g) => g.title === 'Сервисы')!.items.map((i) => i.title)
-  it('«Умный дом» в «Сервисах» сразу после «Ресивера», с подписью SmartHome и адресом /smarthome', () => {
-    assert.equal(items[items.indexOf('Ресивер') + 1], 'Умный дом')
+  it('«Умный дом» в «Сервисах» сразу после «Медиа-серверов», с подписью SmartHome и адресом /smarthome', () => {
+    assert.equal(items[items.indexOf('Медиа-серверы') + 1], 'Умный дом')
     const it = sidebarData.navGroups.flatMap((g) => g.items).find((i) => i.title === 'Умный дом')!
     assert.equal(it.url, '/smarthome')
     assert.equal(it.subtitle, 'SmartHome')

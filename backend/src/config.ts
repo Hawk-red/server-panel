@@ -55,6 +55,8 @@ export const config = {
   // Веб-интерфейс ресивера — порт 80 (/ → index.asp → top.asp); на :8080 только заглушка UPnP
   // maxVolume — потолок громкости пульта по шкале ресивера MVxx (60 = −20 dB: абсолютная шкала, dB = MV − 80)
   marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 80, maxVolume: Number(env.MARANTZ_MAX_VOLUME ?? 60) },
+  // Телевизор Samsung (статическая аренда); управление по WebSocket (порты 8001/8002), токен сопряжения — в настройках панели, зашифрован
+  tv: { host: env.TV_HOST ?? '192.168.31.181', sceneOn: env.TV_SCENE_ON ?? 'scene.tv_on' },
   // Адрес сервера в локальной сети: на него ведут ссылки на веб-интерфейсы служб (панель может быть открыта по panel.pulsdev.net,
   // а у такого имени этих портов нет, да и HSTS принудительно включает https). Задаётся LAN_HOST в .env, по умолчанию 192.168.31.112
   lanHost: env.LAN_HOST ?? '192.168.31.112',

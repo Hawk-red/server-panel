@@ -111,7 +111,7 @@ export function Media() {
       node: (
         <Card className='py-3 transition-colors hover:bg-muted/50'>
           <CardContent>
-            <Link to='/receiver' className='flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring'>
+            <Link to='/media-control' search={{ tab: 'receiver' }} className='flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring'>
               <Speaker className='size-8 shrink-0 text-muted-foreground' aria-hidden />
               <div className='min-w-0 flex-1'>
                 <div className='truncate text-base font-semibold'>Ресивер Marantz</div>
@@ -135,7 +135,7 @@ export function Media() {
   ]
 
   return (
-    <Page title='Медиа' description='Стек /home/macmini/audio-streaming' layoutPage='media'>
+    <Page title='Медиа-серверы' description='Стек /home/macmini/audio-streaming' layoutPage='media'>
       <SortableBlocks grid blocks={blocks} className='grid gap-4 md:grid-cols-2' />
     </Page>
   )

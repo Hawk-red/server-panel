@@ -6,14 +6,11 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { activeInput, activeMode, bumpVolume, formatDb, inputIcon, levelFraction, type CmdResult, type ReceiverFullState } from '@/lib/receiver-remote'
-import { Page } from '@/components/layout/page'
 import { type Block, SortableBlocks } from '@/components/sortable-blocks'
-import { RECEIVER_LAYOUT_PAGE } from '@/lib/receiver-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ReceiverControls } from '@/features/media/receiver-controls'
 import { ReceiverSettingsLinks } from '@/features/media/receiver-settings-links'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { buzz, useHoldButton } from './use-hold'
 import { RemoteTab } from './remote-tab'
 
@@ -80,7 +77,7 @@ const touch = { touchAction: 'manipulation' } as const
 
 const Title = ({ children }: { children: React.ReactNode }) => <h2 className='text-sm font-medium'>{children}</h2>
 
-export function ReceiverPage() {
+export function ReceiverSection({ view }: { view: 'control' | 'remote' }) {
   const { q, pending, send, patch } = useRemote()
   const st = q.data
   const err = q.isError ? errInfo(q.error) : null
@@ -412,24 +409,13 @@ export function ReceiverPage() {
     </div>
   )
 
+  // Страница-контейнер «Медиа» (features/media-hub) ставит Page и вкладки; здесь — содержимое вкладок «Ресивер» и «Пульт ресивера»
   return (
-    <Page title='Ресивер' description={header} layoutPage={RECEIVER_LAYOUT_PAGE}>
-      <Tabs defaultValue='control' className='gap-4'>
-        <TabsList>
-          <TabsTrigger value='control'>Управление</TabsTrigger>
-          <TabsTrigger value='remote'>Пульт</TabsTrigger>
-        </TabsList>
-        <TabsContent value='control'>
-          <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
-            <SortableBlocks grid stable blocks={blocks} className='grid gap-4 md:grid-cols-2 xl:grid-cols-3' />
-          </div>
-        </TabsContent>
-        <TabsContent value='remote'>
-          <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
-            <RemoteTab st={st} send={send} patch={patch} />
-          </div>
-        </TabsContent>
-      </Tabs>
-    </Page>
+    <div className='space-y-4'>
+      {header}
+      <div className='pb-[env(safe-area-inset-bottom)]' style={touch}>
+        {view === 'control' ? <SortableBlocks grid stable blocks={blocks} className='grid gap-4 md:grid-cols-2 xl:grid-cols-3' /> : <RemoteTab st={st} send={send} patch={patch} />}
+      </div>
+    </div>
   )
 }

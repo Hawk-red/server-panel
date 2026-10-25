@@ -1,3 +1,5 @@
+/** @jsxRuntime automatic */
+/** @jsxImportSource react */
 // Рендер экранного пульта на мок-данных (без браузера): раскладка, подписи, неактивные кнопки, режим настройки.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'

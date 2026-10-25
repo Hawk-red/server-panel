@@ -29,6 +29,7 @@ import { Route as AuthenticatedDockerIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedGitIndexRouteImport } from './routes/_authenticated/git/index'
 import { Route as AuthenticatedInternetIndexRouteImport } from './routes/_authenticated/internet/index'
+import { Route as AuthenticatedMediaControlIndexRouteImport } from './routes/_authenticated/media-control/index'
 import { Route as AuthenticatedMediaIndexRouteImport } from './routes/_authenticated/media/index'
 import { Route as AuthenticatedMediaRemoteRouteImport } from './routes/_authenticated/media/remote'
 import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authenticated/network/index'
@@ -148,6 +149,12 @@ const AuthenticatedInternetIndexRoute =
     path: '/internet/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedMediaControlIndexRoute =
+  AuthenticatedMediaControlIndexRouteImport.update({
+    id: '/media-control/',
+    path: '/media-control/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMediaIndexRoute = AuthenticatedMediaIndexRouteImport.update({
   id: '/media/',
   path: '/media/',
@@ -246,6 +253,7 @@ export interface FileRoutesByFullPath {
   '/docker/': typeof AuthenticatedDockerIndexRoute
   '/git/': typeof AuthenticatedGitIndexRoute
   '/internet/': typeof AuthenticatedInternetIndexRoute
+  '/media-control/': typeof AuthenticatedMediaControlIndexRoute
   '/media/': typeof AuthenticatedMediaIndexRoute
   '/network/': typeof AuthenticatedNetworkIndexRoute
   '/notifications/': typeof AuthenticatedNotificationsIndexRoute
@@ -280,6 +288,7 @@ export interface FileRoutesByTo {
   '/docker': typeof AuthenticatedDockerIndexRoute
   '/git': typeof AuthenticatedGitIndexRoute
   '/internet': typeof AuthenticatedInternetIndexRoute
+  '/media-control': typeof AuthenticatedMediaControlIndexRoute
   '/media': typeof AuthenticatedMediaIndexRoute
   '/network': typeof AuthenticatedNetworkIndexRoute
   '/notifications': typeof AuthenticatedNotificationsIndexRoute
@@ -316,6 +325,7 @@ export interface FileRoutesById {
   '/_authenticated/docker/': typeof AuthenticatedDockerIndexRoute
   '/_authenticated/git/': typeof AuthenticatedGitIndexRoute
   '/_authenticated/internet/': typeof AuthenticatedInternetIndexRoute
+  '/_authenticated/media-control/': typeof AuthenticatedMediaControlIndexRoute
   '/_authenticated/media/': typeof AuthenticatedMediaIndexRoute
   '/_authenticated/network/': typeof AuthenticatedNetworkIndexRoute
   '/_authenticated/notifications/': typeof AuthenticatedNotificationsIndexRoute
@@ -352,6 +362,7 @@ export interface FileRouteTypes {
     | '/docker/'
     | '/git/'
     | '/internet/'
+    | '/media-control/'
     | '/media/'
     | '/network/'
     | '/notifications/'
@@ -386,6 +397,7 @@ export interface FileRouteTypes {
     | '/docker'
     | '/git'
     | '/internet'
+    | '/media-control'
     | '/media'
     | '/network'
     | '/notifications'
@@ -421,6 +433,7 @@ export interface FileRouteTypes {
     | '/_authenticated/docker/'
     | '/_authenticated/git/'
     | '/_authenticated/internet/'
+    | '/_authenticated/media-control/'
     | '/_authenticated/media/'
     | '/_authenticated/network/'
     | '/_authenticated/notifications/'
@@ -589,6 +602,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInternetIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/media-control/': {
+      id: '/_authenticated/media-control/'
+      path: '/media-control'
+      fullPath: '/media-control/'
+      preLoaderRoute: typeof AuthenticatedMediaControlIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/media/': {
       id: '/_authenticated/media/'
       path: '/media'
@@ -696,6 +716,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDockerIndexRoute: typeof AuthenticatedDockerIndexRoute
   AuthenticatedGitIndexRoute: typeof AuthenticatedGitIndexRoute
   AuthenticatedInternetIndexRoute: typeof AuthenticatedInternetIndexRoute
+  AuthenticatedMediaControlIndexRoute: typeof AuthenticatedMediaControlIndexRoute
   AuthenticatedMediaIndexRoute: typeof AuthenticatedMediaIndexRoute
   AuthenticatedNetworkIndexRoute: typeof AuthenticatedNetworkIndexRoute
   AuthenticatedNotificationsIndexRoute: typeof AuthenticatedNotificationsIndexRoute
@@ -723,6 +744,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDockerIndexRoute: AuthenticatedDockerIndexRoute,
   AuthenticatedGitIndexRoute: AuthenticatedGitIndexRoute,
   AuthenticatedInternetIndexRoute: AuthenticatedInternetIndexRoute,
+  AuthenticatedMediaControlIndexRoute: AuthenticatedMediaControlIndexRoute,
   AuthenticatedMediaIndexRoute: AuthenticatedMediaIndexRoute,
   AuthenticatedNetworkIndexRoute: AuthenticatedNetworkIndexRoute,
   AuthenticatedNotificationsIndexRoute: AuthenticatedNotificationsIndexRoute,
