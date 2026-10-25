@@ -5,22 +5,25 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { removeButton, stripView, upsertButton, draftButton, UNI_COLUMNS, UNI_COLUMN_TITLE, type UniButtonView } from '@/lib/universal-pad'
+import { performToggle, withControlState, type SmartHomeData } from '@/lib/smarthome'
+import { filterItems, SOURCE_LABEL, removeButton, stripView, upsertButton, draftButton, uniStatus, uniSwitchState, UNI_COLUMNS, UNI_COLUMN_TITLE, type UniButtonView } from '@/lib/universal-pad'
 import { UniversalPad } from './universal-pad'
-import { RECEIVER_ON, TV_ON, UNI_DATA, UNI_RECEIVER, UNI_TV } from './universal-mock'
+import { RECEIVER_ON, SWITCH_STATES, TV_ON, UNI_DATA, UNI_RECEIVER, UNI_TV } from './universal-mock'
 
 const noop = () => {}
-const st = { receiver: RECEIVER_ON, tv: TV_ON }
-const html = (over: { buttons?: UniButtonView[]; editing?: boolean; st?: typeof st } = {}) =>
-  renderToStaticMarkup(<UniversalPad buttons={over.buttons ?? UNI_TV} st={over.st ?? st} editing={over.editing ?? false} onPress={noop} onEdit={noop} onRemove={noop} />)
+const st = { receiver: RECEIVER_ON, tv: TV_ON, switches: SWITCH_STATES }
+const html = (over: { buttons?: UniButtonView[]; editing?: boolean; st?: typeof st; busy?: Set<string> } = {}) =>
+  renderToStaticMarkup(<UniversalPad buttons={over.buttons ?? UNI_TV} st={over.st ?? st} editing={over.editing ?? false} busy={over.busy} onPress={noop} onEdit={noop} onRemove={noop} />)
 const state = (h: string, id: string) => new RegExp(`data-tile="${id}"[^>]*data-state="(\\w+)"`).exec(h)?.[1]
+const tile = (h: string, id: string) => new RegExp(`<button[^>]*data-tile="${id}"[^>]*>`).exec(h)?.[0] ?? ''
+const sw = (id: string): UniButtonView => UNI_TV.find((b) => b.id === id)!
 
 describe('универсальный пульт: два столбца', () => {
   it('столбцы называются Samsung и Marantz, слева ТВ, справа ресивер', () => {
     assert.deepEqual([...UNI_COLUMNS], ['tv', 'receiver'])
     assert.deepEqual(UNI_COLUMNS.map((c) => UNI_COLUMN_TITLE[c]), ['Samsung', 'Marantz'])
     assert.deepEqual([...new Set(UNI_RECEIVER.map((b) => b.source))], ['receiver'])
-    assert.deepEqual([...new Set(UNI_TV.map((b) => b.source))], ['tv', 'scene'])
+    assert.deepEqual([...new Set(UNI_TV.map((b) => b.source))], ['tv', 'scene', 'switch'])
   })
   it('левый столбец: питание, громкость, Mute, источник, каналы, стрелки с ENTER, RETURN/EXIT/MENU/INFO, play/pause', () => {
     const h = html({ buttons: UNI_TV })
@@ -47,7 +50,7 @@ describe('универсальный пульт: два столбца', () => {
     assert.equal(state(h, 'av-in-satcbl'), 'off') // такого входа нет в списке ресивера
     assert.match(h, /ANDROID — такого входа нет в списке ресивера/)
     const noCmd: UniButtonView = { ...UNI_RECEIVER[1], id: 'uni-x', resolved: null, available: false, title: 'без команды' }
-    const offScene: UniButtonView = { ...UNI_TV.at(-1)!, id: 'uni-y', available: false }
+    const offScene: UniButtonView = { ...UNI_TV.find((b) => b.source === 'scene')!, id: 'uni-y', available: false }
     const h2 = html({ buttons: [noCmd, offScene] })
     assert.equal(state(h2, 'uni-x'), 'off')
     assert.equal(state(h2, 'uni-y'), 'off')
@@ -74,6 +77,99 @@ describe('универсальный пульт: два столбца', () => {
   })
 })
 
+describe('универсальный пульт: плитки-выключатели', () => {
+  it('включённый — залит цветом и «вкл», выключенный — приглушён и «выкл»', () => {
+    const h = html({ buttons: [sw('sw-tv-socket'), sw('sw-balcon')] })
+    assert.match(h, /data-tile="sw-tv-socket"[^>]*data-switch="on"/)
+    assert.match(h, /data-tile="sw-balcon"[^>]*data-switch="off"/)
+    assert.equal(state(h, 'sw-tv-socket'), 'on')
+    assert.equal(state(h, 'sw-balcon'), 'on') // нажимается: «выключен» — это состояние реле, а не плитки
+    assert.ok(tile(h, 'sw-tv-socket').includes('bg-fuchsia-600'))
+    assert.ok(tile(h, 'sw-balcon').includes('bg-muted')) // приглушённая
+    assert.match(h, /Розетка ТВ<\/span><span[^>]*>вкл</)
+    assert.match(h, /Балкон<\/span><span[^>]*>выкл</)
+    assert.match(tile(h, 'sw-tv-socket'), /aria-pressed="true"/)
+    assert.match(tile(h, 'sw-balcon'), /aria-pressed="false"/)
+  })
+  it('недоступный — серый и неактивный', () => {
+    const h = html({ buttons: [sw('sw-lamp')] })
+    assert.equal(state(h, 'sw-lamp'), 'off')
+    assert.match(tile(h, 'sw-lamp'), /aria-disabled="true"/)
+    assert.match(h, /выключатель недоступен/)
+    assert.deepEqual(uniStatus(sw('sw-lamp'), st), { enabled: false, reason: 'выключатель недоступен' })
+  })
+  it('пока состояний нет — берётся доступность с сервера', () => {
+    const bare = { receiver: RECEIVER_ON, tv: TV_ON }
+    assert.equal(uniSwitchState(sw('sw-balcon'), bare), 'unknown')
+    assert.equal(uniStatus(sw('sw-balcon'), bare).enabled, true)
+    assert.equal(uniSwitchState({ ...sw('sw-balcon'), available: false }, bare), 'unavailable')
+  })
+  it('пока запрос в полёте, плитка заблокирована', () => {
+    const h = html({ buttons: [sw('sw-tv-socket')], busy: new Set([sw('sw-tv-socket').resolved!]) })
+    assert.match(tile(h, 'sw-tv-socket'), /aria-disabled="true"/)
+    assert.match(h, /animate-spin/)
+  })
+  it('в режиме «Изменить» состояние не показывается, плитка открывает правку', () => {
+    const h = html({ buttons: [sw('sw-tv-socket')], editing: true })
+    assert.equal(state(h, 'sw-tv-socket'), 'edit')
+    assert.ok(!/>вкл</.test(h))
+    assert.match(h, /Действия с кнопкой/)
+  })
+})
+
+describe('универсальный пульт: переключение выключателя', () => {
+  const data = (state: 'on' | 'off' | 'unavailable'): SmartHomeData =>
+    ({ devices: [{ id: 1, name: 'SonOff', ha: { controls: [{ entityId: 'switch.sonoff_sonoff_100094626b_1', name: 'Balcon', state }], summary: { text: 'выключено', tone: 'off', extras: [] } } }], hidden: [], groups: [], scenes: [], ha: {}, now: 0 }) as unknown as SmartHomeData
+  const entity = 'switch.sonoff_sonoff_100094626b_1'
+
+  it('ответ сервера подставляется сразу (без ожидания опроса)', async () => {
+    let cache = data('off')
+    const seen: string[] = []
+    const r = await performToggle(
+      {
+        get: () => cache,
+        set: (d) => (cache = d),
+        post: async (id, action) => {
+          seen.push(`${id}:${action}`)
+          return { state: 'on', confirmed: true }
+        },
+      },
+      entity,
+      true,
+    )
+    assert.deepEqual(seen, [`${entity}:on`])
+    assert.equal(r.state, 'on')
+    assert.equal(cache.devices[0].ha?.controls?.[0].state, 'on')
+  })
+  it('при ошибке состояние откатывается, ошибка пробрасывается для toast', async () => {
+    let cache = data('on')
+    await assert.rejects(
+      performToggle(
+        {
+          get: () => cache,
+          set: (d) => (cache = d),
+          post: async () => {
+            throw new Error('Устройство недоступно')
+          },
+        },
+        entity,
+        false,
+      ),
+      /недоступно/,
+    )
+    assert.equal(cache.devices[0].ha?.controls?.[0].state, 'on') // как было
+  })
+  it('вкладка переключает на противоположное и ходит только в общий маршрут «Умного дома»', () => {
+    const src = readFileSync(new URL('./index.tsx', import.meta.url), 'utf8')
+    assert.match(src, /'\/smarthome\/ha\/toggle'/)
+    assert.match(src, /performToggle\(/)
+    assert.match(src, /controlStateOf\(qc\.getQueryData<SmartHomeData>\(key\), entityId\) !== 'on'/)
+    assert.match(src, /refetchInterval: 3000/)
+    assert.ok(!/ConfirmDialog|вы уверены/i.test(src)) // подтверждений нет
+    assert.equal(withControlState(data('off'), entity, 'on').devices[0].ha?.controls?.[0].state, 'on')
+  })
+})
+
 describe('универсальный пульт: правка состава', () => {
   const list = UNI_TV.map(stripView)
   it('добавление кладёт плитку в конец, правка — на место', () => {
@@ -91,8 +187,26 @@ describe('универсальный пульт: правка состава', (
     assert.ok(!left.some((b) => b.id === 'tv-mute'))
     assert.deepEqual(removeButton(list, 'нет-такой'), list)
   })
-  it('в справочнике добавления — кнопки обоих пультов и сцены', () => {
+  it('в справочнике добавления — кнопки обоих пультов, сцены и выключатели', () => {
     assert.ok(UNI_DATA.catalog.receiver.length > 0 && UNI_DATA.catalog.tv.length > 0 && UNI_DATA.catalog.scenes.length > 0)
+    assert.ok(UNI_DATA.catalog.switches.length > 0)
+    assert.deepEqual(UNI_DATA.catalog.switches.map((x) => x.title), ['Balcon', 'Lamp', 'TV  &  MARANTZ', 'ML'])
+  })
+  it('диалог «Добавить кнопку»: четвёртый источник «Выключатели» с поиском по каналу и устройству', () => {
+    const src = readFileSync(new URL('./dialogs.tsx', import.meta.url), 'utf8')
+    assert.match(src, /\['receiver', 'tv', 'scene', 'switch'\] as const/)
+    assert.match(src, /catalog\.switches/)
+    assert.equal(SOURCE_LABEL.switch, 'Выключатели')
+    assert.deepEqual(filterItems(UNI_DATA.catalog.switches, 'balcon').map((x) => x.command), ['switch.sonoff_sonoff_100094626b_1'])
+    assert.deepEqual(filterItems(UNI_DATA.catalog.switches, 'люстра').map((x) => x.command), ['light.ml']) // по имени устройства
+    assert.equal(filterItems(UNI_DATA.catalog.switches, 'marantz').length, 1)
+    assert.equal(filterItems(UNI_DATA.catalog.switches, '').length, UNI_DATA.catalog.switches.length)
+  })
+  it('новая плитка-выключатель: значок вилки у розетки, лампочка у света', () => {
+    const socket = draftButton('switch', { command: 'switch.tv_marantz_sonoff_1000d31d6d', title: 'TV  &  MARANTZ' }, [])
+    assert.equal(socket.icon, 'socket')
+    assert.equal(socket.source, 'switch')
+    assert.equal(draftButton('switch', { command: 'light.lamp', title: 'Лампа' }, []).icon, 'lightbulb')
   })
   it('столбцы правятся независимо: свой переключатель, своё добавление и свой сброс', () => {
     const src = readFileSync(new URL('./index.tsx', import.meta.url), 'utf8')

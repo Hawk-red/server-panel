@@ -12,6 +12,17 @@ let st: typeof import('../settings.js')
 let rr: typeof import('../services/receiverRemote.js')
 let tr: typeof import('../services/tvRemote.js')
 let db: typeof import('../db.js')
+let sync: typeof import('./smarthomeSync.js')
+
+// Выключатели «Умного дома» в реестре панели: розетка ТВ и два канала настенного выключателя
+const SOCKET = 'switch.tv_marantz_sonoff_1000d31d6d'
+const BALCON = 'switch.sonoff_sonoff_100094626b_1'
+const LAMP = 'switch.sonoff_sonoff_100094626b_2'
+const HIDDEN_SW = 'switch.hidden_device'
+const haDevice = (id: string, name: string, controls: { entityId: string; name: string; state: 'on' | 'off' | 'unavailable' }[]) => ({
+  id, name, manufacturer: 'Sonoff', model: 'S26R1', integration: 'sonoff', area: null, available: true,
+  summary: { text: 'включено', tone: 'on' as const, extras: [] }, controls, icon: 'socket' as const,
+})
 
 const SCENE = 'scene.tv_on'
 const addScene = (entityId: string, name: string, available = true) =>
@@ -25,15 +36,28 @@ before(async () => {
   st = await import('../settings.js')
   rr = await import('./receiverRemote.js')
   tr = await import('./tvRemote.js')
+  sync = await import('./smarthomeSync.js')
   addScene(SCENE, 'TV ON')
   addScene('scene.fire', 'FIRE', false)
+  sync.applyHaSync(db.db, [
+    haDevice('d-socket', 'TV  &  MARANTZ', [{ entityId: SOCKET, name: 'TV  &  MARANTZ', state: 'on' }]),
+    haDevice('d-wall', 'SonOff', [
+      { entityId: BALCON, name: 'Balcon', state: 'off' },
+      { entityId: LAMP, name: 'Lamp', state: 'unavailable' },
+    ]),
+    haDevice('d-hidden', 'Скрытое', [{ entityId: HIDDEN_SW, name: 'Скрытое', state: 'on' }]),
+  ])
+  db.db.prepare("UPDATE smart_devices SET hidden = 1 WHERE ha_device_id = 'd-hidden'").run()
 })
 beforeEach(() => {
-  for (const k of [uni.SETTING_KEY, uni.MIGRATED_KEY, uni.COLUMN_KEY.tv, uni.COLUMN_KEY.receiver]) st.setSetting(k, null)
+  for (const k of [uni.SETTING_KEY, uni.MIGRATED_KEY, uni.SWITCHES_KEY, uni.COLUMN_KEY.tv, uni.COLUMN_KEY.receiver]) st.setSetting(k, null)
   st.setSetting(rr.SETTING_KEY, {})
   st.setSetting(tr.SETTING_KEY, {})
   uni.setInputsSource(() => null)
 })
+
+/** К сохранённому левому столбцу разовое дополнение дописывает три плитки-выключателя */
+const withSwitches = (...ids: string[]) => [...ids, 'sw-tv-socket', 'sw-balcon', 'sw-lamp']
 
 const btn = (over: Partial<import('../services/universalRemote.js').UniButton> = {}) => ({ id: 'my-1', source: 'tv' as const, command: 'power', label: 'ТВ', icon: 'power' as const, color: 'red' as const, ...over })
 
@@ -42,7 +66,7 @@ describe('наборы по умолчанию', () => {
     const d = uni.getButtons('tv')
     assert.equal(uni.isDefault('tv'), true)
     assert.deepEqual(d, uni.defaults('tv'))
-    assert.deepEqual([...new Set(d.map((b) => b.source))], ['tv'])
+    assert.deepEqual([...new Set(d.map((b) => b.source))], ['tv', 'switch'])
     const cmds = d.map((b) => b.command)
     for (const c of ['power', 'vol-up', 'vol-down', 'mute', 'source', 'p-up', 'p-down', 'nav-up', 'nav-down', 'nav-left', 'nav-right', 'enter', 'return', 'exit', 'menu', 'info', 'play', 'pause']) {
       assert.ok(cmds.includes(c), `ТВ ${c}`)
@@ -94,10 +118,11 @@ describe('перенос прежнего общего списка', () => {
   ]
   it('ТВ и сцены уходят влево, ресивер — вправо, порядок и вид сохраняются', () => {
     st.setSetting(uni.SETTING_KEY, old)
-    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['tv-power', 'sc-1'])
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), withSwitches('tv-power', 'sc-1'))
     assert.deepEqual(uni.getButtons('receiver').map((b) => b.id), ['av-mute', 'av-vol'])
     assert.deepEqual(uni.getButtons('tv')[1], old[2])
-    assert.equal(uni.getButtons('tv').length + uni.getButtons('receiver').length, old.length) // ничего не потеряли
+    // ничего не потеряли: все прежние плитки на месте (плюс три дописанных выключателя)
+    assert.equal(uni.getButtons('tv').filter((b) => b.source !== 'switch').length + uni.getButtons('receiver').length, old.length)
     assert.equal(uni.isDefault('tv'), false)
     assert.equal(uni.isDefault('receiver'), false)
   })
@@ -114,7 +139,7 @@ describe('перенос прежнего общего списка', () => {
   })
   it('в прежнем списке мусор — переносится только годное', () => {
     st.setSetting(uni.SETTING_KEY, [old[0], 'мусор', { id: 'bad' }, old[1]])
-    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['tv-power'])
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), withSwitches('tv-power'))
     assert.deepEqual(uni.getButtons('receiver').map((b) => b.id), ['av-mute'])
   })
 })
@@ -194,7 +219,77 @@ describe('проверка списка при сохранении', () => {
   it('испорченная настройка не ломает страницу: негодные записи просто выпадают', () => {
     st.setSetting(uni.MIGRATED_KEY, true)
     st.setSetting(uni.COLUMN_KEY.tv, [btn({ id: 'ok-1' }), { id: 'bad' }, 'мусор', btn({ id: 'ok-2', source: 'scene', command: 'scene.нет' })])
-    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['ok-1'])
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), withSwitches('ok-1'))
+  })
+})
+
+describe('выключатели «Умного дома» на пульте', () => {
+  const sw = (over: Partial<import('../services/universalRemote.js').UniButton> = {}) =>
+    btn({ id: 'sw-1', source: 'switch' as const, command: SOCKET, label: 'Розетка ТВ', icon: 'socket' as const, color: 'magenta' as const, ...over })
+
+  it('принимаются только сущности из белого списка «Умного дома»', () => {
+    for (const id of [SOCKET, BALCON, LAMP]) assert.equal(uni.isButton('switch', id), true, id)
+    assert.equal(uni.setButtons('tv', [sw({ command: BALCON })]).ok, true)
+  })
+  it('чужие домены, неизвестные и скрытые сущности отклоняются', () => {
+    const bad = ['media_player.tv', 'scene.tv_on', 'sensor.kitchen_temperature', 'lock.door', 'switch.нет_такого', 'switch.unknown_entity', HIDDEN_SW, 'KEY_POWER', 'power', '__proto__', 'switch.a; rm -rf']
+    for (const command of bad) {
+      assert.equal(uni.isButton('switch', command), false, command)
+      const r = uni.setButtons('tv', [sw({ command })])
+      assert.equal(r.ok, false, command)
+      if (!r.ok) assert.match(r.message, /выключател|кнопк/i)
+    }
+    assert.equal(uni.isDefault('tv'), true) // ничего не сохранилось
+  })
+  it('плитка разворачивается в entity_id, название — устройство и канал, недоступная помечается', () => {
+    assert.deepEqual(uni.resolve(sw({ command: BALCON })), { resolved: BALCON, title: 'SonOff: Balcon', available: true })
+    assert.deepEqual(uni.resolve(sw({ command: SOCKET })), { resolved: SOCKET, title: 'TV  &  MARANTZ: TV  &  MARANTZ', available: true })
+    assert.equal(uni.resolve(sw({ command: LAMP })).available, false) // unavailable в HA
+    assert.deepEqual(uni.resolve(sw({ command: 'switch.нет' })), { resolved: null, title: 'без команды', available: false })
+  })
+  it('справочник выключателей: имя канала и имя устройства, скрытых нет', () => {
+    const list = uni.catalog().switches
+    assert.deepEqual(list.map((x) => x.command), [BALCON, LAMP, SOCKET])
+    assert.deepEqual(list.map((x) => x.title), ['Balcon', 'Lamp', 'TV  &  MARANTZ'])
+    assert.equal(list.find((x) => x.command === BALCON)?.group, 'SonOff')
+    assert.equal(list.find((x) => x.command === LAMP)?.available, false)
+    assert.ok(!list.some((x) => x.command === HIDDEN_SW))
+    for (const x of list) assert.equal(uni.isButton('switch', x.command), true, x.command)
+  })
+  it('три плитки есть в наборе по умолчанию левого столбца, в конце и с рабочими сущностями', () => {
+    const d = uni.defaults('tv')
+    assert.deepEqual(d.slice(-3).map((b) => b.id), ['sw-tv-socket', 'sw-balcon', 'sw-lamp'])
+    assert.deepEqual(d.slice(-3).map((b) => b.command), [SOCKET, BALCON, LAMP])
+    assert.deepEqual(d.slice(-3).map((b) => b.label), ['Розетка ТВ', 'Балкон', 'Лампа'])
+    for (const b of d.slice(-3)) assert.equal(uni.isButton('switch', b.command), true, b.command)
+    assert.equal(d.filter((b) => b.source === 'switch').length, 3)
+  })
+  it('разовое дополнение: три плитки дописываются в конец сохранённого набора, остальное не трогается', () => {
+    const mine = [btn({ id: 'my-1' }), btn({ id: 'my-2', source: 'receiver', command: 'mute', label: 'Тихо', icon: 'volume', color: 'slate' })]
+    st.setSetting(uni.MIGRATED_KEY, true)
+    st.setSetting(uni.COLUMN_KEY.tv, mine)
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['my-1', 'my-2', 'sw-tv-socket', 'sw-balcon', 'sw-lamp'])
+    assert.deepEqual(uni.getButtons('tv').slice(0, 2), mine) // прежние плитки и порядок на месте
+    assert.equal(st.getSetting(uni.SWITCHES_KEY, false), true)
+  })
+  it('дополнение одноразовое: повтор ничего не меняет, удалённую плитку не возвращает', () => {
+    st.setSetting(uni.MIGRATED_KEY, true)
+    st.setSetting(uni.COLUMN_KEY.tv, [btn({ id: 'my-1' })])
+    const first = uni.getButtons('tv').map((b) => b.id)
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), first) // идемпотентно
+    uni.setButtons('tv', uni.getButtons('tv').filter((b) => b.id !== 'sw-lamp'))
+    assert.deepEqual(uni.getButtons('tv').map((b) => b.id), ['my-1', 'sw-tv-socket', 'sw-balcon'])
+  })
+  it('уже стоящие плитки не дублируются', () => {
+    st.setSetting(uni.MIGRATED_KEY, true)
+    st.setSetting(uni.COLUMN_KEY.tv, [sw({ id: 'sw-balcon', command: BALCON, label: 'Балкон' })])
+    const ids = uni.getButtons('tv').map((b) => b.id)
+    assert.deepEqual(ids, ['sw-balcon', 'sw-tv-socket', 'sw-lamp'])
+    assert.equal(new Set(ids).size, ids.length)
+  })
+  it('столбец, которого владелец не трогал, остаётся набором по умолчанию', () => {
+    assert.equal(uni.isDefault('tv'), true)
+    assert.deepEqual(uni.getButtons('tv'), uni.defaults('tv'))
   })
 })
 

@@ -1,18 +1,21 @@
-// Универсальный пульт («Медиа» → вкладка «Универсальный»): два столбца крупных плиток — Samsung (телевизор и сцены)
-// и Marantz (ресивер). Каждый столбец хранится отдельно (universal.remote.tv и universal.remote.receiver) и правится
+// Универсальный пульт («Медиа» → вкладка «Универсальный»): два столбца крупных плиток — Samsung (телевизор, сцены
+// и выключатели) и Marantz (ресивер). Каждый столбец хранится отдельно (universal.remote.tv и universal.remote.receiver) и правится
 // независимо. Новых способов управления нет: кнопка ссылается на кнопку уже существующего экранного пульта (её команду
-// решают привязки receiver.remote / tv.remote) либо на сцену панели, а исполняют их прежние маршруты со своими
-// белыми списками, лимитами и журналом.
+// решают привязки receiver.remote / tv.remote), на сцену панели либо на выключатель «Умного дома» (switch/light из его
+// белого списка), а исполняют их прежние маршруты со своими белыми списками, лимитами и журналом.
 import { getSetting, setSetting } from '../settings.js'
 import { SCENE_COLORS, SCENE_ICONS, type SceneColor, type SceneIcon } from './smarthomeScenes.js'
 import * as receiverRemote from './receiverRemote.js'
 import * as tvRemote from './tvRemote.js'
 import { cachedInputs } from './receiver.js'
-import { findScene, listScenes } from './smarthome.js'
+import { findControl, findScene, listDevices, listScenes } from './smarthome.js'
+import { CONTROL_DOMAINS } from './haClient.js'
 
 /** Старое общее хранилище (один столбец). Остаётся на месте: из него один раз переносятся плитки */
 export const SETTING_KEY = 'universal.remote'
 export const MIGRATED_KEY = 'universal.remote.migrated'
+/** Разовое дополнение: три плитки-выключателя в левый столбец (см. SWITCH_TILES) */
+export const SWITCHES_KEY = 'universal.remote.switches-added'
 export const MAX_BUTTONS = 48
 
 export const COLUMNS = ['tv', 'receiver'] as const
@@ -21,14 +24,15 @@ export const COLUMN_KEY: Record<UniColumn, string> = { tv: 'universal.remote.tv'
 export const COLUMN_TITLE: Record<UniColumn, string> = { tv: 'Samsung', receiver: 'Marantz' }
 export const isColumn = (v: unknown): v is UniColumn => typeof v === 'string' && (COLUMNS as readonly string[]).includes(v)
 
-export type UniSource = 'receiver' | 'tv' | 'scene'
+export type UniSource = 'receiver' | 'tv' | 'scene' | 'switch'
 export type UniButton = { id: string; source: UniSource; command: string; label: string; icon: SceneIcon; color: SceneColor }
 /** Кнопка плюс то, что про неё знает сервер: во что она развернётся и можно ли её нажать */
 export type UniButtonView = UniButton & { resolved: string | null; title: string; available: boolean }
 
-const SOURCES: UniSource[] = ['receiver', 'tv', 'scene']
+const SOURCES: UniSource[] = ['receiver', 'tv', 'scene', 'switch']
 const ID_RE = /^[a-z0-9-]{1,40}$/
 const SCENE_RE = /^scene\.[a-z0-9_]+$/
+const ENTITY_RE = /^[a-z_]+\.[a-z0-9_]+$/
 
 const b = (id: string, source: UniSource, command: string, label: string, icon: SceneIcon, color: SceneColor): UniButton => ({ id, source, command, label, icon, color })
 
@@ -106,7 +110,15 @@ function inputDefaults(): UniButton[] {
   return out
 }
 
-export const defaults = (column: UniColumn): UniButton[] => (column === 'tv' ? TV_DEFAULTS : [...AV_HEAD, ...inputDefaults(), ...AV_TAIL])
+// Выключатели «Умного дома» на пульте: розетка телевизора и два канала настенного выключателя.
+// entity_id найдены в реестре Home Assistant (устройство «TV & MARANTZ» — Sonoff S26R1; каналы Balcon и Lamp — SonOff TX2C).
+export const SWITCH_TILES: UniButton[] = [
+  b('sw-tv-socket', 'switch', 'switch.tv_marantz_sonoff_1000d31d6d', 'Розетка ТВ', 'socket', 'magenta'),
+  b('sw-balcon', 'switch', 'switch.sonoff_sonoff_100094626b_1', 'Балкон', 'lightbulb', 'orange'),
+  b('sw-lamp', 'switch', 'switch.sonoff_sonoff_100094626b_2', 'Лампа', 'lightbulb', 'brown'),
+]
+
+export const defaults = (column: UniColumn): UniButton[] => (column === 'tv' ? [...TV_DEFAULTS, ...SWITCH_TILES] : [...AV_HEAD, ...inputDefaults(), ...AV_TAIL])
 
 // ---------- справочник: что вообще можно положить на пульт ----------
 const bindings = (source: 'receiver' | 'tv') => (source === 'receiver' ? receiverRemote.getBindings() : tvRemote.getBindings())
@@ -120,11 +132,34 @@ function buttonTitle(source: 'receiver' | 'tv', button: string): string {
   return (cmd && titles(source).get(cmd)) || button
 }
 
+/** Выключатель: только сущность из белого списка «Умного дома» — switch/light синхронизированного, не скрытого устройства */
+export const isSwitch = (entityId: string): boolean =>
+  ENTITY_RE.test(entityId) && (CONTROL_DOMAINS as readonly string[]).includes(entityId.split('.')[0]) && Boolean(findControl(entityId))
+
 export const isButton = (source: UniSource, command: string): boolean =>
-  source === 'scene' ? SCENE_RE.test(command) && Boolean(findScene(command)) : Object.hasOwn(source === 'receiver' ? receiverRemote.REMOTE_DEFAULTS : tvRemote.REMOTE_DEFAULTS, command)
+  source === 'scene'
+    ? SCENE_RE.test(command) && Boolean(findScene(command))
+    : source === 'switch'
+      ? isSwitch(command)
+      : Object.hasOwn(source === 'receiver' ? receiverRemote.REMOTE_DEFAULTS : tvRemote.REMOTE_DEFAULTS, command)
+
+/** Управляемые выключатели для диалога «Добавить кнопку»: имя канала и устройство, как на «Умном доме» */
+export function switchCatalog(): { command: string; title: string; group: string; available: boolean }[] {
+  const out: { command: string; title: string; group: string; available: boolean }[] = []
+  for (const d of listDevices()) {
+    if (d.source !== 'homeassistant' || d.hidden || d.haMissing) continue
+    for (const c of d.ha?.controls ?? []) out.push({ command: c.entityId, title: c.name, group: d.name, available: c.state !== 'unavailable' })
+  }
+  return out.sort((a, b) => `${a.group} ${a.title}`.localeCompare(`${b.group} ${b.title}`, 'ru'))
+}
 
 export type CatalogItem = { command: string; title: string; group: string }
-export function catalog(): { receiver: CatalogItem[]; tv: CatalogItem[]; scenes: { command: string; title: string; color: SceneColor; icon: SceneIcon; available: boolean }[] } {
+export function catalog(): {
+  receiver: CatalogItem[]
+  tv: CatalogItem[]
+  scenes: { command: string; title: string; color: SceneColor; icon: SceneIcon; available: boolean }[]
+  switches: { command: string; title: string; group: string; available: boolean }[]
+} {
   const pad = (source: 'receiver' | 'tv', group: string) =>
     (source === 'receiver' ? receiverRemote.REMOTE_BUTTONS : tvRemote.REMOTE_BUTTONS).map((button) => ({ command: button, title: buttonTitle(source, button), group }))
   return {
@@ -133,6 +168,7 @@ export function catalog(): { receiver: CatalogItem[]; tv: CatalogItem[]; scenes:
     scenes: listScenes()
       .filter((s) => !s.hidden && !s.missing)
       .map((s) => ({ command: s.entityId, title: s.name, color: s.color, icon: s.icon, available: s.available })),
+    switches: switchCatalog(),
   }
 }
 
@@ -142,6 +178,11 @@ export function resolve(btn: UniButton): { resolved: string | null; title: strin
   if (btn.source === 'scene') {
     const s = findScene(btn.command)
     return { resolved: s ? s.entityId : null, title: s?.name ?? btn.command, available: Boolean(s?.available) }
+  }
+  if (btn.source === 'switch') {
+    const f = isSwitch(btn.command) ? findControl(btn.command) : null
+    if (!f) return { resolved: null, title: 'без команды', available: false }
+    return { resolved: btn.command, title: `${f.device.name}: ${f.control.name}`, available: f.control.state !== 'unavailable' }
   }
   const cmd = bindings(btn.source)[btn.command] ?? null
   return { resolved: cmd, title: cmd ? buttonTitle(btn.source, btn.command) : 'без команды', available: cmd !== null }
@@ -169,19 +210,35 @@ export function migrate(): void {
   setSetting(MIGRATED_KEY, true)
 }
 
+/** Разовое дополнение: дописать плитки-выключатели в конец левого столбца, если владелец уже сохранял свой набор.
+ *  Чужие плитки и их порядок не трогаются; список читается как есть, чтобы ничего не выпало при проверке. */
+export function addSwitches(): void {
+  if (getSetting<boolean>(SWITCHES_KEY, false)) return
+  const raw = getSetting<unknown>(COLUMN_KEY.tv, null)
+  if (Array.isArray(raw)) {
+    const has = (t: UniButton) => raw.some((x) => x !== null && typeof x === 'object' && ((x as UniButton).id === t.id || (x as UniButton).command === t.command))
+    const add = SWITCH_TILES.filter((t) => !has(t))
+    if (add.length > 0) setSetting(COLUMN_KEY.tv, [...raw, ...add])
+  }
+  setSetting(SWITCHES_KEY, true)
+}
+
 export function getButtons(column: UniColumn): UniButton[] {
   migrate()
+  addSwitches()
   const stored = getSetting<unknown>(COLUMN_KEY[column], null)
   return stored === null ? defaults(column) : clean(stored)
 }
 export const view = (column: UniColumn): UniButtonView[] => getButtons(column).map((x) => ({ ...x, ...resolve(x) }))
 export function isDefault(column: UniColumn): boolean {
   migrate()
+  addSwitches()
   return getSetting<unknown>(COLUMN_KEY[column], null) === null
 }
 
 export function resetButtons(column: UniColumn): UniButton[] {
   migrate()
+  addSwitches()
   setSetting(COLUMN_KEY[column], null)
   return defaults(column)
 }
@@ -195,7 +252,8 @@ export function parseButton(v: unknown, taken: { id: string }[] = []): Parsed {
   const source = o.source as UniSource
   if (!SOURCES.includes(source)) return { ok: false, message: 'Источник: ресивер, телевизор или сцена' }
   const command = typeof o.command === 'string' ? o.command : ''
-  if (!isButton(source, command)) return { ok: false, message: source === 'scene' ? 'Такой сцены у панели нет' : 'Такой кнопки нет на этом пульте' }
+  if (!isButton(source, command))
+    return { ok: false, message: source === 'scene' ? 'Такой сцены у панели нет' : source === 'switch' ? 'Такого выключателя нет среди устройств панели' : 'Такой кнопки нет на этом пульте' }
   const label = typeof o.label === 'string' ? o.label.trim() : ''
   if (label.length < 1 || label.length > 40) return { ok: false, message: 'Подпись: от 1 до 40 символов' }
   const icon = o.icon as SceneIcon
@@ -215,6 +273,7 @@ export function setButtons(column: UniColumn, v: unknown): { ok: true; value: Un
     out.push(r.value)
   }
   migrate()
+  addSwitches()
   setSetting(COLUMN_KEY[column], out)
   return { ok: true, value: out }
 }

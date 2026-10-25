@@ -1,6 +1,6 @@
-import { Ellipsis, Pencil, Trash2 } from 'lucide-react'
+import { Ellipsis, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { uniRepeatable, uniStatus, type DeviceState, type UniButtonView } from '@/lib/universal-pad'
+import { uniRepeatable, uniStatus, uniSwitchState, type DeviceState, type UniButtonView } from '@/lib/universal-pad'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { SCENE_BG, SCENE_ICON } from '@/features/smarthome/scene-style'
@@ -8,10 +8,12 @@ import { buzz, useHoldButton } from '@/features/receiver/use-hold'
 
 // Плитки универсального пульта (столбец Samsung или Marantz): вид как у «Быстрых сцен», нажатие — как у экранных пультов
 // (вдавливание, вибрация, удержание с автоповтором у громкости и стрелок). Данные приходят готовыми, запросов здесь нет.
-export function UniTile({ b, st, editing, onPress, onEdit, onRemove }: {
+export function UniTile({ b, st, editing, busy = false, onPress, onEdit, onRemove }: {
   b: UniButtonView
   st: DeviceState
   editing: boolean
+  /** переключение выключателя в полёте: плитка заблокирована, значок крутится */
+  busy?: boolean
   onPress: (b: UniButtonView) => void
   onEdit: (b: UniButtonView) => void
   onRemove: (b: UniButtonView) => void
@@ -20,7 +22,18 @@ export function UniTile({ b, st, editing, onPress, onEdit, onRemove }: {
   const Icon = SCENE_ICON[b.icon] ?? SCENE_ICON.sparkles
   const repeat = !editing && status.enabled && uniRepeatable(b)
   const hold = useHoldButton(() => onPress(b))
-  const title = editing ? `${b.label}: ${b.title}` : status.enabled ? `${b.label} — ${b.title}` : `${b.label} — ${status.reason}`
+  // Выключатель: включён — плитка залита цветом, выключен — приглушена, недоступен — серая (как у остальных неактивных)
+  const sw = b.source === 'switch' ? uniSwitchState(b, st) : null
+  const swOn = sw === 'on'
+  const swOff = sw === 'off' || sw === 'unknown'
+  const pressable = status.enabled && !busy
+  const title = editing
+    ? `${b.label}: ${b.title}`
+    : !status.enabled
+      ? `${b.label} — ${status.reason}`
+      : sw
+        ? `${b.label} — ${b.title} · ${swOn ? 'включено' : 'выключено'}`
+        : `${b.label} — ${b.title}`
   return (
     <div className='relative h-full'>
       <button
@@ -28,15 +41,19 @@ export function UniTile({ b, st, editing, onPress, onEdit, onRemove }: {
         data-tile={b.id}
         data-command={b.resolved ?? ''}
         data-state={editing ? 'edit' : status.enabled ? 'on' : 'off'}
+        data-switch={sw ?? undefined}
         aria-label={b.label}
-        aria-disabled={!status.enabled && !editing}
+        aria-disabled={(!status.enabled || busy) && !editing}
+        aria-pressed={sw && !editing ? swOn : undefined}
         title={title}
         style={{ touchAction: 'manipulation' }}
         className={cn(
           'flex h-full min-h-24 w-full flex-col justify-between gap-2 rounded-2xl p-3 text-left text-white shadow-sm transition-transform duration-100 select-none',
           'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
           status.enabled || editing ? SCENE_BG[b.color] : 'bg-muted text-muted-foreground',
-          status.enabled && !editing ? 'active:scale-95' : 'cursor-not-allowed',
+          // выключенный выключатель — приглушённая плитка (контраст текста сохраняется: тёмный на светлом)
+          swOff && !editing && status.enabled && 'bg-muted text-foreground',
+          pressable && !editing ? 'active:scale-95' : 'cursor-not-allowed',
           editing && 'outline-dashed outline-2 outline-offset-2 outline-info/70',
         )}
         {...(repeat ? hold : {})}
@@ -45,16 +62,19 @@ export function UniTile({ b, st, editing, onPress, onEdit, onRemove }: {
             ? undefined
             : () => {
                 if (editing) return onEdit(b)
-                if (!status.enabled) return
+                if (!pressable) return
                 buzz()
                 onPress(b)
               }
         }
       >
-        <span className={cn('flex size-8 items-center justify-center rounded-full', status.enabled || editing ? 'bg-white/20' : 'bg-foreground/10')}>
-          <Icon className='size-4' aria-hidden />
+        <span className={cn('flex size-8 items-center justify-center rounded-full', (status.enabled || editing) && !swOff ? 'bg-white/20' : 'bg-foreground/10')}>
+          {busy ? <Loader2 className='size-4 animate-spin' aria-hidden /> : <Icon className='size-4' aria-hidden />}
         </span>
-        <span className='line-clamp-2 text-base leading-tight font-semibold break-words'>{b.label}</span>
+        <span className='flex min-w-0 flex-col gap-0.5'>
+          <span className='line-clamp-2 text-base leading-tight font-semibold break-words'>{b.label}</span>
+          {sw && !editing && <span className={cn('text-xs font-medium', swOn ? 'text-white/80' : 'text-muted-foreground')}>{status.enabled ? (swOn ? 'вкл' : 'выкл') : 'недоступно'}</span>}
+        </span>
       </button>
       {editing && (
         <DropdownMenu>
@@ -77,10 +97,12 @@ export function UniTile({ b, st, editing, onPress, onEdit, onRemove }: {
   )
 }
 
-export function UniversalPad({ buttons, st, editing, onPress, onEdit, onRemove, wrap }: {
+export function UniversalPad({ buttons, st, editing, busy, onPress, onEdit, onRemove, wrap }: {
   buttons: UniButtonView[]
   st: DeviceState
   editing: boolean
+  /** entity_id выключателей, у которых запрос в полёте */
+  busy?: ReadonlySet<string>
   onPress: (b: UniButtonView) => void
   onEdit: (b: UniButtonView) => void
   onRemove: (b: UniButtonView) => void
@@ -93,7 +115,7 @@ export function UniversalPad({ buttons, st, editing, onPress, onEdit, onRemove, 
   return (
     <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4'>
       {buttons.map((b) => {
-        const node = <UniTile key={b.id} b={b} st={st} editing={editing} onPress={onPress} onEdit={onEdit} onRemove={onRemove} />
+        const node = <UniTile key={b.id} b={b} st={st} editing={editing} busy={Boolean(b.resolved && busy?.has(b.resolved))} onPress={onPress} onEdit={onEdit} onRemove={onRemove} />
         return wrap ? <div key={b.id}>{wrap(b, node)}</div> : node
       })}
     </div>

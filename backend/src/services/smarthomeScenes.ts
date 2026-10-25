@@ -1,6 +1,6 @@
 // Сцены Home Assistant для плиток «Быстрые сцены»: цвета, значки, порядок и имя по умолчанию (чистые функции, покрыты тестами).
 export const SCENE_COLORS = ['green', 'red', 'magenta', 'blue', 'brown', 'emerald', 'violet', 'orange', 'slate', 'cyan'] as const
-export const SCENE_ICONS = ['tv', 'power', 'clapperboard', 'flame', 'radio', 'laptop', 'gamepad', 'smartphone', 'lightbulb', 'volume', 'monitor', 'sparkles'] as const
+export const SCENE_ICONS = ['tv', 'power', 'clapperboard', 'flame', 'radio', 'laptop', 'gamepad', 'smartphone', 'lightbulb', 'volume', 'monitor', 'sparkles', 'socket'] as const
 export type SceneColor = (typeof SCENE_COLORS)[number]
 export type SceneIcon = (typeof SCENE_ICONS)[number]
 

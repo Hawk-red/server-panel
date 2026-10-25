@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { draftButton, filterItems, nextId, SOURCE_LABEL, stripView, uniRepeatable, uniStatus, type UniButtonView } from './universal-pad.ts'
+import { draftButton, filterItems, nextId, SOURCE_LABEL, stripView, uniRepeatable, uniStatus, uniSwitchState, type UniButtonView } from './universal-pad.ts'
 
 const tile = (over: Partial<UniButtonView> = {}): UniButtonView => ({
   id: 'uni-1', source: 'receiver', command: 'vol-up', label: 'Громче', icon: 'volume', color: 'green', resolved: 'MVUP', title: 'Громче', available: true, ...over,
@@ -35,6 +35,18 @@ describe('универсальный пульт: доступность плит
     assert.equal(uniStatus(tile({ source: 'scene', command: 'scene.tv_on', resolved: 'scene.tv_on' }), st).enabled, true)
     assert.deepEqual(uniStatus(tile({ source: 'scene', command: 'scene.fire', resolved: 'scene.fire', available: false }), st), { enabled: false, reason: 'сцена недоступна' })
   })
+  it('выключатель: включён, выключен, недоступен', () => {
+    const base = { receiver: recvOn, tv: tvOn }
+    const b = tile({ source: 'switch', command: 'switch.balcon', resolved: 'switch.balcon', title: 'SonOff: Balcon' })
+    const withSw = (state: 'on' | 'off' | 'unavailable') => ({ ...base, switches: { 'switch.balcon': state } })
+    assert.equal(uniSwitchState(b, withSw('on')), 'on')
+    assert.equal(uniStatus(b, withSw('on')).enabled, true)
+    assert.equal(uniStatus(b, withSw('off')).enabled, true) // «выключен» — состояние реле, плитка нажимается
+    assert.deepEqual(uniStatus(b, withSw('unavailable')), { enabled: false, reason: 'выключатель недоступен' })
+    assert.equal(uniSwitchState(b, base), 'unknown') // состояний ещё нет — доступность с сервера
+    assert.equal(uniStatus({ ...b, resolved: null }, withSw('on')).reason, 'команда не назначена')
+    assert.equal(uniRepeatable(b), false) // выключатель не повторяется при удержании
+  })
   it('удержание — как на оригинальных пультах', () => {
     assert.equal(uniRepeatable(tile()), true) // MVUP
     assert.equal(uniRepeatable(tile({ source: 'tv', resolved: 'KEY_VOLUP' })), true)
@@ -68,6 +80,6 @@ describe('универсальный пульт: правка состава', (
     assert.equal(filterItems(list, '').length, 2)
   })
   it('подписи источников', () => {
-    assert.deepEqual(Object.values(SOURCE_LABEL), ['Ресивер', 'Телевизор', 'Сцена'])
+    assert.deepEqual(Object.values(SOURCE_LABEL), ['Ресивер', 'Телевизор', 'Сцена', 'Выключатели'])
   })
 })

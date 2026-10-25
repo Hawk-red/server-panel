@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { moveItem } from '@/lib/layout-order'
 import { bumpVolume } from '@/lib/receiver-remote'
-import { runScene } from '@/lib/smarthome'
+import { controlStateOf, performToggle, runScene, type ControlState, type SmartHomeData, type ToggleResult } from '@/lib/smarthome'
 import { removeButton, stripView, uniRepeatable, UNI_COLUMNS, UNI_COLUMN_TITLE, upsertButton, type DeviceState, type UniButton, type UniButtonView, type UniColumn, type UniData } from '@/lib/universal-pad'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -42,6 +42,47 @@ function useUniversal() {
   return { data: q.data, isError: q.isError, save: put.mutate, pending: put.isPending, reset: reset.mutate }
 }
 
+/** Живые состояния выключателей: тот же запрос и тот же опрос (3 с), что и на странице «Умный дом» */
+function useSwitches(entityIds: string[]) {
+  const qc = useQueryClient()
+  const key = ['smarthome']
+  const q = useQuery({
+    queryKey: key,
+    queryFn: async () => (await api.get<SmartHomeData>('/smarthome/devices')).data,
+    refetchInterval: 3000,
+    enabled: entityIds.length > 0,
+  })
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+
+  const states: Record<string, ControlState> = {}
+  for (const id of entityIds) {
+    const st = controlStateOf(q.data, id)
+    if (st) states[id] = st
+  }
+
+  // Оптимистичное переключение общей функцией «Умного дома»: ответ сервера подставляется сразу, при ошибке — откат
+  const toggle = async (entityId: string, label: string) => {
+    if (busy.has(entityId)) return
+    setBusy((b) => new Set([...b, entityId]))
+    try {
+      await performToggle(
+        {
+          get: () => qc.getQueryData<SmartHomeData>(key),
+          set: (d) => qc.setQueryData(key, d),
+          post: async (id, action) => (await api.post<ToggleResult>('/smarthome/ha/toggle', { entity_id: id, action })).data,
+        },
+        entityId,
+        controlStateOf(qc.getQueryData<SmartHomeData>(key), entityId) !== 'on',
+      )
+    } catch (e) {
+      toast.error(errText(e, `Не удалось переключить «${label}»`))
+    } finally {
+      setBusy((b) => new Set([...b].filter((x) => x !== entityId)))
+    }
+  }
+  return { states, busy, toggle }
+}
+
 function SortableTile({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   return (
@@ -55,6 +96,7 @@ type ColumnProps = {
   column: UniColumn
   data: UniData | undefined
   st: DeviceState
+  busy: ReadonlySet<string>
   pending: boolean
   onPress: (b: UniButtonView) => void
   onSave: (column: UniColumn, buttons: UniButton[]) => void
@@ -62,7 +104,7 @@ type ColumnProps = {
 }
 
 /** Один столбец: свой переключатель «Изменить», своё добавление, перетаскивание и сброс */
-function Column({ column, data, st, pending, onPress, onSave, onReset }: ColumnProps) {
+function Column({ column, data, st, busy, pending, onPress, onSave, onReset }: ColumnProps) {
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editTile, setEditTile] = useState<{ b: UniButton; isNew: boolean } | null>(null)
@@ -92,6 +134,7 @@ function Column({ column, data, st, pending, onPress, onSave, onReset }: ColumnP
       buttons={buttons}
       st={st}
       editing={editing}
+      busy={busy}
       onPress={onPress}
       onEdit={(b) => setEditTile({ b: stripView(b), isNew: false })}
       onRemove={(b) => onSave(column, removeButton(list(), b.id))}
@@ -150,13 +193,17 @@ function Column({ column, data, st, pending, onPress, onSave, onReset }: ColumnP
   )
 }
 
-/** Вкладка «Универсальный»: два столбца частых кнопок — слева телевизор и сцены, справа ресивер */
+/** Вкладка «Универсальный»: два столбца частых кнопок — слева телевизор, сцены и выключатели, справа ресивер */
 export function UniversalTab() {
   const { data, save, pending, reset } = useUniversal()
   const { q: receiver, send, patch } = useReceiver()
   const tv = useTvStatus()
   const tvPress = useTvPress(tv.data)
-  const st: DeviceState = { receiver: receiver.data, tv: tv.data }
+  const switchIds = UNI_COLUMNS.flatMap((c) => data?.columns?.[c]?.buttons ?? [])
+    .filter((b) => b.source === 'switch' && b.resolved)
+    .map((b) => b.resolved as string)
+  const sw = useSwitches(switchIds)
+  const st: DeviceState = { receiver: receiver.data, tv: tv.data, switches: sw.states }
 
   const press = (b: UniButtonView) => {
     if (!b.resolved) return
@@ -166,6 +213,7 @@ export function UniversalTab() {
       return
     }
     if (b.source === 'tv') return void tvPress(b.id, b.resolved)
+    if (b.source === 'switch') return void sw.toggle(b.resolved, b.label)
     void runScene((id) => api.post('/smarthome/ha/scene', { entity_id: id }), b.resolved, (e) => errText(e, 'Не удалось запустить сцену')).then((r) =>
       r.ok ? toast.success(`Сцена «${b.label}» запущена`) : toast.error(r.message),
     )
@@ -174,11 +222,11 @@ export function UniversalTab() {
   return (
     <div className='space-y-4'>
       <p className='text-xs text-muted-foreground'>
-        Частые кнопки телевизора, сцен и ресивера. Команды те же, что на оригинальных пультах. Каждый столбец правится отдельно: «Изменить» → перетаскивание, «Добавить кнопку», «⋯» на плитке.
+        Частые кнопки телевизора, сцен, выключателей и ресивера. Команды те же, что на оригинальных пультах. Каждый столбец правится отдельно: «Изменить» → перетаскивание, «Добавить кнопку», «⋯» на плитке.
       </p>
       <div className='grid gap-6 md:grid-cols-2'>
         {UNI_COLUMNS.map((c) => (
-          <Column key={c} column={c} data={data} st={st} pending={pending} onPress={press} onSave={(column, buttons) => save({ column, buttons })} onReset={reset} />
+          <Column key={c} column={c} data={data} st={st} busy={sw.busy} pending={pending} onPress={press} onSave={(column, buttons) => save({ column, buttons })} onReset={reset} />
         ))}
       </div>
     </div>

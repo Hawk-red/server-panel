@@ -87,8 +87,8 @@ export function AddDialog({ catalog, taken, defaultSource = 'receiver', onPick, 
   // столбец предлагает кнопки своего устройства, но можно выбрать и другое устройство или сцену
   const [source, setSource] = useState<UniSource>(defaultSource)
   const [q, setQ] = useState('')
-  type Item = { command: string; title: string; color?: SceneColor; icon?: SceneIcon; available?: boolean }
-  const items: Item[] = source === 'scene' ? catalog.scenes : source === 'tv' ? catalog.tv : catalog.receiver
+  type Item = { command: string; title: string; group?: string; color?: SceneColor; icon?: SceneIcon; available?: boolean }
+  const items: Item[] = source === 'scene' ? catalog.scenes : source === 'switch' ? catalog.switches : source === 'tv' ? catalog.tv : catalog.receiver
   const found = filterItems(items, q)
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -98,8 +98,8 @@ export function AddDialog({ catalog, taken, defaultSource = 'receiver', onPick, 
         </DialogHeader>
         <Tabs value={source} onValueChange={(v) => (setSource(v as UniSource), setQ(''))}>
           <TabsList className='w-full'>
-            {(['receiver', 'tv', 'scene'] as const).map((s) => (
-              <TabsTrigger key={s} value={s} className='flex-1'>
+            {(['receiver', 'tv', 'scene', 'switch'] as const).map((s) => (
+              <TabsTrigger key={s} value={s} className='flex-1 px-1.5 text-xs sm:text-sm'>
                 {SOURCE_LABEL[s]}
               </TabsTrigger>
             ))}
@@ -107,7 +107,13 @@ export function AddDialog({ catalog, taken, defaultSource = 'receiver', onPick, 
         </Tabs>
         <div className='relative'>
           <Search className='pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground' aria-hidden />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder='Поиск кнопки' className='ps-8' aria-label='Поиск кнопки' />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={source === 'switch' ? 'Поиск по имени канала или устройства' : 'Поиск кнопки'}
+            className='ps-8'
+            aria-label={source === 'switch' ? 'Поиск выключателя' : 'Поиск кнопки'}
+          />
         </div>
         <div className='max-h-72 overflow-y-auto rounded-md border'>
           {found.length === 0 && <p className='p-4 text-center text-sm text-muted-foreground'>Ничего не нашлось</p>}
@@ -118,9 +124,12 @@ export function AddDialog({ catalog, taken, defaultSource = 'receiver', onPick, 
               onClick={() => onPick(draftButton(source, item, taken))}
               className='flex w-full items-center gap-2 border-b px-3 py-2 text-start text-sm last:border-b-0 hover:bg-muted/60 focus-visible:bg-muted focus-visible:outline-none'
             >
-              <span className='truncate font-medium'>{item.title}</span>
+              <span className='flex min-w-0 flex-col'>
+                <span className='truncate font-medium'>{item.title}</span>
+                {item.group && source === 'switch' && <span className='truncate text-xs text-muted-foreground'>{item.group}</span>}
+              </span>
               <span className='ms-auto shrink-0 font-mono text-xs text-muted-foreground'>{item.command}</span>
-              {item.available === false && <span className='shrink-0 text-xs text-muted-foreground'>недоступна</span>}
+              {item.available === false && <span className='shrink-0 text-xs text-muted-foreground'>{source === 'switch' ? 'недоступен' : 'недоступна'}</span>}
             </button>
           ))}
         </div>

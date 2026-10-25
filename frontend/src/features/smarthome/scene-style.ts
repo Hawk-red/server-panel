@@ -1,4 +1,4 @@
-import { Clapperboard, Flame, Gamepad2, Laptop, Lightbulb, Monitor, Power, Radio, Smartphone, Sparkles, Tv, Volume2 } from 'lucide-react'
+import { Clapperboard, Flame, Gamepad2, Laptop, Lightbulb, Monitor, Plug, Power, Radio, Smartphone, Sparkles, Tv, Volume2 } from 'lucide-react'
 import type { SceneColor, SceneIcon } from '@/lib/smarthome'
 
 // Цвета плиток сцен (классы заданы целиком, чтобы Tailwind их не вырезал)
@@ -10,5 +10,5 @@ export const SCENE_COLOR_LABEL: Record<SceneColor, string> = {
   green: 'Зелёный', red: 'Красный', magenta: 'Пурпурный', blue: 'Синий', brown: 'Коричневый', emerald: 'Изумрудный', violet: 'Фиолетовый', orange: 'Оранжевый', slate: 'Серо-синий', cyan: 'Бирюзовый',
 }
 export const SCENE_ICON: Record<SceneIcon, typeof Tv> = {
-  tv: Tv, power: Power, clapperboard: Clapperboard, flame: Flame, radio: Radio, laptop: Laptop, gamepad: Gamepad2, smartphone: Smartphone, lightbulb: Lightbulb, volume: Volume2, monitor: Monitor, sparkles: Sparkles,
+  tv: Tv, power: Power, clapperboard: Clapperboard, flame: Flame, radio: Radio, laptop: Laptop, gamepad: Gamepad2, smartphone: Smartphone, lightbulb: Lightbulb, volume: Volume2, monitor: Monitor, sparkles: Sparkles, socket: Plug,
 }

@@ -1,11 +1,11 @@
-// Универсальный пульт (два столбца: Samsung и Marantz): правила плиток без React. Команды берутся с сервера уже развёрнутыми (universal.remote),
+// Универсальный пульт (два столбца: Samsung и Marantz): правила плиток без React. Плитки-выключатели берут живое состояние из «Умного дома». Команды берутся с сервера уже развёрнутыми (universal.remote),
 // доступность считается теми же функциями, что и у оригинальных пультов, — свои правила не заводим.
 import { isRepeatable, keyStatus, type KeyStatus } from './receiver-pad.ts'
 import type { ReceiverFullState } from './receiver-remote.ts'
-import type { SceneColor, SceneIcon } from './smarthome.ts'
+import type { ControlState, SceneColor, SceneIcon } from './smarthome.ts'
 import { isTvRepeatable, tvKeyStatus, type TvStatus } from './tv-pad.ts'
 
-export type UniSource = 'receiver' | 'tv' | 'scene'
+export type UniSource = 'receiver' | 'tv' | 'scene' | 'switch'
 export type UniButton = { id: string; source: UniSource; command: string; label: string; icon: SceneIcon; color: SceneColor }
 /** Плитка с сервера: resolved — настоящая команда (или null), title — её название, available — есть ли что нажимать */
 export type UniButtonView = UniButton & { resolved: string | null; title: string; available: boolean }
@@ -14,6 +14,7 @@ export type UniCatalog = {
   receiver: { command: string; title: string; group: string }[]
   tv: { command: string; title: string; group: string }[]
   scenes: { command: string; title: string; color: SceneColor; icon: SceneIcon; available: boolean }[]
+  switches: { command: string; title: string; group: string; available: boolean }[]
 }
 /** Столбцы пульта: слева Samsung (телевизор и сцены), справа Marantz (ресивер); каждый правится отдельно */
 export const UNI_COLUMNS = ['tv', 'receiver'] as const
@@ -22,15 +23,29 @@ export const UNI_COLUMN_TITLE: Record<UniColumn, string> = { tv: 'Samsung', rece
 export type UniColumnData = { buttons: UniButtonView[]; defaults: UniButton[]; isDefault: boolean }
 export type UniData = { columns: Record<UniColumn, UniColumnData>; catalog: UniCatalog; max: number }
 
-export const SOURCE_LABEL: Record<UniSource, string> = { receiver: 'Ресивер', tv: 'Телевизор', scene: 'Сцена' }
+export const SOURCE_LABEL: Record<UniSource, string> = { receiver: 'Ресивер', tv: 'Телевизор', scene: 'Сцена', switch: 'Выключатели' }
 
-export type DeviceState = { receiver: Pick<ReceiverFullState, 'power' | 'inputs'> | undefined; tv: Pick<TvStatus, 'online' | 'paired' | 'driver' | 'keys'> | undefined }
+export type DeviceState = {
+  receiver: Pick<ReceiverFullState, 'power' | 'inputs'> | undefined
+  tv: Pick<TvStatus, 'online' | 'paired' | 'driver' | 'keys'> | undefined
+  /** живые состояния выключателей «Умного дома» по entity_id (опрос /smarthome/devices раз в 3 с) */
+  switches?: Record<string, ControlState>
+}
 
-/** Можно ли нажать плитку: правила — от исходного пульта (ресивер) или телевизора; сцена — доступна ли она */
+/** Состояние плитки-выключателя: живое из «Умного дома», пока данных нет — по доступности с сервера */
+export function uniSwitchState(b: UniButtonView, st: DeviceState): ControlState | 'unknown' {
+  if (!b.resolved) return 'unavailable'
+  const live = st.switches?.[b.resolved]
+  if (live) return live
+  return b.available ? 'unknown' : 'unavailable'
+}
+
+/** Можно ли нажать плитку: правила — от исходного пульта (ресивер) или телевизора; сцена и выключатель — доступны ли они */
 export function uniStatus(b: UniButtonView, st: DeviceState): KeyStatus {
   if (!b.resolved) return { enabled: false, reason: 'команда не назначена' }
   if (b.source === 'receiver') return keyStatus(b.resolved, st.receiver)
   if (b.source === 'tv') return tvKeyStatus(b.resolved, st.tv)
+  if (b.source === 'switch') return uniSwitchState(b, st) === 'unavailable' ? { enabled: false, reason: 'выключатель недоступен' } : { enabled: true, reason: null }
   return b.available ? { enabled: true, reason: null } : { enabled: false, reason: 'сцена недоступна' }
 }
 
@@ -45,9 +60,9 @@ export function nextId(list: { id: string }[]): string {
 }
 
 /** Поиск по названию и команде (как в окне выбора команды пультов) */
-export function filterItems<T extends { command: string; title: string }>(list: T[], query: string): T[] {
+export function filterItems<T extends { command: string; title: string; group?: string }>(list: T[], query: string): T[] {
   const q = query.trim().toLowerCase()
-  return q ? list.filter((c) => `${c.title} ${c.command}`.toLowerCase().includes(q)) : list
+  return q ? list.filter((c) => `${c.title} ${c.command} ${c.group ?? ''}`.toLowerCase().includes(q)) : list
 }
 
 /** Новая плитка из выбранного в диалоге: подпись и вид по умолчанию — от выбранной кнопки или сцены */
@@ -57,8 +72,8 @@ export function draftButton(source: UniSource, item: { command: string; title: s
     source,
     command: item.command,
     label: item.title.slice(0, 40),
-    icon: item.icon ?? (source === 'tv' ? 'tv' : source === 'receiver' ? 'volume' : 'sparkles'),
-    color: item.color ?? (source === 'tv' ? 'slate' : source === 'receiver' ? 'cyan' : 'green'),
+    icon: item.icon ?? (source === 'tv' ? 'tv' : source === 'receiver' ? 'volume' : source === 'switch' ? (item.command.startsWith('light.') ? 'lightbulb' : 'socket') : 'sparkles'),
+    color: item.color ?? (source === 'tv' ? 'slate' : source === 'receiver' ? 'cyan' : source === 'switch' ? 'magenta' : 'green'),
   }
 }
 
