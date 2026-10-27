@@ -42,6 +42,7 @@ import { externalPolicy } from './externalPolicy.js'
 import { externalEnabled, totpEnabled } from './security.js'
 import { linksRoutes } from './routes/links.js'
 import { manifestRoutes } from './routes/manifest.js'
+import { isPageRequest, renderPage } from './pageHtml.js'
 import { securityRoutes } from './routes/security.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
@@ -136,7 +137,17 @@ app.get('/api/health', async () => ({
 
 // Собранный фронт (SPA): неизвестные не-API пути → index.html
 const hasStatic = existsSync(path.join(config.staticDir, 'index.html'))
+// Сам HTML страницы собирается на сервере: <link rel="manifest">, <title> и apple-mobile-web-app-title уже
+// содержат адрес и имя открываемой страницы. Safari читает их из первого ответа, до запуска JS, — иначе
+// «На экран Домой» всегда берёт манифест главной. Хук стоит до статики (иначе он к её маршрутам не попадёт)
+// и пропускает всё, кроме запросов самих страниц: файлы и /api/* идут прежним путём.
 if (hasStatic) {
+  app.addHook('onRequest', async (req, reply) => {
+    if (!isPageRequest(req.method, req.url, req.headers.accept)) return
+    const html = renderPage(req.url)
+    if (html === undefined) return
+    return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(html)
+  })
   await app.register(fastifyStatic, {
     root: config.staticDir,
     // wildcard: файлы ищутся на диске при каждом запросе — пересборка фронта подхватывается без перезапуска
@@ -159,7 +170,10 @@ app.setNotFoundHandler((req, reply) => {
   if (req.url.startsWith('/api/') || req.method !== 'GET' || !hasStatic || pathOnly.startsWith('/assets/') || /\.[a-z0-9]{2,5}$/i.test(pathOnly)) {
     return reply.code(404).send({ message: 'Не найдено' })
   }
-  return reply.header('Cache-Control', 'no-cache').sendFile('index.html')
+  // Клиент без Accept: text/html (curl, скрипты) — тот же собранный HTML, теги в нём тоже под адрес
+  const html = renderPage(req.url)
+  if (html === undefined) return reply.header('Cache-Control', 'no-cache').sendFile('index.html')
+  return reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(html)
 })
 
 const cleanupTimer = setInterval(cleanupAuth, 60 * 60 * 1000)
