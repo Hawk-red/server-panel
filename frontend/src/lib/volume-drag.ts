@@ -1,13 +1,13 @@
 // Математика регулятора громкости без React: относительная протяжка → значение шкалы, разметка шкалы с потолком,
 // отправка «только последнего значения» (один запрос в полёте). Всё чистое и проверяется тестами.
 
-export const VOLUME_SKINS = ['fader', 'dial', 'led'] as const
+export const VOLUME_SKINS = ['fader', 'bar', 'led'] as const
 export type VolumeSkin = (typeof VOLUME_SKINS)[number]
-export const VOLUME_SKIN_TITLE: Record<VolumeSkin, string> = { fader: 'Фейдер', dial: 'Циферблат', led: 'LED' }
+export const VOLUME_SKIN_TITLE: Record<VolumeSkin, string> = { fader: 'Фейдер', bar: 'Полоса', led: 'LED' }
 export const isVolumeSkin = (v: unknown): v is VolumeSkin => typeof v === 'string' && (VOLUME_SKINS as readonly string[]).includes(v)
+/** Прежний скин «Циферблат» убран (дёргалась стрелка); сохранённое значение читается как «Полоса» */
+export const parseVolumeSkin = (v: unknown): VolumeSkin => (isVolumeSkin(v) ? v : v === 'dial' ? 'bar' : 'fader')
 
-/** Шкала ресивера целиком: MV00…MV98 (0 dB = MV80) */
-export const SCALE_MAX = 98
 /** Шаг шкалы: ресивер понимает половины */
 export const STEP = 0.5
 
@@ -30,19 +30,25 @@ export function dragToVolume(o: { start: number; dy: number; max: number; sensit
 /** Шаг клавиатурой (↑/↓, PageUp/PageDown) */
 export const stepVolume = (value: number, delta: number, max: number) => Math.min(Math.max(halfStep(value + delta), 0), halfStep(max))
 
-/** Верх отрисованной шкалы: чуть выше потолка, чтобы метка потолка была видна, но не выше шкалы ресивера */
-export const scaleTop = (max: number) => Math.min(SCALE_MAX, halfStep(max) + 8)
-/** Доля шкалы 0..1 для значения */
-export const levelOf = (value: number, max: number) => Math.min(1, Math.max(0, value / scaleTop(max)))
-/** Доля шкалы, на которой стоит метка потолка */
-export const ceilingOf = (max: number) => levelOf(halfStep(max), max)
+/** Доля шкалы 0..1: верх рисунка — потолок, поэтому у потолка заливка доходит до самого верха */
+export const levelOf = (value: number, max: number) => Math.min(1, Math.max(0, value / Math.max(STEP, halfStep(max))))
 
-/** Громкость (шкала) → «−40,0 dB» (как в остальной панели) */
-export function volumeDb(value: number | null): string {
-  if (value === null) return '— dB'
-  const db = value - 80
-  const s = Math.abs(db).toFixed(1).replace('.', ',')
-  return `${db < 0 ? '−' : db > 0 ? '+' : ''}${s} dB`
+// Шкала ресивера (MV00…MV98, 0 dB = MV80) показывается так же, как в приложении ресивера: обычными числами
+// 0…потолок, без дБ. Протокол и API это не меняет — перевода тут нет, только формат показа.
+/** Значение шкалы → число для показа: «52», «52,5», «—» */
+export function volumeUnits(value: number | null): string {
+  if (value === null) return '—'
+  return String(halfStep(value)).replace('.', ',')
+}
+
+export type VolumeTick = { value: number; frac: number }
+/** Подписи шкалы: каждые 10 единиц от нуля и сам потолок */
+export function volumeTicks(max: number, step = 10): VolumeTick[] {
+  const top = Math.max(STEP, halfStep(max))
+  const out: VolumeTick[] = []
+  for (let v = 0; v < top; v += step) out.push({ value: v, frac: levelOf(v, max) })
+  out.push({ value: top, frac: 1 })
+  return out
 }
 
 /** Регулятор доступен только когда ресивер включён и сообщил громкость */

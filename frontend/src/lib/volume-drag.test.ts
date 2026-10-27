@@ -3,7 +3,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  ceilingOf,
   createLatestSender,
   dragSensitivity,
   dragSpan,
@@ -11,9 +10,10 @@ import {
   isVolumeSkin,
   knobDisabled,
   levelOf,
-  scaleTop,
+  parseVolumeSkin,
   stepVolume,
-  volumeDb,
+  volumeTicks,
+  volumeUnits,
   VOLUME_SKINS,
   VOLUME_SKIN_TITLE,
 } from './volume-drag'
@@ -61,23 +61,32 @@ describe('протяжка → значение', () => {
 })
 
 describe('разметка шкалы', () => {
-  it('верх шкалы чуть выше потолка (но не выше MV98), метка потолка — на своей доле', () => {
-    assert.equal(scaleTop(60), 68)
-    assert.equal(scaleTop(95), 98)
-    assert.equal(ceilingOf(60), 60 / 68)
-    assert.ok(ceilingOf(60) < 1)
-  })
-  it('уровень 0..1 и обрезка', () => {
+  it('верх рисунка — потолок: у потолка уровень ровно 1 (весь диапазон достижим)', () => {
     assert.equal(levelOf(0, 60), 0)
-    assert.equal(levelOf(34, 60), 0.5)
+    assert.equal(levelOf(30, 60), 0.5)
+    assert.equal(levelOf(60, 60), 1)
+    assert.equal(levelOf(59.5, 60), 59.5 / 60)
+    assert.ok(levelOf(59.5, 60) > 0.99)
+  })
+  it('уровень обрезается по краям', () => {
     assert.equal(levelOf(99, 60), 1)
     assert.equal(levelOf(-5, 60), 0)
+    assert.equal(levelOf(10, 0), 1) // потолок не задан — не делим на ноль
   })
-  it('значение в дБ как в остальной панели', () => {
-    assert.equal(volumeDb(40), '−40,0 dB')
-    assert.equal(volumeDb(80), '0,0 dB')
-    assert.equal(volumeDb(85.5), '+5,5 dB')
-    assert.equal(volumeDb(null), '— dB')
+  it('значение шкалы показывается обычным числом, без дБ', () => {
+    assert.equal(volumeUnits(52), '52')
+    assert.equal(volumeUnits(52.5), '52,5')
+    assert.equal(volumeUnits(0), '0')
+    assert.equal(volumeUnits(52.4), '52,5') // половины шага
+    assert.equal(volumeUnits(null), '—')
+  })
+  it('подписи шкалы: каждые 10 единиц и сам потолок', () => {
+    assert.deepEqual(volumeTicks(60).map((t) => t.value), [0, 10, 20, 30, 40, 50, 60])
+    assert.deepEqual(volumeTicks(55).map((t) => t.value), [0, 10, 20, 30, 40, 50, 55])
+    const ticks = volumeTicks(60)
+    assert.equal(ticks[0].frac, 0)
+    assert.equal(ticks[ticks.length - 1].frac, 1) // верхняя подпись — на самом верху
+    assert.equal(volumeTicks(60, 20).map((t) => t.value).join(), '0,20,40,60')
   })
 })
 
@@ -89,10 +98,15 @@ describe('доступность и скины', () => {
     assert.equal(knobDisabled({ power: 'ON', volume: 40 }), false)
   })
   it('три скина с подписями чипов', () => {
-    assert.deepEqual([...VOLUME_SKINS], ['fader', 'dial', 'led'])
-    assert.deepEqual(VOLUME_SKINS.map((s) => VOLUME_SKIN_TITLE[s]), ['Фейдер', 'Циферблат', 'LED'])
+    assert.deepEqual([...VOLUME_SKINS], ['fader', 'bar', 'led'])
+    assert.deepEqual(VOLUME_SKINS.map((s) => VOLUME_SKIN_TITLE[s]), ['Фейдер', 'Полоса', 'LED'])
     for (const s of VOLUME_SKINS) assert.equal(isVolumeSkin(s), true)
-    for (const s of ['neon', '', null, 42, {}]) assert.equal(isVolumeSkin(s), false)
+    for (const s of ['neon', '', null, 42, {}, 'dial']) assert.equal(isVolumeSkin(s), false)
+  })
+  it('прежний «Циферблат» читается как «Полоса», мусор — как «Фейдер»', () => {
+    assert.equal(parseVolumeSkin('dial'), 'bar')
+    assert.equal(parseVolumeSkin('led'), 'led')
+    for (const s of ['neon', '', null, undefined, 42, {}]) assert.equal(parseVolumeSkin(s), 'fader', String(s))
   })
 })
 

@@ -11,9 +11,14 @@ import { panelStoppedInfo, startPanelStopped, stopAllTorrents } from '../service
 import { noteVolumeSeries } from '../services/volumeLog.js'
 import { getSetting, setSetting } from '../settings.js'
 
-// Скины регулятора громкости: «Фейдер», «Циферблат», «LED» (выбор общий для всех устройств)
-export const VOLUME_SKINS = ['fader', 'dial', 'led'] as const
+// Скины регулятора громкости: «Фейдер», «Полоса», «LED» (выбор общий для всех устройств)
+export const VOLUME_SKINS = ['fader', 'bar', 'led'] as const
 export const VOLUME_SKIN_KEY = 'receiver.volumeSkin'
+// Прежний скин «Циферблат» (dial) убран: сохранённое значение отдаём как «Полоса», чтобы фронт не получал неизвестный вид
+const readSkin = () => {
+  const saved = getSetting<string>(VOLUME_SKIN_KEY, VOLUME_SKINS[0])
+  return (VOLUME_SKINS as readonly string[]).includes(saved) ? saved : saved === 'dial' ? 'bar' : VOLUME_SKINS[0]
+}
 
 // Результат подисточника: данные или причина «нет данных» — страница не падает целиком
 type Part<T> = { data: T; error: null } | { data: null; error: string }
@@ -137,7 +142,7 @@ export async function serviceRoutes(app: FastifyInstance) {
     }
   })
   // Скин регулятора громкости (общий для устройств, настройка receiver.volumeSkin)
-  app.get('/api/receiver/volume/skin', async () => ({ skin: getSetting<string>(VOLUME_SKIN_KEY, VOLUME_SKINS[0]), skins: VOLUME_SKINS }))
+  app.get('/api/receiver/volume/skin', async () => ({ skin: readSkin(), skins: VOLUME_SKINS }))
   app.put<{ Body: { skin?: unknown } }>('/api/receiver/volume/skin', async (req, reply) => {
     const skin = req.body?.skin
     if (typeof skin !== 'string' || !(VOLUME_SKINS as readonly string[]).includes(skin)) return reply.code(400).send({ message: 'Неизвестный скин регулятора', code: 'bad' })

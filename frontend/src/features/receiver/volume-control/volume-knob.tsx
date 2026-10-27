@@ -3,9 +3,9 @@
 // (этим занимается use-volume). Опрос состояния во время протяжки положение не перезаписывает: показывается своё значение.
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { dragSensitivity, dragSpan, dragToVolume, stepVolume, volumeDb, VOLUME_SKIN_TITLE, VOLUME_SKINS, type VolumeSkin } from '@/lib/volume-drag'
+import { dragSensitivity, dragSpan, dragToVolume, stepVolume, volumeUnits, VOLUME_SKIN_TITLE, VOLUME_SKINS, type VolumeSkin } from '@/lib/volume-drag'
 import { buzz } from '../use-hold'
-import { DialSkin, FaderSkin, LedSkin } from './skins'
+import { BarSkin, FaderSkin, LedSkin } from './skins'
 
 export type VolumeKnobProps = {
   value: number | null // текущая громкость по данным сервера (null — неизвестна)
@@ -33,7 +33,7 @@ function useReducedMotion() {
   return reduced
 }
 
-const SKIN_VIEW = { fader: FaderSkin, dial: DialSkin, led: LedSkin } as const
+const SKIN_VIEW = { fader: FaderSkin, bar: BarSkin, led: LedSkin } as const
 
 const HOLD_AFTER_RELEASE_MS = 1800 // сколько показываем своё значение после отпускания (дольше, чем сверка состояния в use-volume)
 
@@ -135,7 +135,7 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
         aria-valuemin={0}
         aria-valuemax={max}
         aria-valuenow={shown}
-        aria-valuetext={volumeDb(value === null ? null : shown)}
+        aria-valuetext={volumeUnits(value === null ? null : shown)}
         aria-disabled={disabled}
         data-surface
         className={cn(
@@ -152,7 +152,7 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
         onContextMenu={(e) => e.preventDefault()}
       >
         <Skin {...skinProps} />
-        {/* значение в дБ: тап = Mute (та же логика, что у кнопки Mute на пульте) */}
+        {/* значение шкалы (как в приложении ресивера, без дБ): тап = Mute (та же логика, что у кнопки Mute на пульте) */}
         <div className='pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 rounded-b-2xl bg-gradient-to-t from-black/80 via-black/45 to-transparent p-2 pt-8'>
           <button
             type='button'
@@ -173,13 +173,13 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
             )}
             style={{ touchAction: 'manipulation' }}
           >
-            <span aria-live='polite'>{volumeDb(value === null ? null : shown)}</span>
+            <span aria-live='polite'>{volumeUnits(value === null ? null : shown)}</span>
             <span className='block text-[10px] font-medium uppercase tracking-wide opacity-70'>{mute ? 'Звук выключен' : 'тап — Mute'}</span>
           </button>
           <span className='rounded-lg bg-black/40 px-1.5 py-1 text-right text-[10px] leading-tight text-white/70'>
             потолок
             <br />
-            {volumeDb(max)}
+            {volumeUnits(max)}
           </span>
         </div>
       </div>

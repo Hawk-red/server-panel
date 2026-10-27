@@ -19,7 +19,7 @@ const { serviceRoutes } = await import('./services.js')
 const { SESSION_COOKIE } = await import('../auth.js')
 const receiver = await import('../services/receiver.js')
 const { flushVolumeSeries, volumeLog } = await import('../services/volumeLog.js')
-const { getSetting } = await import('../settings.js')
+const { getSetting, setSetting } = await import('../settings.js')
 
 type Fake = EventEmitter & { written: string[]; destroyed: boolean; write(d: string): boolean; destroy(): void }
 const dev = { pw: 'ON', mv: 40 as number | null, socks: [] as Fake[] }
@@ -148,13 +148,19 @@ describe('скин регулятора', () => {
   const get = () => app.inject({ method: 'GET', url: '/api/receiver/volume/skin', cookies: { [SESSION_COOKIE]: SID } })
   const put = (skin: unknown) => app.inject({ method: 'PUT', url: '/api/receiver/volume/skin', cookies: { [SESSION_COOKIE]: SID }, payload: { skin } })
   it('по умолчанию «Фейдер», сохраняется в настройке receiver.volumeSkin', async () => {
-    assert.deepEqual(JSON.parse((await get()).body), { skin: 'fader', skins: ['fader', 'dial', 'led'] })
+    assert.deepEqual(JSON.parse((await get()).body), { skin: 'fader', skins: ['fader', 'bar', 'led'] })
     assert.equal((await put('led')).statusCode, 200)
     assert.equal(JSON.parse((await get()).body).skin, 'led')
     assert.equal(getSetting('receiver.volumeSkin', 'fader'), 'led')
   })
   it('неизвестный скин — 400, настройка не меняется', async () => {
-    for (const v of ['neon', '', 42, null, {}]) assert.equal((await put(v)).statusCode, 400, JSON.stringify(v))
+    for (const v of ['neon', '', 42, null, {}, 'dial'] /* dial убран — его больше не принимаем */) assert.equal((await put(v)).statusCode, 400, JSON.stringify(v))
     assert.equal(JSON.parse((await get()).body).skin, 'led')
+  })
+  it('сохранённый прежний «Циферблат» читается как «Полоса»', async () => {
+    setSetting('receiver.volumeSkin', 'dial')
+    assert.equal(JSON.parse((await get()).body).skin, 'bar')
+    assert.equal((await put('bar')).statusCode, 200)
+    assert.equal(getSetting('receiver.volumeSkin', 'fader'), 'bar')
   })
 })

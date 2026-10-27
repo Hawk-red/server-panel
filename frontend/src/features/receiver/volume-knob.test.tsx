@@ -1,13 +1,13 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
-// Рендер регулятора громкости на мок-данных (без браузера): три скина и переключатель, метка потолка,
-// значение в дБ с тапом по нему для Mute, неактивное состояние и упрощённая подсветка.
+// Рендер регулятора громкости на мок-данных (без браузера): три скина и переключатель, шкала обычными
+// числами с тапом по значению для Mute, достижимость потолка, неактивное состояние и упрощённая подсветка.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { ceilingOf, VOLUME_SKINS, type VolumeSkin } from '@/lib/volume-drag'
+import { levelOf, VOLUME_SKINS, type VolumeSkin } from '@/lib/volume-drag'
 import { VolumeKnob } from './volume-control/volume-knob.tsx'
-import { VOLUME_MUTED, VOLUME_OFF, VOLUME_ON } from './volume-control/volume-mock.ts'
+import { VOLUME_HIGH, VOLUME_MUTED, VOLUME_OFF, VOLUME_ON } from './volume-control/volume-mock.ts'
 
 const noop = () => {}
 type St = typeof VOLUME_ON
@@ -31,42 +31,50 @@ const html = (over: { st?: St; skin?: VolumeSkin; onSkin?: ((s: VolumeSkin) => v
 }
 
 describe('регулятор громкости: рендер', () => {
-  it('скин «Фейдер»: световая шкала сегментами, колпачок и метка потолка', () => {
+  it('скин «Фейдер»: прорезь с заливкой, бегунок и шкала обычными числами', () => {
     const h = html({ skin: 'fader' })
     assert.match(h, /data-skin="fader"/)
-    assert.equal((h.match(/data-seg="/g) ?? []).length, 18)
-    assert.ok((h.match(/data-seg="on"/g) ?? []).length > 0)
+    assert.match(h, /data-fill[^>]*height:86\.6\d*%/) // 52 из 60
     assert.match(h, /data-handle/)
-    assert.match(h, /data-ceiling/)
-    assert.ok(h.includes('#ef4444')) // красные сегменты у потолка
+    for (const v of [0, 10, 20, 30, 40, 50, 60]) assert.ok(h.includes(`data-tick="${v}"`), String(v))
+    assert.ok(!h.includes('data-seg'), 'лишней световой шкалы у фейдера больше нет')
+    assert.ok(!h.includes('repeating-linear-gradient'), 'декоративных текстур больше нет')
   })
-  it('скин «Циферблат»: стрелка, подписи в дБ и блик стекла', () => {
-    const h = html({ skin: 'dial' })
-    assert.match(h, /data-skin="dial"/)
-    assert.match(h, /<svg/)
-    assert.match(h, /rotate\(/) // стрелка повёрнута
-    assert.ok(h.includes('url(#vk-glass)') && h.includes('url(#vk-face)'))
-    for (const label of ['-80', '-63', '-46', '-29', '-12']) assert.ok(h.includes(`>${label}</text>`), label)
+  it('скин «Полоса»: только заливка снизу вверх, без лишних элементов', () => {
+    const h = html({ skin: 'bar' })
+    assert.match(h, /data-skin="bar"/)
+    assert.equal((h.match(/data-fill/g) ?? []).length, 1)
+    assert.match(h, /data-fill[^>]*height:86\.6\d*%/)
+    assert.ok(!h.includes('<svg') && !h.includes('data-seg') && !h.includes('data-tick') && !h.includes('data-handle'))
+    assert.ok(!h.includes('data-glow'), 'даже подсветки нет — самый дешёвый вид')
   })
-  it('скин «LED»: столбики эквалайзера', () => {
+  it('скин «LED»: одинаковые столбики из сегментов', () => {
     const h = html({ skin: 'led' })
     assert.match(h, /data-skin="led"/)
-    assert.equal((h.match(/data-bar/g) ?? []).length, 11)
-    assert.match(h, /data-ceiling/)
+    assert.equal((h.match(/data-bar/g) ?? []).length, 7)
+    assert.equal((h.match(/data-seg="/g) ?? []).length, 7 * 12)
+    assert.equal((h.match(/data-seg="on"/g) ?? []).length, 7 * 10) // 52 из 60 → 10 сегментов из 12
+  })
+  it('положение заливки и бегунка — без CSS-переходов (иначе палец «опережает» картинку)', () => {
+    for (const skin of VOLUME_SKINS) {
+      const h = html({ skin })
+      for (const bad of [/transition-\[height/, /transition-\[bottom/, /transition:\s*(all|transform|height)/]) assert.ok(!bad.test(h), `${skin}: ${String(bad)}`)
+    }
   })
   it('переключатель скина: три чипа, нажат текущий; без onSkin чипов нет', () => {
     const h = html({ skin: 'led' })
     for (const s of VOLUME_SKINS) assert.ok(h.includes(`data-chip="${s}"`), s)
-    for (const t of ['Фейдер', 'Циферблат', 'LED']) assert.ok(h.includes(t), t)
+    for (const t of ['Фейдер', 'Полоса', 'LED']) assert.ok(h.includes(t), t)
     assert.match(h, /data-chip="led" aria-pressed="true"/)
     assert.match(h, /data-chip="fader" aria-pressed="false"/)
     assert.equal((html({ onSkin: undefined }).match(/data-chip=/g) ?? []).length, 0)
   })
-  it('значение в дБ, потолок и тап по значению для Mute', () => {
+  it('значение обычным числом, потолок и тап по значению для Mute', () => {
     const h = html()
-    assert.ok(h.includes('−28,0 dB')) // volume 52
-    assert.ok(h.includes('потолок')) // метка потолка подписана
-    assert.ok(h.includes('−20,0 dB')) // потолок 60
+    assert.ok(h.includes('>52<')) // volume 52 — без дБ
+    assert.ok(!h.includes('dB'), 'дБ в регуляторе больше не показываем')
+    assert.ok(h.includes('потолок'))
+    assert.ok(h.includes('>60<')) // потолок 60
     assert.match(h, /data-mute[^>]*aria-pressed="false"/)
     assert.ok(h.includes('тап — Mute'))
   })
@@ -82,7 +90,7 @@ describe('регулятор громкости: рендер', () => {
     assert.match(h, /aria-valuemin="0"/)
     assert.match(h, /aria-valuemax="60"/)
     assert.match(h, /aria-valuenow="52"/)
-    assert.match(h, /aria-valuetext="−28,0 dB"/)
+    assert.match(h, /aria-valuetext="52"/)
     assert.match(h, /tabindex="0"/)
     assert.match(h, /touch-action:none/)
   })
@@ -93,8 +101,8 @@ describe('регулятор громкости: рендер', () => {
     assert.match(h, /tabindex="-1"/)
     assert.ok(h.includes('pointer-events-none') && h.includes('grayscale'))
     assert.ok(h.includes('Ресивер выключен — громкость недоступна'))
-    assert.ok(h.includes('— dB')) // значения нет
-    assert.equal((h.match(/data-seg="on"/g) ?? []).length, 0) // шкала не светится
+    assert.ok(h.includes('>—<')) // значения нет
+    assert.equal((html({ st: VOLUME_OFF, skin: 'led' }).match(/data-seg="on"/g) ?? []).length, 0) // шкала не светится
   })
   it('компактный вид ниже полноразмерного, но с теми же частями', () => {
     const full = html()
@@ -103,10 +111,13 @@ describe('регулятор громкости: рендер', () => {
     assert.ok(small.includes('min-height:11rem'))
     for (const h of [full, small]) assert.match(h, /data-volume-knob/)
   })
-  it('метка потолка стоит ниже верха шкалы (шкала не кончается потолком)', () => {
-    assert.ok(ceilingOf(60) > 0.8 && ceilingOf(60) < 1)
-    const h = html({ st: VOLUME_ON })
-    const bottom = /data-ceiling[^>]*bottom:([\d.]+)%/.exec(h)?.[1]
-    assert.ok(bottom && Number(bottom) > 80 && Number(bottom) < 100, bottom)
+  it('у потолка диапазон пройден до конца: заливка на 100 %, все сегменты LED горят', () => {
+    assert.equal(levelOf(60, 60), 1)
+    const top = { ...VOLUME_ON, volume: 60 }
+    assert.match(html({ st: top, skin: 'fader' }), /data-fill[^>]*height:100%/)
+    assert.match(html({ st: top, skin: 'bar' }), /data-fill[^>]*height:100%/)
+    assert.equal((html({ st: top, skin: 'led' }).match(/data-seg="on"/g) ?? []).length, 7 * 12)
+    // почти у потолка — тоже не ниже последнего сегмента
+    assert.equal((html({ st: VOLUME_HIGH, skin: 'led' }).match(/data-seg="on"/g) ?? []).length, 7 * 12)
   })
 })

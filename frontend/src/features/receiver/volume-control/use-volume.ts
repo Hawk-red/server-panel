@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { ReceiverFullState } from '@/lib/receiver-remote'
-import { createLatestSender, isVolumeSkin, type LatestSender, type VolumeSkin } from '@/lib/volume-drag'
+import { createLatestSender, parseVolumeSkin, type LatestSender, type VolumeSkin } from '@/lib/volume-drag'
 import { errInfo } from '../use-receiver'
 
 export type VolumeReply = { from: number; volume: number; target: number; clamped: boolean; maxVolume: number }
@@ -28,7 +28,7 @@ export function useVolumeSkin() {
       void qc.invalidateQueries({ queryKey: SKIN_KEY })
     },
   })
-  return { skin: isVolumeSkin(q.data?.skin) ? q.data.skin : 'fader', setSkin: put.mutate }
+  return { skin: parseVolumeSkin(q.data?.skin), setSkin: put.mutate }
 }
 
 /** Отправщик громкости: пока ответ не пришёл, новое значение заменяет отложенное; финальное — со сверкой состояния */
