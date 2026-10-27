@@ -1,6 +1,7 @@
 // Marantz NR1604: пульт по telnet (порт 23). Ресивер держит всего 2 соединения (третье — Connection refused), поэтому у панели
 // максимум одно: общий короткоживущий сеанс (закрывается после timing.idleMs простоя). Все команды идут строго по одной,
-// между разными соединениями пауза ≥ gapSessionMs. Записывать можно только команды из белого списка (FIXED, SI<вход>, WRITABLE).
+// между разными соединениями пауза ≥ gapSessionMs. Записывать можно только команды из белого списка (FIXED, SI<вход>, WRITABLE);
+// абсолютная громкость MV<число> в белый список не входит и доступна ровно через setVolume (см. конец файла).
 import net from 'node:net'
 import { config } from '../config.js'
 import { http } from '../http.js'
@@ -350,6 +351,7 @@ async function readState(s: Session): Promise<ReceiverState> {
   st.power = parsePower([(await s.query('PW?', RE.pw)) ?? ''])
   if (st.power !== 'ON') return st // в режиме ожидания остальное не отвечает
   st.volume = parseVolume(await s.query('MV?', RE.mv))
+  noteVolume(st.volume)
   if (st.volume === null) return st // ресивер ещё не готов (включается) — не ждём таймауты остальных запросов
   st.volumeDb = st.volume - 80
   const mu = await s.query('MU?', RE.mu)
@@ -511,10 +513,12 @@ export async function sendCommand(command: string): Promise<CmdResult> {
           await s.write(command)
           const lines = await s.settle(200, RE.mv)
           r.volume = parseVolume(lines.find((l) => RE.mv.test(l)) ?? null) ?? cur + 0.5
+          noteVolume(r.volume)
         } else {
           await s.write(command)
           const lines = await s.settle(200, RE.mv)
           r.volume = parseVolume(lines.find((l) => RE.mv.test(l)) ?? null)
+          noteVolume(r.volume)
         }
         return
       }
@@ -592,4 +596,142 @@ export async function sendCommand(command: string): Promise<CmdResult> {
     stats.notAccepted++
   } else stats.ok++
   return r
+}
+
+// ---------- абсолютная громкость (регулятор-протяжка) ----------
+// Отдельный путь: MV<число> в общий белый список не входит (там только MVUP/MVDOWN) и доступен ровно через setVolume,
+// где все проверки делает сервер: потолок config.marantz.maxVolume, ограничение роста, лимит частоты и коалесинг
+// (копится не очередь, а одна последняя цель — пальцу на экране отвечает самое свежее значение).
+export const volumeTiming = {
+  stepGapMs: 80, // между шагами догона цели (рост больше VOLUME_RISE_LIMIT сервер проходит сам)
+  knownMs: 2000, // пока последнее значение свежее, MV? перед шагом не спрашиваем (протяжка идёт без лишних запросов)
+  rateWindowMs: 1000,
+  rateMax: 12, // команд абсолютной громкости в секунду
+}
+/** Шкала ресивера: MV00…MV98 (0 dB = MV80). Потолок панели — maxVolume(), он всегда ниже */
+export const VOLUME_SCALE_MAX = 98
+/** За одну команду громкость растёт не больше чем на столько шкалы (вниз — без ограничения) */
+export const VOLUME_RISE_LIMIT = 3
+const VOLUME_MAX_STEPS = 24 // страховка от бесконечного догона, если ресивер отвечает одним и тем же значением
+
+const halfStep = (v: number) => Math.round(v * 2) / 2
+/** Значение шкалы → команда: 45 → «MV45», 45,5 → «MV455», 0 → «MV00» (половинные шаги ресивер отдаёт как MV455) */
+export function volumeCommand(v: number): string {
+  const half = halfStep(v)
+  return half % 1 ? `MV${String(Math.round(half * 10)).padStart(3, '0')}` : `MV${String(half).padStart(2, '0')}`
+}
+/** Обрезка до [0; потолок] с округлением до половины шага */
+export const clampVolume = (v: number) => Math.min(Math.max(halfStep(v), 0), halfStep(maxVolume()))
+/** Значение из запроса: число шкалы в пределах MV00…MV98, иначе 400 (обрезку по потолку делает clampVolume, это не ошибка) */
+export function validateVolume(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) throw new ReceiverError('Нужно число — значение шкалы громкости', 'bad')
+  if (raw < 0 || raw > VOLUME_SCALE_MAX) throw new ReceiverError(`Значение вне шкалы ресивера (0…${VOLUME_SCALE_MAX})`, 'bad')
+  return halfStep(raw)
+}
+
+let known: { v: number; at: number } | null = null // последнее значение громкости от ресивера
+const noteVolume = (v: number | null) => void (known = v === null ? null : { v, at: Date.now() })
+const freshVolume = () => (known && Date.now() - known.at < volumeTiming.knownMs ? known.v : null)
+/** Последнее известное значение громкости (для тестов и диагностики) */
+export const lastKnownVolume = () => known?.v ?? null
+
+const volRecent: number[] = []
+export const resetVolume = () => {
+  known = null
+  volRecent.length = 0
+  desired = null
+}
+function volumeRateCheck() {
+  const now = Date.now()
+  while (volRecent.length && now - volRecent[0] >= volumeTiming.rateWindowMs) volRecent.shift()
+  if (volRecent.length >= volumeTiming.rateMax) {
+    stats.rate++
+    throw new ReceiverError(`Слишком часто: не больше ${volumeTiming.rateMax} изменений громкости в секунду`, 'rate')
+  }
+  volRecent.push(now)
+}
+
+export type VolumeResult = {
+  from: number // откуда начали (последнее известное значение)
+  volume: number // фактическое итоговое значение после обрезки
+  target: number // цель после обрезки по потолку
+  clamped: boolean // цель упиралась в потолок
+  maxVolume: number
+}
+
+/** Догон цели: за одну команду не больше +VOLUME_RISE_LIMIT, дальше шагами не чаще stepGapMs; вниз — сразу */
+async function driveTo(goal: number): Promise<{ from: number; volume: number }> {
+  return withSession(async (s) => {
+    let last = freshVolume()
+    if (last === null) {
+      last = parseVolume(await s.query('MV?', RE.mv))
+      if (last === null) {
+        const pw = parsePower([(await s.query('PW?', RE.pw)) ?? ''])
+        throw pw === 'STANDBY'
+          ? new ReceiverError('Ресивер выключен — громкость недоступна', 'standby')
+          : new ReceiverError('Ресивер не сообщил текущую громкость — регулятор недоступен', 'standby')
+      }
+      noteVolume(last)
+    }
+    const from = last
+    for (let i = 0; i < VOLUME_MAX_STEPS; i++) {
+      const step = clampVolume(Math.min(goal, last + VOLUME_RISE_LIMIT))
+      if (step === last) break
+      if (i > 0) await sleep(volumeTiming.stepGapMs)
+      await s.write(volumeCommand(step))
+      const echo = parseVolume((await s.settle(timing.replyMs, RE.mv)).find((l) => RE.mv.test(l)) ?? null)
+      if (echo === null) {
+        // ресивер не подтвердил значение: считаем отправленное, но помечаем громкость неизвестной — следующий шаг спросит MV?
+        last = step
+        noteVolume(null)
+        break
+      }
+      const moved = echo !== last
+      last = echo
+      noteVolume(last)
+      if (!moved || last >= goal || desired !== null) break // ресивер не двинулся, цель достигнута или пришло более свежее значение
+    }
+    return { from, volume: last }
+  })
+}
+
+// Коалесинг: вместо очереди — одна последняя цель; все ждущие запросы получают результат шага, который её применил
+let desired: number | null = null
+let waiting: { ok: (r: { from: number; volume: number }) => void; fail: (e: unknown) => void }[] = []
+let driving = false
+
+async function pump() {
+  if (driving) return
+  driving = true
+  try {
+    while (desired !== null) {
+      const goal = desired
+      desired = null
+      const takers = waiting
+      waiting = []
+      try {
+        const r = await driveTo(goal)
+        for (const t of takers) t.ok(r)
+      } catch (e) {
+        for (const t of takers) t.fail(e)
+      }
+    }
+  } finally {
+    driving = false
+  }
+}
+
+/** Абсолютная громкость: значение шкалы MV. Потолок и ограничение роста — на сервере, ответ — фактическое итоговое значение */
+export async function setVolume(raw: unknown): Promise<VolumeResult> {
+  const value = validateVolume(raw)
+  volumeRateCheck()
+  const target = clampVolume(value)
+  desired = target
+  const r = await new Promise<{ from: number; volume: number }>((ok, fail) => {
+    waiting.push({ ok, fail })
+    void pump()
+  })
+  if (cache) cache = { ...cache, volume: r.volume, volumeDb: r.volume - 80 }
+  stats.ok++
+  return { ...r, target, clamped: target < halfStep(value), maxVolume: maxVolume() }
 }

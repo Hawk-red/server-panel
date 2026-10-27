@@ -8,7 +8,12 @@ import * as qbt from '../services/qbittorrent.js'
 import * as receiver from '../services/receiver.js'
 import * as remote from '../services/receiverRemote.js'
 import { panelStoppedInfo, startPanelStopped, stopAllTorrents } from '../services/torrentControl.js'
+import { noteVolumeSeries } from '../services/volumeLog.js'
 import { getSetting, setSetting } from '../settings.js'
+
+// Скины регулятора громкости: «Фейдер», «Циферблат», «LED» (выбор общий для всех устройств)
+export const VOLUME_SKINS = ['fader', 'dial', 'led'] as const
+export const VOLUME_SKIN_KEY = 'receiver.volumeSkin'
 
 // Результат подисточника: данные или причина «нет данных» — страница не падает целиком
 type Part<T> = { data: T; error: null } | { data: null; error: string }
@@ -119,6 +124,26 @@ export async function serviceRoutes(app: FastifyInstance) {
       if (AUDITED.has(cls)) audit({ ...who(req), action: `receiver.${cls}`, target: command, result: 'error', details: { message: (e as Error).message } })
       return receiverFail(e, reply)
     }
+  })
+  // Абсолютная громкость для регулятора-протяжки: единственный путь к MV<число> (в общем белом списке его нет).
+  // Все защиты — на сервере (потолок, ограничение роста, коалесинг, лимит 12/с); в ответе фактическое итоговое значение
+  app.post<{ Body: { value?: unknown } }>('/api/receiver/volume', async (req, reply) => {
+    try {
+      const r = await receiver.setVolume(req.body?.value)
+      noteVolumeSeries(req.clientIp, r.from, r.volume)
+      return r
+    } catch (e) {
+      return receiverFail(e, reply)
+    }
+  })
+  // Скин регулятора громкости (общий для устройств, настройка receiver.volumeSkin)
+  app.get('/api/receiver/volume/skin', async () => ({ skin: getSetting<string>(VOLUME_SKIN_KEY, VOLUME_SKINS[0]), skins: VOLUME_SKINS }))
+  app.put<{ Body: { skin?: unknown } }>('/api/receiver/volume/skin', async (req, reply) => {
+    const skin = req.body?.skin
+    if (typeof skin !== 'string' || !(VOLUME_SKINS as readonly string[]).includes(skin)) return reply.code(400).send({ message: 'Неизвестный скин регулятора', code: 'bad' })
+    setSetting(VOLUME_SKIN_KEY, skin)
+    audit({ ...who(req), action: 'receiver.volumeSkin', target: skin, result: 'ok' })
+    return { skin, skins: VOLUME_SKINS }
   })
   // Экранный пульт: привязки кнопок (общие для всех устройств, настройка receiver.remote) и список допустимых команд
   app.get('/api/receiver/remote', async () => ({ defaults: remote.REMOTE_DEFAULTS, bindings: remote.getBindings(), commands: remote.commandCatalog() }))

@@ -3,13 +3,15 @@ import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ReceiverSettingsLinks } from '@/features/media/receiver-settings-links'
+import { VolumeControl } from './volume-control'
 import { ReceiverSection } from './index'
 
-/** Вкладка «Marantz»: статус ресивера, его оригинальный пульт RC042SR и свёрнутые ссылки на веб-интерфейс */
+/** Вкладка «Marantz»: регулятор громкости, статус ресивера, его оригинальный пульт RC042SR и свёрнутые ссылки на веб-интерфейс */
 export function MarantzTab() {
   const [open, setOpen] = useState(false)
   return (
     <div className='space-y-4'>
+      <VolumeControl />
       <ReceiverSection view='remote' />
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger asChild>

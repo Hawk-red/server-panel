@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useReceiver } from '@/features/receiver/use-receiver'
+import { VolumeControl } from '@/features/receiver/volume-control'
 import { useTvPress, useTvStatus } from '@/features/tv-remote/use-tv'
 import { AddDialog, TileDialog } from './dialogs'
 import { UniversalPad } from './universal-pad'
@@ -101,10 +102,11 @@ type ColumnProps = {
   onPress: (b: UniButtonView) => void
   onSave: (column: UniColumn, buttons: UniButton[]) => void
   onReset: (column: UniColumn) => void
+  above?: React.ReactNode // над плитками столбца (у «Marantz» — компактный регулятор громкости)
 }
 
 /** Один столбец: свой переключатель «Изменить», своё добавление, перетаскивание и сброс */
-function Column({ column, data, st, busy, pending, onPress, onSave, onReset }: ColumnProps) {
+function Column({ column, data, st, busy, pending, onPress, onSave, onReset, above }: ColumnProps) {
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editTile, setEditTile] = useState<{ b: UniButton; isNew: boolean } | null>(null)
@@ -163,6 +165,8 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset }: C
           <Switch id={sw} checked={editing} onCheckedChange={setEditing} disabled={!data} />
         </div>
       </div>
+
+      {above}
 
       {editing ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -226,7 +230,18 @@ export function UniversalTab() {
       </p>
       <div className='grid gap-6 md:grid-cols-2'>
         {UNI_COLUMNS.map((c) => (
-          <Column key={c} column={c} data={data} st={st} busy={sw.busy} pending={pending} onPress={press} onSave={(column, buttons) => save({ column, buttons })} onReset={reset} />
+          <Column
+            key={c}
+            column={c}
+            data={data}
+            st={st}
+            busy={sw.busy}
+            pending={pending}
+            onPress={press}
+            onSave={(column, buttons) => save({ column, buttons })}
+            onReset={reset}
+            above={c === 'receiver' ? <VolumeControl compact /> : undefined}
+          />
         ))}
       </div>
     </div>
