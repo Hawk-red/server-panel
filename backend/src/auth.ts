@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { audit } from './audit.js'
 import { config } from './config.js'
 import { db } from './db.js'
+import { MANIFEST_PATH } from './manifest.js'
 import { notifySecurity } from './notifier.js'
 import { isInternal, networkOf } from './net.js'
 import { consumeSecondFactor, peekSecondFactor, totpEnabled } from './security.js'
@@ -59,8 +60,14 @@ export function getSession(req: FastifyRequest) {
   return { idHash: row.id_hash, expiresAt: row.expires_at, source: row.source }
 }
 
+// Явное исключение: пути, открытые без входа. Эндпоинты входа (/api/auth/info, /api/auth/login, /api/auth/logout)
+// этим хуком и так не закрыты; кроме них — только манифест PWA: его браузер запрашивает без cookie сессии
+// (<link rel="manifest"> без crossorigin), а секретов в манифесте нет — иконки, цвета и путь страницы.
+export const PUBLIC_PATHS: ReadonlySet<string> = new Set([MANIFEST_PATH])
+
 // preHandler для закрытых эндпоинтов
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
+  if (PUBLIC_PATHS.has(req.url.split('?')[0])) return
   const session = getSession(req)
   if (!session) return reply.code(401).send({ message: 'Требуется вход' })
   req.session = session

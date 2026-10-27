@@ -104,6 +104,16 @@ cd /opt/server-panel/deploy/docker-socket-proxy && docker compose up -d      # �
 
 Иконки из [dashboard-icons](https://github.com/walkxcode/dashboard-icons) лежат в `frontend/public/icons`, в рантайме ничего не качается. Добавить новую иконку: вписать slug в `frontend/scripts/icons.json`, затем выполнить `cd frontend && npm run fetch-icons && npm run build`.
 
+## Иконки страниц на экране «Домой» (iPad)
+
+Safari («Поделиться» → «На экран Домой» → «Открыть как веб-приложение») открывает иконку по `start_url` из манифеста. Со статичным манифестом (`start_url: "/"`) любая иконка вела на «Обзор», поэтому манифест отдаётся **динамически**: `GET /manifest.webmanifest?start=<путь панели>&name=<имя>` (`backend/src/manifest.ts`, маршрут `backend/src/routes/manifest.ts`). В ответе `start_url` и `id` равны `start` (разные `id` — иконки разных страниц не сливаются в одно приложение), `name`/`short_name` — переданное имя (до 20 символов), остальное (иконки, цвета, `display: standalone`, `scope: "/"`) копируется из статичного `frontend/public/manifest.webmanifest` — он остаётся основой и запасным вариантом для первой загрузки.
+
+- **Без входа** — осознанное исключение (`PUBLIC_PATHS` в `backend/src/auth.ts`): `<link rel="manifest">` браузер запрашивает без cookie сессии, а секретов в манифесте нет.
+- **`start` — только внутренний путь панели** (`safeStart`, та же проверка, что у `safeRedirect` на фронте): `https://…`, `//evil.com`, `/\evil.com`, управляющие символы и строка длиннее 200 символов заменяются на `/`. Имя чистится от управляющих символов и режется по символам (эмодзи не рвутся).
+- **Фронт** (`frontend/src/hooks/use-manifest-link.ts`, логика адреса — `frontend/src/lib/manifest-link.ts`): на каждой смене маршрута переписываются `<link rel="manifest">`, `<title>` и `apple-mobile-web-app-title` на имя текущей страницы, поэтому в диалоге «На экран Домой» имя подставляется само. Имя — заголовок раздела из сайдбара; у `/media-control?tab=universal` (в том числе без `?tab=`) — «Пульт»; у страниц вне сайдбара (вход, ТВ-режим, ошибки) — «Mac Mini». `apple-touch-icon` и прочие теги `index.html` не меняются.
+
+Добавили иконки нескольких страниц — каждая открывает свою; внутри окна приложения переходы по панели работают как обычно (`scope: "/"`).
+
 ## Разделы
 
 - **Обзор** — плитки, диски, сводка, список проблем.

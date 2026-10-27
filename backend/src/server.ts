@@ -41,6 +41,7 @@ import { killAllChildren } from './exec.js'
 import { externalPolicy } from './externalPolicy.js'
 import { externalEnabled, totpEnabled } from './security.js'
 import { linksRoutes } from './routes/links.js'
+import { manifestRoutes } from './routes/manifest.js'
 import { securityRoutes } from './routes/security.js'
 import { siteRoutes } from './routes/sites.js'
 import { systemRoutes } from './routes/system.js'
@@ -122,6 +123,8 @@ await app.register(smarthomeRoutes)
 await app.register(homeassistantRoutes)
 await app.register(tvRoutes)
 await app.register(universalRoutes)
+// Манифест PWA (без входа) — до статики: перекрывает одноимённый файл из сборки фронта
+await app.register(manifestRoutes)
 
 app.get('/api/health', async () => ({
   status: 'ok',
