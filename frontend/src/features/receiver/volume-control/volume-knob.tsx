@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { dragSensitivity, dragSpan, dragToVolume, stepVolume, volumeUnits, VOLUME_SKIN_TITLE, VOLUME_SKINS, type VolumeSkin } from '@/lib/volume-drag'
 import { buzz } from '../use-hold'
-import { BarSkin, FaderSkin, LedSkin } from './skins'
+import { CapsuleSkin, KnobSkin, MixerSkin } from './skins'
 
 export type VolumeKnobProps = {
   value: number | null // текущая громкость по данным сервера (null — неизвестна)
@@ -33,7 +33,7 @@ function useReducedMotion() {
   return reduced
 }
 
-const SKIN_VIEW = { fader: FaderSkin, bar: BarSkin, led: LedSkin } as const
+const SKIN_VIEW = { knob: KnobSkin, mixer: MixerSkin, capsule: CapsuleSkin } as const
 
 const HOLD_AFTER_RELEASE_MS = 1800 // сколько показываем своё значение после отпускания (дольше, чем сверка состояния в use-volume)
 
@@ -97,6 +97,15 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
     release(v)
   }
 
+  // кнопки ±5 у «Капсулы»: тот же путь, что у клавиатуры — одно финальное значение, границы 0…потолок
+  const step = (delta: number) => {
+    if (disabled || value === null) return
+    const v = stepVolume(shown, delta, max)
+    buzz()
+    onSend(v, true)
+    release(v)
+  }
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (disabled || value === null) return
     const by = { ArrowUp: 0.5, ArrowDown: -0.5, PageUp: 3, PageDown: -3 } as Record<string, number>
@@ -108,9 +117,9 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
   }
 
   const active = drag?.dragging === true
-  const skinProps = { value: shown, max, active, dir: drag?.dir ?? 0, mute, disabled, reduced, compact }
+  const skinProps = { value: shown, max, active, dir: drag?.dir ?? 0, mute, disabled, reduced, compact, onStep: step }
   return (
-    <div data-volume-knob data-skin={skin} data-state={disabled ? 'off' : active ? 'active' : 'on'} className='flex h-full min-w-0 flex-col gap-2'>
+    <div data-volume-knob data-skin={skin} data-state={disabled ? 'off' : active ? 'active' : 'on'} className='flex min-w-0 flex-col gap-2'>
       {onSkin && (
         <div className='flex flex-wrap items-center gap-1' role='group' aria-label='Вид регулятора'>
           {VOLUME_SKINS.map((s) => (
@@ -128,6 +137,7 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
           ))}
         </div>
       )}
+      {/* область протяжки: высоту задаёт сам вид регулятора, лишних полей вокруг нет */}
       <div
         role='slider'
         tabIndex={disabled ? -1 : 0}
@@ -139,11 +149,11 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
         aria-disabled={disabled}
         data-surface
         className={cn(
-          'relative flex-1 select-none overflow-hidden rounded-2xl outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-ring',
+          'relative w-full min-w-0 select-none rounded-2xl py-1 outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-ring',
           disabled ? 'pointer-events-none opacity-45 grayscale' : 'cursor-ns-resize',
           !reduced && 'transition-[filter,opacity] duration-300',
         )}
-        style={{ touchAction: 'none', minHeight: compact ? '11rem' : '17rem' }}
+        style={{ touchAction: 'none' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -152,36 +162,31 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
         onContextMenu={(e) => e.preventDefault()}
       >
         <Skin {...skinProps} />
-        {/* значение шкалы (как в приложении ресивера, без дБ): тап = Mute (та же логика, что у кнопки Mute на пульте) */}
-        <div className='pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 rounded-b-2xl bg-gradient-to-t from-black/80 via-black/45 to-transparent p-2 pt-8'>
-          <button
-            type='button'
-            data-mute
-            aria-pressed={mute}
-            aria-label={mute ? 'Включить звук' : 'Выключить звук (Mute)'}
-            disabled={disabled || !onMute}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => {
-              buzz()
-              onMute?.()
-            }}
-            className={cn(
-              'pointer-events-auto rounded-xl px-2 py-1 text-left font-bold tabular-nums leading-none text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]',
-              compact ? 'text-2xl' : 'text-3xl',
-              mute && 'text-red-400',
-              !reduced && 'transition-colors duration-200',
-            )}
-            style={{ touchAction: 'manipulation' }}
-          >
-            <span aria-live='polite'>{volumeUnits(value === null ? null : shown)}</span>
-            <span className='block text-[10px] font-medium uppercase tracking-wide opacity-70'>{mute ? 'Звук выключен' : 'тап — Mute'}</span>
-          </button>
-          <span className='rounded-lg bg-black/40 px-1.5 py-1 text-right text-[10px] leading-tight text-white/70'>
-            потолок
-            <br />
-            {volumeUnits(max)}
-          </span>
-        </div>
+      </div>
+      {/* значение шкалы обычным числом (как в приложении ресивера, без дБ); тап по нему — Mute */}
+      <div className='flex items-end justify-between gap-2'>
+        <button
+          type='button'
+          data-mute
+          aria-pressed={mute}
+          aria-label={mute ? 'Включить звук' : 'Выключить звук (Mute)'}
+          disabled={disabled || !onMute}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => {
+            buzz()
+            onMute?.()
+          }}
+          className={cn('-mx-1 rounded-xl px-1 text-left font-bold tabular-nums leading-none', compact ? 'text-2xl' : 'text-3xl', mute ? 'text-destructive' : 'text-foreground', !reduced && 'transition-colors duration-200')}
+          style={{ touchAction: 'manipulation' }}
+        >
+          <span aria-live='polite'>{volumeUnits(value === null ? null : shown)}</span>
+          <span className='block text-[10px] font-medium uppercase tracking-wide text-muted-foreground'>{mute ? 'Звук выключен' : 'тап — Mute'}</span>
+        </button>
+        <span className='text-right text-[10px] leading-tight text-muted-foreground'>
+          потолок
+          <br />
+          {volumeUnits(max)}
+        </span>
       </div>
       {disabled && reason && <p className='text-xs text-muted-foreground'>{reason}</p>}
     </div>

@@ -147,20 +147,22 @@ describe('POST /api/receiver/volume', () => {
 describe('скин регулятора', () => {
   const get = () => app.inject({ method: 'GET', url: '/api/receiver/volume/skin', cookies: { [SESSION_COOKIE]: SID } })
   const put = (skin: unknown) => app.inject({ method: 'PUT', url: '/api/receiver/volume/skin', cookies: { [SESSION_COOKIE]: SID }, payload: { skin } })
-  it('по умолчанию «Фейдер», сохраняется в настройке receiver.volumeSkin', async () => {
-    assert.deepEqual(JSON.parse((await get()).body), { skin: 'fader', skins: ['fader', 'bar', 'led'] })
-    assert.equal((await put('led')).statusCode, 200)
-    assert.equal(JSON.parse((await get()).body).skin, 'led')
-    assert.equal(getSetting('receiver.volumeSkin', 'fader'), 'led')
+  it('по умолчанию «Крутилка», сохраняется в настройке receiver.volumeSkin', async () => {
+    assert.deepEqual(JSON.parse((await get()).body), { skin: 'knob', skins: ['knob', 'mixer', 'capsule'] })
+    assert.equal((await put('capsule')).statusCode, 200)
+    assert.equal(JSON.parse((await get()).body).skin, 'capsule')
+    assert.equal(getSetting('receiver.volumeSkin', 'knob'), 'capsule')
   })
-  it('неизвестный скин — 400, настройка не меняется', async () => {
-    for (const v of ['neon', '', 42, null, {}, 'dial'] /* dial убран — его больше не принимаем */) assert.equal((await put(v)).statusCode, 400, JSON.stringify(v))
-    assert.equal(JSON.parse((await get()).body).skin, 'led')
+  it('неизвестный и прежний скин — 400, настройка не меняется', async () => {
+    for (const v of ['neon', '', 42, null, {}, 'fader', 'bar', 'led', 'dial']) assert.equal((await put(v)).statusCode, 400, JSON.stringify(v))
+    assert.equal(JSON.parse((await get()).body).skin, 'capsule')
   })
-  it('сохранённый прежний «Циферблат» читается как «Полоса»', async () => {
-    setSetting('receiver.volumeSkin', 'dial')
-    assert.equal(JSON.parse((await get()).body).skin, 'bar')
-    assert.equal((await put('bar')).statusCode, 200)
-    assert.equal(getSetting('receiver.volumeSkin', 'fader'), 'bar')
+  it('сохранённый прежний вид откатывается на «Крутилку»', async () => {
+    for (const old of ['fader', 'bar', 'led', 'dial']) {
+      setSetting('receiver.volumeSkin', old)
+      assert.equal(JSON.parse((await get()).body).skin, 'knob', old)
+    }
+    assert.equal((await put('mixer')).statusCode, 200)
+    assert.equal(getSetting('receiver.volumeSkin', 'knob'), 'mixer')
   })
 })

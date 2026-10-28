@@ -58,6 +58,13 @@ describe('протяжка → значение', () => {
     assert.equal(stepVolume(59, 3, 60), 60)
     assert.equal(stepVolume(0.5, -3, 60), 0)
   })
+  it('кнопки ±5 у «Капсулы»: за ноль и за потолок не уходят', () => {
+    assert.equal(stepVolume(52, 5, 60), 57)
+    assert.equal(stepVolume(58, 5, 60), 60) // упор в потолок, а не 63
+    assert.equal(stepVolume(60, 5, 60), 60)
+    assert.equal(stepVolume(3, -5, 60), 0) // упор в ноль, а не −2
+    assert.equal(stepVolume(0, -5, 60), 0)
+  })
 })
 
 describe('разметка шкалы', () => {
@@ -98,15 +105,14 @@ describe('доступность и скины', () => {
     assert.equal(knobDisabled({ power: 'ON', volume: 40 }), false)
   })
   it('три скина с подписями чипов', () => {
-    assert.deepEqual([...VOLUME_SKINS], ['fader', 'bar', 'led'])
-    assert.deepEqual(VOLUME_SKINS.map((s) => VOLUME_SKIN_TITLE[s]), ['Фейдер', 'Полоса', 'LED'])
+    assert.deepEqual([...VOLUME_SKINS], ['knob', 'mixer', 'capsule'])
+    assert.deepEqual(VOLUME_SKINS.map((s) => VOLUME_SKIN_TITLE[s]), ['Крутилка', 'Пульт', 'Капсула'])
     for (const s of VOLUME_SKINS) assert.equal(isVolumeSkin(s), true)
-    for (const s of ['neon', '', null, 42, {}, 'dial']) assert.equal(isVolumeSkin(s), false)
+    for (const s of ['neon', '', null, 42, {}]) assert.equal(isVolumeSkin(s), false)
   })
-  it('прежний «Циферблат» читается как «Полоса», мусор — как «Фейдер»', () => {
-    assert.equal(parseVolumeSkin('dial'), 'bar')
-    assert.equal(parseVolumeSkin('led'), 'led')
-    for (const s of ['neon', '', null, undefined, 42, {}]) assert.equal(parseVolumeSkin(s), 'fader', String(s))
+  it('прежние виды регулятора откатываются на «Крутилку»', () => {
+    for (const s of ['fader', 'bar', 'led', 'dial', 'neon', '', null, undefined, 42, {}]) assert.equal(parseVolumeSkin(s), 'knob', String(s))
+    for (const s of VOLUME_SKINS) assert.equal(parseVolumeSkin(s), s)
   })
 })
 

@@ -1,12 +1,12 @@
 // Математика регулятора громкости без React: относительная протяжка → значение шкалы, разметка шкалы с потолком,
 // отправка «только последнего значения» (один запрос в полёте). Всё чистое и проверяется тестами.
 
-export const VOLUME_SKINS = ['fader', 'bar', 'led'] as const
+export const VOLUME_SKINS = ['knob', 'mixer', 'capsule'] as const
 export type VolumeSkin = (typeof VOLUME_SKINS)[number]
-export const VOLUME_SKIN_TITLE: Record<VolumeSkin, string> = { fader: 'Фейдер', bar: 'Полоса', led: 'LED' }
+export const VOLUME_SKIN_TITLE: Record<VolumeSkin, string> = { knob: 'Крутилка', mixer: 'Пульт', capsule: 'Капсула' }
 export const isVolumeSkin = (v: unknown): v is VolumeSkin => typeof v === 'string' && (VOLUME_SKINS as readonly string[]).includes(v)
-/** Прежний скин «Циферблат» убран (дёргалась стрелка); сохранённое значение читается как «Полоса» */
-export const parseVolumeSkin = (v: unknown): VolumeSkin => (isVolumeSkin(v) ? v : v === 'dial' ? 'bar' : 'fader')
+/** Прежние виды («Фейдер», «Полоса», «LED», «Циферблат») заменены новыми: сохранённое значение откатывается на вид по умолчанию */
+export const parseVolumeSkin = (v: unknown): VolumeSkin => (isVolumeSkin(v) ? v : VOLUME_SKINS[0])
 
 /** Шаг шкалы: ресивер понимает половины */
 export const STEP = 0.5

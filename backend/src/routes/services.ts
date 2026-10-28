@@ -11,13 +11,14 @@ import { panelStoppedInfo, startPanelStopped, stopAllTorrents } from '../service
 import { noteVolumeSeries } from '../services/volumeLog.js'
 import { getSetting, setSetting } from '../settings.js'
 
-// Скины регулятора громкости: «Фейдер», «Полоса», «LED» (выбор общий для всех устройств)
-export const VOLUME_SKINS = ['fader', 'bar', 'led'] as const
+// Скины регулятора громкости: «Крутилка», «Пульт», «Капсула» (выбор общий для всех устройств)
+export const VOLUME_SKINS = ['knob', 'mixer', 'capsule'] as const
 export const VOLUME_SKIN_KEY = 'receiver.volumeSkin'
-// Прежний скин «Циферблат» (dial) убран: сохранённое значение отдаём как «Полоса», чтобы фронт не получал неизвестный вид
+// Прежние виды (fader, bar, led, dial) заменены новыми: сохранённое значение отдаём как вид по умолчанию,
+// чтобы фронт не получил неизвестный скин; PUT со старым именем — 400 (список выше)
 const readSkin = () => {
   const saved = getSetting<string>(VOLUME_SKIN_KEY, VOLUME_SKINS[0])
-  return (VOLUME_SKINS as readonly string[]).includes(saved) ? saved : saved === 'dial' ? 'bar' : VOLUME_SKINS[0]
+  return (VOLUME_SKINS as readonly string[]).includes(saved) ? saved : VOLUME_SKINS[0]
 }
 
 // Результат подисточника: данные или причина «нет данных» — страница не падает целиком

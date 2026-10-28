@@ -27,15 +27,12 @@ export function VolumeControl({ compact = false }: { compact?: boolean }) {
       compact={compact}
     />
   )
+  // Высота — по содержимому регулятора: фиксированных «тёмных полей» вокруг него больше нет
   if (compact)
-    return (
-      <div className='h-[13.75rem]' data-volume-block='compact'>
-        {knob}
-      </div>
-    )
+    return <div data-volume-block='compact'>{knob}</div>
   return (
     <Card data-volume-block='full' className='gap-3 py-4'>
-      <CardContent className='flex h-[25rem] flex-col gap-2'>
+      <CardContent className='flex min-w-0 flex-col gap-2'>
         <div className='flex items-baseline justify-between gap-2'>
           <h2 className='text-sm font-medium'>Громкость</h2>
           <span className='text-xs text-muted-foreground'>протяните вверх или вниз</span>
