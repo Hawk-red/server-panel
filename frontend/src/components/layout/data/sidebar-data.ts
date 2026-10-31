@@ -42,7 +42,7 @@ export const sidebarData: SidebarData = {
     {
       title: 'Сервисы',
       items: [
-        { title: 'Универсальный пульт', url: '/media-control', icon: Tv, color: 'text-volume' },
+        { title: 'ПУЛЬТ', url: '/media-control', icon: Tv, color: 'text-volume' },
         { title: 'Медиа-серверы', url: '/media', icon: Music, color: 'text-volume' },
         { title: 'Умный дом', url: '/smarthome', icon: Lightbulb, color: 'text-brand', subtitle: 'SmartHome' },
         { title: 'Home Assistant', url: '/homeassistant', icon: House, color: 'text-brand' },

@@ -19,9 +19,9 @@ const tile = (h: string, id: string) => new RegExp(`<button[^>]*data-tile="${id}
 const sw = (id: string): UniButtonView => UNI_TV.find((b) => b.id === id)!
 
 describe('универсальный пульт: два столбца', () => {
-  it('столбцы называются Samsung и Marantz, слева ТВ, справа ресивер', () => {
+  it('столбцы называются TV и MARANTZ, слева ТВ, справа ресивер', () => {
     assert.deepEqual([...UNI_COLUMNS], ['tv', 'receiver'])
-    assert.deepEqual(UNI_COLUMNS.map((c) => UNI_COLUMN_TITLE[c]), ['Samsung', 'Marantz'])
+    assert.deepEqual(UNI_COLUMNS.map((c) => UNI_COLUMN_TITLE[c]), ['TV', 'MARANTZ'])
     assert.deepEqual([...new Set(UNI_RECEIVER.map((b) => b.source))], ['receiver'])
     assert.deepEqual([...new Set(UNI_TV.map((b) => b.source))], ['tv', 'scene', 'switch'])
   })

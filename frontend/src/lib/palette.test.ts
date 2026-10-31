@@ -42,7 +42,7 @@ describe('палитра ⌘K: устройство Marantz NR1604', () => {
   })
 })
 
-describe('палитра ⌘K: раздел «Универсальный пульт»', () => {
+describe('палитра ⌘K: раздел «ПУЛЬТ»', () => {
   it('карточки Jellyfin, MinimServer, BubbleUPnP Server, Marantz находятся по названию, описанию и IP', () => {
     assert.ok(titles('jellyfin').includes('media:Jellyfin'))
     assert.ok(titles('джеллифин').includes('media:Jellyfin'))
@@ -116,7 +116,7 @@ describe('палитра ⌘K: разделы и порядок выдачи', (
   })
 })
 
-describe('палитра ⌘K: страница «Универсальный пульт» (/media-control)', () => {
+describe('палитра ⌘K: страница «ПУЛЬТ» (/media-control)', () => {
   for (const q of ['ресивер', 'marantz', 'марантз', 'пульт', 'громкость']) {
     it(`«${q}» ведёт на вкладку «Marantz» страницы /media-control`, () => {
       const hit = buildPaletteItems(data).find((i) => i.id === 'media:marantz')
@@ -151,6 +151,6 @@ describe('палитра ⌘K: страница «Универсальный п�
   it('серверы медиа остаются на /media и называются «Медиа-серверы»', () => {
     assert.equal(buildPaletteItems(data).find((i) => i.id === 'media:jellyfin')?.to, '/media')
     assert.equal(GROUP_HEADING.media, 'Медиа-серверы')
-    assert.equal(GROUP_HEADING.mediahub, 'UNIVERSAL')
+    assert.equal(GROUP_HEADING.mediahub, 'ПУЛЬТ')
   })
 })

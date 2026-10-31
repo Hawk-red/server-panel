@@ -144,26 +144,21 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset, abo
     />
   )
 
+  // Title + Изменить switch at bottom, buttons at top
   return (
     <section className='space-y-3 rounded-xl border p-3' aria-label={`UNIVERSAL: ${UNI_COLUMN_TITLE[column]}`} data-column={column}>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <h2 className='text-sm font-medium'>{UNI_COLUMN_TITLE[column]}</h2>
-        <div className='flex shrink-0 items-center gap-2'>
-          {editing && (
-            <>
-              <Button type='button' size='sm' variant='outline' onClick={() => setAdding(true)} disabled={!data || buttons.length >= max}>
-                <Plus /> Добавить кнопку
-              </Button>
-              <Button type='button' size='sm' variant='outline' onClick={() => onReset(column)} disabled={col?.isDefault}>
-                <RotateCcw /> Сбросить
-              </Button>
-            </>
-          )}
-          <Label htmlFor={sw} className='text-sm'>
-            Изменить
-          </Label>
-          <Switch id={sw} checked={editing} onCheckedChange={setEditing} disabled={!data} />
-        </div>
+        {editing && (
+          <>
+            <Button type='button' size='sm' variant='outline' onClick={() => setAdding(true)} disabled={!data || buttons.length >= max}>
+              <Plus /> Добавить кнопку
+            </Button>
+            <Button type='button' size='sm' variant='outline' onClick={() => onReset(column)} disabled={col?.isDefault}>
+              <RotateCcw /> Сбросить
+            </Button>
+          </>
+        )}
       </div>
 
       {above}
@@ -176,6 +171,15 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset, abo
         </DndContext>
       ) : (
         grid
+      )}
+
+      {editing && (
+        <div className='flex items-center gap-2 pt-2'>
+          <Label htmlFor={sw} className='text-sm'>
+            Изменить
+          </Label>
+          <Switch id={sw} checked={editing} onCheckedChange={setEditing} disabled={!data} />
+        </div>
       )}
 
       {adding && data && (

@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { Check, Monitor, Smartphone, Tablet, Tv } from 'lucide-react'
+import { Monitor, Smartphone, Tablet, Tv } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { type ViewMode, useViewMode } from '@/lib/view-mode'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -17,22 +18,21 @@ export function ViewModeItems({ tvLink }: { tvLink: { to: string; params?: Recor
     <>
       <DropdownMenuLabel className='text-xs text-muted-foreground'>Режим отображения</DropdownMenuLabel>
       {OPTIONS.map((o) => (
-        <DropdownMenuItem key={o.mode} onClick={() => setMode(o.mode)} className='flex justify-end'>
-          <o.icon className='me-2' /> {o.label}
-          <Check className={mode === o.mode ? 'size-3.5' : 'hidden'} />
+        <DropdownMenuItem key={o.mode} onClick={() => setMode(o.mode)} className='flex justify-end px-2'>
+          <o.icon className={cn('size-4', mode === o.mode && 'text-primary')} />
         </DropdownMenuItem>
       ))}
       <DropdownMenuSeparator />
-      <DropdownMenuItem asChild>
-        <Link to={tvLink.to as '/tv'} params={tvLink.params as never} className='flex justify-end'>
-          <Tv className='me-2' /> ТВ
-        </Link>
-      </DropdownMenuItem>
+      <Link to={tvLink.to} params={tvLink.params}>
+        <DropdownMenuItem className='flex justify-end px-2'>
+          <Tv className='size-4' />
+        </DropdownMenuItem>
+      </Link>
     </>
   )
 }
 
-/** Горизонтальные кнопки режима отображения (для шапки на десктопе) */
+/** Горизонтальные кнопки режима отображения (для шапки на всех устройствах) */
 export function ViewModeBar({ tvLink }: { tvLink: { to: string; params?: Record<string, string> } }) {
   const { mode, setMode } = useViewMode()
   return (
@@ -41,18 +41,16 @@ export function ViewModeBar({ tvLink }: { tvLink: { to: string; params?: Record<
         <Button
           key={o.mode}
           variant={mode === o.mode ? 'default' : 'outline'}
-          size='sm'
+          size='icon'
           onClick={() => setMode(o.mode)}
-          className='h-7 px-2 text-xs'
+          className='h-7 w-7'
         >
-          <o.icon className='me-1 size-3.5' />
-          {o.label}
+          <o.icon className='size-4' />
         </Button>
       ))}
-      <Link to={tvLink.to as '/tv'} params={tvLink.params as never}>
-        <Button variant='outline' size='sm' className='h-7 px-2 text-xs'>
-          <Tv className='me-1 size-3.5' />
-          ТВ
+      <Link to={tvLink.to} params={tvLink.params}>
+        <Button variant='outline' size='icon' className='h-7 w-7'>
+          <Tv className='size-4' />
         </Button>
       </Link>
     </>

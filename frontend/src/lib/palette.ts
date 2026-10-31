@@ -13,7 +13,7 @@ export const GROUP_HEADING: Record<PaletteGroup, string> = {
   disks: 'Диски',
   devices: 'Устройства сети',
   media: 'Медиа-серверы',
-  mediahub: 'Универсальный пульт',
+  mediahub: 'ПУЛЬТ',
   smarthome: 'Умный дом',
 }
 

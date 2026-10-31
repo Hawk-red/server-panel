@@ -5,7 +5,7 @@ import { MANIFEST_PATH, PANEL_NAME, manifestHref, pageName, startPath, type NavT
 const NAV: NavTitle[] = [
   { url: '/', title: 'Обзор' },
   { url: '/disks', title: 'Диски' },
-  { url: '/media-control', title: 'Универсальный пульт' },
+  { url: '/media-control', title: 'ПУЛЬТ' },
   { url: '/network', title: 'Сеть и устройства' },
 ]
 
@@ -29,11 +29,11 @@ describe('pageName', () => {
     assert.equal(pageName('/disks', '', NAV), 'Диски')
     assert.equal(pageName('/network', '?tab=devices', NAV), 'Сеть и устройства')
   })
-  it('у «Универсального пульта» универсальный пульт — «Пульт», остальные вкладки — заголовок страницы', () => {
+  it('у «ПУЛЬТ» универсальный пульт — «Пульт», остальные вкладки — заголовок страницы', () => {
     assert.equal(pageName('/media-control', '?tab=universal', NAV), 'Пульт')
     assert.equal(pageName('/media-control', '', NAV), 'Пульт') // вкладка по умолчанию
-    assert.equal(pageName('/media-control', '?tab=samsung', NAV), 'Универсальный пульт')
-    assert.equal(pageName('/media-control', '?tab=marantz', NAV), 'Универсальный пульт')
+    assert.equal(pageName('/media-control', '?tab=samsung', NAV), 'ПУЛЬТ')
+    assert.equal(pageName('/media-control', '?tab=marantz', NAV), 'ПУЛЬТ')
   })
   it('страницы вне сайдбара — имя панели', () => {
     assert.equal(pageName('/sign-in', '', NAV), PANEL_NAME)

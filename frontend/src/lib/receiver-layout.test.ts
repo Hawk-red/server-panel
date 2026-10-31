@@ -61,10 +61,10 @@ describe('главное меню: «Медиа» и «Медиа-серверы
   it('отдельного пункта «Ресивер» нет', () => {
     assert.ok(!all.some((x) => x.i.url === '/receiver' || x.i.title === 'Ресивер'))
   })
-  it('«Медиа» (/media-control, со значком) стоит первым в «Сервисы», сразу за ним «Медиа-серверы» (/media)', () => {
+  it('«ПУЛЬТ» (/media-control, со значком) стоит первым в «Сервисы», сразу за ним «Медиа-серверы» (/media)', () => {
     const items = sidebarData.navGroups.find((g) => g.title === 'Сервисы')!.items
     assert.equal(items[0].url, '/media-control')
-    assert.equal(items[0].title, 'Медиа')
+    assert.equal(items[0].title, 'ПУЛЬТ')
     assert.ok(items[0].icon)
     assert.equal(items[1].url, '/media')
     assert.equal(items[1].title, 'Медиа-серверы')
