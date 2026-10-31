@@ -356,7 +356,7 @@ export function ReceiverSection({ view }: { view: 'control' | 'remote' }) {
     </div>
   )
 
-  // Страница-контейнер «Медиа» (features/media-hub) ставит Page и вкладки; здесь — содержимое вкладок «Ресивер» и «Пульт ресивера»
+  // Страница-контейнер «Универсальный пульт» (features/media-hub) ставит Page и вкладки; здесь — содержимое вкладок «Ресивер» и «Пульт ресивера»
   return (
     <div className='space-y-4'>
       {header}

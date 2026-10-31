@@ -14,7 +14,7 @@ export function startPath(pathname: string, searchStr: string): string {
   return safeRedirect(`${pathname}${search}`)
 }
 
-/** Имя страницы: заголовок раздела из сайдбара; у «Медиа» с универсальным пультом — «Пульт» */
+/** Имя страницы: заголовок раздела из сайдбара; у «Универсального пульта» с универсальным пультом — «Пульт» */
 export function pageName(pathname: string, searchStr: string, nav: readonly NavTitle[]): string {
   if (pathname === '/media-control') {
     // вкладка по умолчанию — универсальный пульт (parseMediaTab), поэтому адрес без ?tab= тоже «Пульт»

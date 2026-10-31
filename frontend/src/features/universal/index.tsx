@@ -225,9 +225,6 @@ export function UniversalTab() {
 
   return (
     <div className='space-y-4'>
-      <p className='text-xs text-muted-foreground'>
-        Частые кнопки телевизора, сцен, выключателей и ресивера. Команды те же, что на оригинальных пультах. Каждый столбец правится отдельно: «Изменить» → перетаскивание, «Добавить кнопку», «⋯» на плитке.
-      </p>
       <div className='grid gap-6 md:grid-cols-2'>
         {UNI_COLUMNS.map((c) => (
           <Column
