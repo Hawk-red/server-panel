@@ -48,7 +48,7 @@ export function Page({ title, description, actions, children, layoutPage }: Page
   // ТВ-версия: у раздела своя (/tv/<раздел>), у остальных — общий /tv; у Обзора — /tv
   const tvLink: { to: string; params?: Record<string, string> } = slug !== '' && isTvSection(slug) ? { to: '/tv/$section', params: { section: slug } } : { to: '/tv' }
   const { view } = useViewMode()
-  const { theme } = useTheme()
+  const { theme, setTheme } = useTheme()
   const phone = view === 'phone'
   return (
     <>
@@ -94,6 +94,7 @@ export function Page({ title, description, actions, children, layoutPage }: Page
                   <DropdownMenuItem onClick={() => setTheme('system')}>
                     Как в системе <Check size={14} className={cn('ms-auto', theme !== 'system' && 'hidden')} />
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <ViewModeItems tvLink={tvLink} />
                 </DropdownMenuContent>
               </DropdownMenu>
