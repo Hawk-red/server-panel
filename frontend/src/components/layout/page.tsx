@@ -24,7 +24,7 @@ type PageProps = {
   layoutPage?: string
 }
 
-// Общий каркас страницы раздела: шапка с поиском/темой + заголовок
+// Общий каркас страницы раздела: шапка с поиском/темей + заголовок
 // Иконка и цвет раздела — из sidebar-data по текущему адресу (одно место для сайдбара и заголовка)
 function useSection() {
   const { pathname } = useLocation()
@@ -54,7 +54,40 @@ export function Page({ title, description, actions, children, layoutPage }: Page
     <>
       <Header fixed>
         {section?.url === '/media-control' && <PanelRestartButton />}
-        <ConfigDrawer />
+        <div className='ml-auto'>
+          <ConfigDrawer />
+        </div>
+        {/* Телефон: «⋯» стоит в строке заголовка, а не отдельной строкой под описанием */}
+        {phone && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button variant='outline' size='icon' aria-label='Ещё' className='shrink-0'>
+                <Ellipsis />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              {layoutPage && (
+                <>
+                  <DropdownMenuItem onClick={() => setEditing(!editing)}>
+                    {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onClick={() => setTheme('light')}>
+                Светлая <Check size={14} className={cn('ms-auto', theme !== 'light' && 'hidden')} />
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme('dark')}>
+                Тёмная <Check size={14} className={cn('ms-auto', theme !== 'dark' && 'hidden')} />
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme('system')}>
+                Как в системе <Check size={14} className={cn('ms-auto', theme !== 'system' && 'hidden')} />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <ViewModeItems tvLink={tvLink} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </Header>
       <Main>
         <div className='mb-4 flex flex-wrap items-end justify-between gap-2'>
@@ -68,37 +101,6 @@ export function Page({ title, description, actions, children, layoutPage }: Page
                 <div className='text-muted-foreground'>{description}</div>
               )}
             </div>
-            {/* Телефон: «⋯» стоит в строке заголовка, а не отдельной строкой под описанием */}
-            {phone && (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button variant='outline' size='icon' aria-label='Ещё' className='shrink-0'>
-                    <Ellipsis />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align='end'>
-                  {layoutPage && (
-                    <>
-                      <DropdownMenuItem onClick={() => setEditing(!editing)}>
-                        {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                  <DropdownMenuItem onClick={() => setTheme('light')}>
-                    Светлая <Check size={14} className={cn('ms-auto', theme !== 'light' && 'hidden')} />
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setTheme('dark')}>
-                    Тёмная <Check size={14} className={cn('ms-auto', theme !== 'dark' && 'hidden')} />
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setTheme('system')}>
-                    Как в системе <Check size={14} className={cn('ms-auto', theme !== 'system' && 'hidden')} />
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <ViewModeItems tvLink={tvLink} />
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </div>
           <div className='flex flex-wrap items-center gap-2 empty:hidden'>
             {actions}
