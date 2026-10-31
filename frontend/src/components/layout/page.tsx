@@ -1,17 +1,17 @@
 import { useLocation } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { ArrowUpDown, Check, Ellipsis } from 'lucide-react'
+import { ArrowUpDown, Check, Ellipsis, Monitor, Smartphone, Tablet, Tv } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { PanelRestartButton } from '@/components/panel-restart-button'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useViewMode } from '@/lib/view-mode'
-// Header imports
 import { ViewModeBar, ViewModeItems, ViewModeSwitch } from '@/components/view-mode-switch'
 import { isTvSection } from '@/features/tv/sections'
 import { LayoutEditContext } from './layout-edit'
 import { useTheme } from '@/context/theme-provider'
+import { Link } from '@tanstack/react-router'
 import { sidebarData } from './data/sidebar-data'
 import { Header } from './header'
 import { Main } from './main'
@@ -49,8 +49,15 @@ export function Page({ title, description, actions, children, layoutPage }: Page
   // ТВ-версия: у раздела своя (/tv/<раздел>), у остальных — общий /tv; у Обзора — /tv
   const tvLink: { to: string; params?: Record<string, string> } = slug !== '' && isTvSection(slug) ? { to: '/tv/$section', params: { section: slug } } : { to: '/tv' }
   const { view } = useViewMode()
+  const { mode, setMode } = useViewMode()
   const { theme, setTheme } = useTheme()
   const phone = view === 'phone'
+
+  const OPTIONS = [
+    { mode: 'auto' as const, label: 'Авто', icon: Monitor },
+    { mode: 'phone' as const, label: 'Телефон', icon: Smartphone },
+    { mode: 'tablet' as const, label: 'Планшет', icon: Tablet },
+  ]
   return (
     <>
       <Header fixed>
@@ -88,6 +95,20 @@ export function Page({ title, description, actions, children, layoutPage }: Page
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme('system')}>
                 Как в системе <Check size={14} className={cn('ms-auto', theme !== 'system' && 'hidden')} />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className='text-xs text-muted-foreground'>Режим отображения</DropdownMenuLabel>
+              {OPTIONS.map((o) => (
+                <DropdownMenuItem key={o.mode} onClick={() => setMode(o.mode)} className='flex justify-end'>
+                  <o.icon className='me-2' /> {o.label}
+                  <Check size={14} className={cn('ms-auto', mode === o.mode && 'opacity-70')} />
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link to={tvLink.to as '/tv'} params={tvLink.params as never} className='flex justify-end'>
+                  <Tv className='me-2' /> ТВ
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
