@@ -7,9 +7,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 const OPTIONS: { mode: ViewMode; label: string; icon: React.ElementType }[] = [
   { mode: 'auto', label: 'Авто', icon: Monitor },
   { mode: 'phone', label: 'Телефон', icon: Smartphone },
+  { mode: 'tablet', label: 'Планшет', icon: Tablet },
 ]
 
-/** Пункты выбора режима (для кнопки и для меню «⋯»); ТВ — переход на /tv, остальное запоминается на этом устройстве */
+/** Вертикальное меню режима отображения (для dropdown в телефоне) */
 export function ViewModeItems({ tvLink }: { tvLink: { to: string; params?: Record<string, string> } }) {
   const { mode, setMode } = useViewMode()
   return (
@@ -27,6 +28,33 @@ export function ViewModeItems({ tvLink }: { tvLink: { to: string; params?: Recor
           <Tv className='me-2' /> ТВ
         </Link>
       </DropdownMenuItem>
+    </>
+  )
+}
+
+/** Горизонтальные кнопки режима отображения (для шапки на десктопе) */
+export function ViewModeBar({ tvLink }: { tvLink: { to: string; params?: Record<string, string> } }) {
+  const { mode, setMode } = useViewMode()
+  return (
+    <>
+      {OPTIONS.map((o) => (
+        <Button
+          key={o.mode}
+          variant={mode === o.mode ? 'default' : 'outline'}
+          size='sm'
+          onClick={() => setMode(o.mode)}
+          className='h-7 px-2 text-xs'
+        >
+          <o.icon className='me-1 size-3.5' />
+          {o.label}
+        </Button>
+      ))}
+      <Link to={tvLink.to as '/tv'} params={tvLink.params as never}>
+        <Button variant='outline' size='sm' className='h-7 px-2 text-xs'>
+          <Tv className='me-1 size-3.5' />
+          ТВ
+        </Button>
+      </Link>
     </>
   )
 }

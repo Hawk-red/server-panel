@@ -1,13 +1,14 @@
 import { useLocation } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { ArrowUpDown, Check, Ellipsis, Tablet } from 'lucide-react'
+import { ArrowUpDown, Check, Ellipsis } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { PanelRestartButton } from '@/components/panel-restart-button'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useViewMode } from '@/lib/view-mode'
-import { ViewModeItems, ViewModeSwitch } from '@/components/view-mode-switch'
+// Header imports
+import { ViewModeBar, ViewModeItems, ViewModeSwitch } from '@/components/view-mode-switch'
 import { isTvSection } from '@/features/tv/sections'
 import { LayoutEditContext } from './layout-edit'
 import { useTheme } from '@/context/theme-provider'
@@ -54,6 +55,11 @@ export function Page({ title, description, actions, children, layoutPage }: Page
     <>
       <Header fixed>
         {section?.url === '/media-control' && <PanelRestartButton />}
+        {!phone && (
+          <div className='flex items-center gap-1'>
+            <ViewModeBar tvLink={tvLink} />
+          </div>
+        )}
         <div className='ml-auto'>
           <ConfigDrawer />
         </div>
@@ -83,8 +89,6 @@ export function Page({ title, description, actions, children, layoutPage }: Page
               <DropdownMenuItem onClick={() => setTheme('system')}>
                 Как в системе <Check size={14} className={cn('ms-auto', theme !== 'system' && 'hidden')} />
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <ViewModeItems tvLink={tvLink} />
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -111,9 +115,6 @@ export function Page({ title, description, actions, children, layoutPage }: Page
                     {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
                   </Button>
                 )}
-                <Button variant='ghost' size='icon' aria-label='Планшет' title='Планшет'>
-                  <Tablet />
-                </Button>
                 <ViewModeSwitch tvLink={tvLink} />
               </>
             )}
