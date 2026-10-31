@@ -12,7 +12,7 @@ export function MediaHubPage({ tab: raw }: { tab?: string }) {
   const navigate = useNavigate()
   const setTab = (t: string) => void navigate({ to: '/media-control', search: { tab: t as MediaTab }, replace: true })
   return (
-    <Page title='Универсальный пульт'>
+    <Page title='Пульт универсальный'>
       <Tabs value={tab} onValueChange={setTab} className='gap-4'>
         <div className='-mx-1 overflow-x-auto px-1'>
           <TabsList>

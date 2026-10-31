@@ -4,14 +4,13 @@ import { ArrowUpDown, Check, Ellipsis } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { PanelRestartButton } from '@/components/panel-restart-button'
-import { Search } from '@/components/search'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useViewMode } from '@/lib/view-mode'
 import { ViewModeItems, ViewModeSwitch } from '@/components/view-mode-switch'
 import { isTvSection } from '@/features/tv/sections'
 import { LayoutEditContext } from './layout-edit'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { useTheme } from '@/context/theme-provider'
 import { sidebarData } from './data/sidebar-data'
 import { Header } from './header'
 import { Main } from './main'
@@ -49,13 +48,12 @@ export function Page({ title, description, actions, children, layoutPage }: Page
   // ТВ-версия: у раздела своя (/tv/<раздел>), у остальных — общий /tv; у Обзора — /tv
   const tvLink: { to: string; params?: Record<string, string> } = slug !== '' && isTvSection(slug) ? { to: '/tv/$section', params: { section: slug } } : { to: '/tv' }
   const { view } = useViewMode()
+  const { theme } = useTheme()
   const phone = view === 'phone'
   return (
     <>
       <Header fixed>
-        <Search className='me-auto' />
         {section?.url === '/media-control' && <PanelRestartButton />}
-        <ThemeSwitch />
         <ConfigDrawer />
       </Header>
       <Main>
@@ -87,6 +85,15 @@ export function Page({ title, description, actions, children, layoutPage }: Page
                       <DropdownMenuSeparator />
                     </>
                   )}
+                  <DropdownMenuItem onClick={() => setTheme('light')}>
+                    Светлая <Check size={14} className={cn('ms-auto', theme !== 'light' && 'hidden')} />
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTheme('dark')}>
+                    Тёмная <Check size={14} className={cn('ms-auto', theme !== 'dark' && 'hidden')} />
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTheme('system')}>
+                    Как в системе <Check size={14} className={cn('ms-auto', theme !== 'system' && 'hidden')} />
+                  </DropdownMenuItem>
                   <ViewModeItems tvLink={tvLink} />
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -5,7 +5,7 @@ import { isMediaTab, legacyReceiverTab, MEDIA_TABS, MEDIA_TAB_TITLES, parseMedia
 describe('вкладки страницы «Медиа»', () => {
   it('ровно три вкладки в заданном порядке с названиями', () => {
     assert.deepEqual([...MEDIA_TABS], ['universal', 'samsung', 'marantz'])
-    assert.deepEqual(MEDIA_TABS.map((t) => MEDIA_TAB_TITLES[t]), ['UNIVERSAL', 'TV', 'MARANTZ'])
+    assert.deepEqual(MEDIA_TABS.map((t) => MEDIA_TAB_TITLES[t]), ['Пульт универсальный', 'TV', 'MARANTZ'])
   })
   it('?tab= разбирается; неизвестное и мусор → «Универсальный»', () => {
     for (const t of MEDIA_TABS) assert.equal(parseMediaTab(t), t)
