@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { ArrowUpDown, Check, Ellipsis } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
+import { PanelRestartButton } from '@/components/panel-restart-button'
 import { Search } from '@/components/search'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -53,6 +54,7 @@ export function Page({ title, description, actions, children, layoutPage }: Page
     <>
       <Header fixed>
         <Search className='me-auto' />
+        {section?.url === '/media-control' && <PanelRestartButton />}
         <ThemeSwitch />
         <ConfigDrawer />
       </Header>

@@ -17,6 +17,7 @@ export type VolumeKnobProps = {
   onSkin?: (s: VolumeSkin) => void // переключатель скина (в компактном виде не показываем)
   onSend: (value: number, final: boolean) => void
   onMute?: () => void
+  onExpand?: () => void // тап (без протяжки) по регулятору — открыть полноэкранный вид (сейчас только «Капсула»)
   compact?: boolean
 }
 
@@ -37,10 +38,10 @@ const SKIN_VIEW = { knob: KnobSkin, mixer: MixerSkin, capsule: CapsuleSkin } as 
 
 const HOLD_AFTER_RELEASE_MS = 1800 // сколько показываем своё значение после отпускания (дольше, чем сверка состояния в use-volume)
 
-export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, onSend, onMute, compact = false }: VolumeKnobProps) {
+export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, onSend, onMute, onExpand, compact = false }: VolumeKnobProps) {
   const reduced = useReducedMotion()
   const [drag, setDrag] = useState<{ value: number; dragging: boolean; dir: -1 | 0 | 1 } | null>(null)
-  const d = useRef({ pid: -1, startY: 0, start: 0, sens: 0, last: 0, next: null as number | null, raf: 0, bumped: false })
+  const d = useRef({ pid: -1, startY: 0, start: 0, sens: 0, last: 0, next: null as number | null, raf: 0, bumped: false, movedPx: 0 })
   const hold = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => void (hold.current && clearTimeout(hold.current)), [])
 
@@ -69,12 +70,13 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
     e.preventDefault()
     e.currentTarget.setPointerCapture?.(e.pointerId)
     if (hold.current) clearTimeout(hold.current)
-    Object.assign(d.current, { pid: e.pointerId, startY: e.clientY, start: value, sens: dragSensitivity(max, dragSpan(window.innerHeight)), last: value, next: null, bumped: false })
+    Object.assign(d.current, { pid: e.pointerId, startY: e.clientY, start: value, sens: dragSensitivity(max, dragSpan(window.innerHeight)), last: value, next: null, bumped: false, movedPx: 0 })
     setDrag({ value, dragging: true, dir: 0 })
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (d.current.pid !== e.pointerId) return
+    d.current.movedPx = Math.max(d.current.movedPx, Math.abs(e.clientY - d.current.startY))
     const out = dragToVolume({ start: d.current.start, dy: e.clientY - d.current.startY, max, sensitivity: d.current.sens })
     if (out.atTop && !d.current.bumped) {
       d.current.bumped = true
@@ -87,6 +89,15 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (d.current.pid !== e.pointerId) return
     d.current.pid = -1
+    // тап без протяжки по «Капсуле» — разворот на весь экран вместо отправки громкости
+    if (onExpand && d.current.movedPx < 6) {
+      if (d.current.raf) {
+        cancelAnimationFrame(d.current.raf)
+        d.current.raf = 0
+      }
+      onExpand()
+      return
+    }
     if (d.current.raf) {
       cancelAnimationFrame(d.current.raf)
       d.current.raf = 0
