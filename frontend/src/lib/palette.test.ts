@@ -141,16 +141,16 @@ describe('палитра ⌘K: страница «Универсальный п�
     assert.equal(hit?.search, undefined)
     for (const q of ['home assistant', 'homeassistant', 'хоум ассистент', 'hacs', 'интеграции']) assert.ok(titles(q).includes('smarthome:Home Assistant'), q)
   })
-  it('«Универсальный пульт» ведёт на свою вкладку и находится по словам', () => {
+  it('«UNIVERSAL» ведёт на свою вкладку и находится по словам', () => {
     const items = buildPaletteItems(data)
     const hit = items.find((i) => i.id === 'mediahub:universal')
     assert.equal(hit?.to, '/media-control')
     assert.deepEqual(hit?.search, { tab: 'universal' })
-    for (const q of ['универсальный', 'универсальный пульт', 'частые кнопки']) assert.ok(titles(q).includes('mediahub:Универсальный пульт'), q)
+    for (const q of ['универсальный', 'универсальный пульт', 'частые кнопки']) assert.ok(titles(q).includes('mediahub:UNIVERSAL'), q)
   })
   it('серверы медиа остаются на /media и называются «Медиа-серверы»', () => {
     assert.equal(buildPaletteItems(data).find((i) => i.id === 'media:jellyfin')?.to, '/media')
     assert.equal(GROUP_HEADING.media, 'Медиа-серверы')
-    assert.equal(GROUP_HEADING.mediahub, 'Универсальный пульт')
+    assert.equal(GROUP_HEADING.mediahub, 'UNIVERSAL')
   })
 })

@@ -71,7 +71,7 @@ export function buildPaletteItems(d: PaletteData): PaletteItem[] {
     { id: 'mediahub:receiver-remote', group: 'mediahub', title: 'Пульт ресивера', subtitle: 'Marantz RC042SR', keywords: ['Пульт ресивера', 'пульт marantz', 'RC042SR', 'ресивер пульт'], to: '/media-control', search: { tab: 'marantz' } },
     { id: 'mediahub:tv', group: 'mediahub', title: 'Телевизор Samsung', subtitle: '55″, управление', keywords: ['Телевизор', 'Samsung', 'самсунг', 'ТВ', 'tv', 'телек'], to: '/media-control', search: { tab: 'samsung' } },
     { id: 'mediahub:tv-remote', group: 'mediahub', title: 'Пульт ТВ', subtitle: 'Samsung AA59-00602A', keywords: ['Пульт ТВ', 'пульт телевизора', 'AA59-00602A', 'samsung пульт'], to: '/media-control', search: { tab: 'samsung' } },
-    { id: 'mediahub:universal', group: 'mediahub', title: 'Универсальный пульт', subtitle: 'частые кнопки ресивера, ТВ и сцен', keywords: ['Универсальный пульт', 'универсальный', 'общий пульт', 'частые кнопки', 'мой пульт'], to: '/media-control', search: { tab: 'universal' } }
+    { id: 'mediahub:universal', group: 'mediahub', title: 'UNIVERSAL', keywords: ['UNIVERSAL', 'универсальный', 'общий пульт', 'частые кнопки', 'мой пульт'], to: '/media-control', search: { tab: 'universal' } }
   )
   // Страница «Умный дом»: по этим словам выбор ведёт на /smarthome
   out.push({

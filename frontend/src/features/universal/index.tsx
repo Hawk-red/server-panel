@@ -145,7 +145,7 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset, abo
   )
 
   return (
-    <section className='space-y-3 rounded-xl border p-3' aria-label={`Универсальный пульт: ${UNI_COLUMN_TITLE[column]}`} data-column={column}>
+    <section className='space-y-3 rounded-xl border p-3' aria-label={`UNIVERSAL: ${UNI_COLUMN_TITLE[column]}`} data-column={column}>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <h2 className='text-sm font-medium'>{UNI_COLUMN_TITLE[column]}</h2>
         <div className='flex shrink-0 items-center gap-2'>

@@ -1,4 +1,4 @@
-// Универсальный пульт (два столбца: Samsung и Marantz): правила плиток без React. Плитки-выключатели берут живое состояние из «Умного дома». Команды берутся с сервера уже развёрнутыми (universal.remote),
+// UNIVERSAL (два столбца: TV и MARANTZ): правила плиток без React. Плитки-выключатели берут живое состояние из «Умного дома». Команды берутся с сервера уже развёрнутыми (universal.remote),
 // доступность считается теми же функциями, что и у оригинальных пультов, — свои правила не заводим.
 import { isRepeatable, keyStatus, type KeyStatus } from './receiver-pad.ts'
 import type { ReceiverFullState } from './receiver-remote.ts'
@@ -19,7 +19,7 @@ export type UniCatalog = {
 /** Столбцы пульта: слева Samsung (телевизор и сцены), справа Marantz (ресивер); каждый правится отдельно */
 export const UNI_COLUMNS = ['tv', 'receiver'] as const
 export type UniColumn = (typeof UNI_COLUMNS)[number]
-export const UNI_COLUMN_TITLE: Record<UniColumn, string> = { tv: 'Samsung', receiver: 'Marantz' }
+export const UNI_COLUMN_TITLE: Record<UniColumn, string> = { tv: 'TV', receiver: 'MARANTZ' }
 export type UniColumnData = { buttons: UniButtonView[]; defaults: UniButton[]; isDefault: boolean }
 export type UniData = { columns: Record<UniColumn, UniColumnData>; catalog: UniCatalog; max: number }
 
