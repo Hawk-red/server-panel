@@ -1,6 +1,6 @@
 import { useLocation } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { ArrowUpDown, Check, Ellipsis } from 'lucide-react'
+import { ArrowUpDown, Check, Ellipsis, Tablet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { PanelRestartButton } from '@/components/panel-restart-button'
@@ -111,6 +111,9 @@ export function Page({ title, description, actions, children, layoutPage }: Page
                     {editing ? <Check /> : <ArrowUpDown />} {editing ? 'Готово' : 'Изменить порядок'}
                   </Button>
                 )}
+                <Button variant='ghost' size='icon' aria-label='Планшет' title='Планшет'>
+                  <Tablet />
+                </Button>
                 <ViewModeSwitch tvLink={tvLink} />
               </>
             )}

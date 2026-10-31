@@ -7,7 +7,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 const OPTIONS: { mode: ViewMode; label: string; icon: React.ElementType }[] = [
   { mode: 'auto', label: 'Авто', icon: Monitor },
   { mode: 'phone', label: 'Телефон', icon: Smartphone },
-  { mode: 'tablet', label: 'Планшет', icon: Tablet },
 ]
 
 /** Пункты выбора режима (для кнопки и для меню «⋯»); ТВ — переход на /tv, остальное запоминается на этом устройстве */
