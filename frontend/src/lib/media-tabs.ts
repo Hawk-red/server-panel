@@ -3,7 +3,7 @@
 // их адреса переносятся сюда — ТВ на «Samsung», ресиверные на «Marantz», остальное на «Универсальный».
 export const MEDIA_TABS = ['universal', 'samsung', 'marantz'] as const
 export type MediaTab = (typeof MEDIA_TABS)[number]
-export const MEDIA_TAB_TITLES: Record<MediaTab, string> = { universal: 'Пульт универсальный', samsung: 'TV', marantz: 'MARANTZ' }
+export const MEDIA_TAB_TITLES: Record<MediaTab, string> = { universal: 'UNIVERSAL', samsung: 'TV', marantz: 'MARANTZ' }
 
 export const isMediaTab = (v: unknown): v is MediaTab => typeof v === 'string' && (MEDIA_TABS as readonly string[]).includes(v)
 

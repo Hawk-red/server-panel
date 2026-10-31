@@ -6,13 +6,13 @@ import { SamsungTab } from '@/features/tv-remote/samsung-tab'
 import { UniversalTab } from '@/features/universal'
 import { MEDIA_TABS, MEDIA_TAB_TITLES, parseMediaTab, type MediaTab } from '@/lib/media-tabs'
 
-/** Страница «Универсальный пульт»: универсальный пульт и оригинальные пульты телевизора и ресивера; активная вкладка — в адресе (?tab=) */
+/** Страница «Пульт»: универсальный пульт и оригинальные пульты телевизора и ресивера; активная вкладка — в адресе (?tab=) */
 export function MediaHubPage({ tab: raw }: { tab?: string }) {
   const tab = parseMediaTab(raw)
   const navigate = useNavigate()
   const setTab = (t: string) => void navigate({ to: '/media-control', search: { tab: t as MediaTab }, replace: true })
   return (
-    <Page title='Пульт универсальный'>
+    <Page title='ПУЛЬТ'>
       <Tabs value={tab} onValueChange={setTab} className='gap-4'>
         <div className='-mx-1 overflow-x-auto px-1'>
           <TabsList>

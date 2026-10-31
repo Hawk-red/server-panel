@@ -17,15 +17,15 @@ export function ViewModeItems({ tvLink }: { tvLink: { to: string; params?: Recor
     <>
       <DropdownMenuLabel className='text-xs text-muted-foreground'>Режим отображения</DropdownMenuLabel>
       {OPTIONS.map((o) => (
-        <DropdownMenuItem key={o.mode} onClick={() => setMode(o.mode)}>
-          <o.icon /> {o.label}
-          <Check className={mode === o.mode ? 'ms-auto size-3.5' : 'hidden'} />
+        <DropdownMenuItem key={o.mode} onClick={() => setMode(o.mode)} className='flex justify-end'>
+          <o.icon className='me-2' /> {o.label}
+          <Check className={mode === o.mode ? 'size-3.5' : 'hidden'} />
         </DropdownMenuItem>
       ))}
       <DropdownMenuSeparator />
       <DropdownMenuItem asChild>
-        <Link to={tvLink.to as '/tv'} params={tvLink.params as never}>
-          <Tv /> ТВ
+        <Link to={tvLink.to as '/tv'} params={tvLink.params as never} className='flex justify-end'>
+          <Tv className='me-2' /> ТВ
         </Link>
       </DropdownMenuItem>
     </>
