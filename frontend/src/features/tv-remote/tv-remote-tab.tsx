@@ -4,7 +4,7 @@ import { useBindings } from '@/features/receiver/use-bindings'
 import { TvPad } from './tv-pad'
 import { useTvPress, useTvStatus } from './use-tv'
 
-/** Вкладка «Пульт ТВ»: экранная копия AA59-00602A, режим «Настроить пульт», привязки на сервере (tv.remote) */
+/** Вкладка «Пульт ТВ»: экранная копия AA59-00602A (привязки на сервере, tv.remote) */
 export function TvRemoteTab() {
   const status = useTvStatus()
   const st = status.data

@@ -22,7 +22,7 @@ function TvKey({ cfg, st, ...p }: KeyProps) {
   return <BasePadKey {...p} cmd={cmd} status={tvKeyStatus(cmd, st)} custom={cfg ? isCustom(cfg, p.id) : false} cmdTitle={cfg ? commandTitle(cfg, cmd) : '…'} repeatable={isTvRepeatable(cmd)} />
 }
 
-type PadProps = { st: TvStatus | undefined; cfg: RemoteConfig | undefined; configure: boolean; onPress: (id: string, cmd: string) => void; onPick: (id: string) => void }
+type PadProps = { st: TvStatus | undefined; cfg?: RemoteConfig | undefined; configure: boolean; onPress: (id: string, cmd: string) => void; onPick: (id: string) => void }
 
 const COLORS: [string, string, string][] = [
   ['color-a', 'A', 'bg-red-600 from-red-500 to-red-700'],
