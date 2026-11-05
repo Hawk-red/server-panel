@@ -144,7 +144,9 @@ describe('PAGE_NAMES: копия разделов сайдбара', () => {
     const front = [...src.matchAll(/\{\s*title:\s*'([^']+)',\s*url:\s*'([^']+)'/g)].map(([, title, url]) => [url, title])
     assert.ok(front.length > 10, 'разбор сайдбара сломался')
     const map = new Map(PAGE_NAMES)
-    for (const [url, title] of front) assert.equal(map.get(url), title, `раздел ${url}`)
+    // /media-control: заголовок страницы зависит от вкладки (своё правило в pageName(), проверено выше отдельно) —
+    // раздел сайдбара («ПУЛЬТ») тут не копия PAGE_NAMES, а только начальная точка для одной из вкладок
+    for (const [url, title] of front) if (url !== '/media-control') assert.equal(map.get(url), title, `раздел ${url}`)
     assert.equal(map.size, front.length, 'в PAGE_NAMES есть лишние адреса')
   })
 })
