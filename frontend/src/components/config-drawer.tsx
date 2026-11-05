@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { useDirection } from '@/context/direction-provider'
 import { type Collapsible, useLayout } from '@/context/layout-provider'
 import { useTheme } from '@/context/theme-provider'
+import { HeaderIconButton } from '@/components/layout/header-icon-button'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -43,14 +44,9 @@ export function ConfigDrawer() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button
-          size='icon'
-          variant='ghost'
-          aria-label='Настройки оформления'
-          className='rounded-full'
-        >
-          <Settings aria-hidden='true' />
-        </Button>
+        <HeaderIconButton aria-label='Настройки оформления'>
+          <Settings className='size-5' aria-hidden='true' />
+        </HeaderIconButton>
       </SheetTrigger>
       <SheetContent className='flex flex-col'>
         <SheetHeader className='pb-0 text-start'>

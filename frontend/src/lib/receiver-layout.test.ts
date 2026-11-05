@@ -31,9 +31,9 @@ describe('страница «Ресивер»: блоки', () => {
     const src = readFileSync(here('../features/receiver/index.tsx'), 'utf8')
     assert.match(src, /SortableBlocks/)
     for (const b of RECEIVER_BLOCKS) assert.ok(src.includes(`id: '${b.id}'`), b.id)
-    // Вкладки «Ресивер» (блоками) на странице «Медиа» нет, поэтому ключ порядка она больше не ставит
+    // Вкладки «Ресивер» (блоками) на странице «Медиа» нет, поэтому ключ порядка она больше не ставит (только для universal)
     const hub = readFileSync(here('../features/media-hub/index.tsx'), 'utf8')
-    assert.doesNotMatch(hub, /layoutPage=/)
+    assert.match(hub, /layoutPage=\{tab === 'universal' \? 'media-hub' : undefined\}/)
   })
 })
 

@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { Monitor, Smartphone, Tablet, Tv } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type ViewMode, useViewMode } from '@/lib/view-mode'
+import { HeaderIconButton } from '@/components/layout/header-icon-button'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
@@ -10,6 +11,8 @@ const OPTIONS: { mode: ViewMode; label: string; icon: React.ElementType }[] = [
   { mode: 'phone', label: 'Телефон', icon: Smartphone },
   { mode: 'tablet', label: 'Планшет', icon: Tablet },
 ]
+
+const MEDIA_OPTIONS = OPTIONS.filter((o) => o.mode === 'phone' || o.mode === 'tablet')
 
 /** Вертикальное меню режима отображения (для dropdown в телефоне) */
 export function ViewModeItems({ tvLink }: { tvLink: { to: string; params?: Record<string, string> } }) {
@@ -32,27 +35,24 @@ export function ViewModeItems({ tvLink }: { tvLink: { to: string; params?: Recor
   )
 }
 
-/** Горизонтальные кнопки режима отображения (для шапки на всех устройствах) */
-export function ViewModeBar({ tvLink }: { tvLink: { to: string; params?: Record<string, string> } }) {
+/** Горизонтальные кнопки режима отображения (для шапки на всех устройствах). media — компактный вид для «Пультa»: без «Авто» и «ТВ» */
+export function ViewModeBar({ tvLink, media }: { tvLink: { to: string; params?: Record<string, string> }; media?: boolean }) {
   const { mode, setMode } = useViewMode()
+  const opts = media ? MEDIA_OPTIONS : OPTIONS
   return (
     <>
-      {OPTIONS.map((o) => (
-        <Button
-          key={o.mode}
-          variant={mode === o.mode ? 'default' : 'outline'}
-          size='icon'
-          onClick={() => setMode(o.mode)}
-          className='h-7 w-7'
-        >
-          <o.icon className='size-4' />
-        </Button>
+      {opts.map((o) => (
+        <HeaderIconButton key={o.mode} active={mode === o.mode} aria-label={o.label} aria-pressed={mode === o.mode} onClick={() => setMode(o.mode)}>
+          <o.icon className='size-5' />
+        </HeaderIconButton>
       ))}
-      <Link to={tvLink.to} params={tvLink.params}>
-        <Button variant='outline' size='icon' className='h-7 w-7'>
-          <Tv className='size-4' />
-        </Button>
-      </Link>
+      {!media && (
+        <Link to={tvLink.to} params={tvLink.params}>
+          <HeaderIconButton aria-label='Режим ТВ'>
+            <Tv className='size-5' />
+          </HeaderIconButton>
+        </Link>
+      )}
     </>
   )
 }
