@@ -1,5 +1,5 @@
 // Три вида регулятора громкости: «Крутилка» (металлический диск с дугой делений), «Пульт» (фейдер
-// DJ-микшера с колпачком и лампочкой), «Капсула» (слайдер-пилюля с кнопками ±5). Только CSS и значки lucide.
+// DJ-микшера с колпачком и лампочкой), «Капсула» (сплошная пилюля-HUD, без побочных элементов). Только CSS и значки lucide.
 //
 // Два правила, общие для всех видов:
 //  • каждый вид задаёт СВОЙ размер (диск, панель, капсула) и центрируется — карточка облегает содержимое,
@@ -8,7 +8,6 @@
 //    отстаёт от пальца. Переходы разрешены только цвету и тени (подсветка, лампочка, кнопки).
 // Управление во всех видах одно и то же — вертикальная протяжка по области регулятора (её держит volume-knob),
 // вид только отражает значение. Ограничение роста громкости (+3 за команду) — защита ресивера на сервере.
-import { Minus, Plus, Volume2 } from 'lucide-react'
 import { levelOf, volumeTicks, volumeUnits } from '@/lib/volume-drag'
 import { cn } from '@/lib/utils'
 
@@ -21,7 +20,8 @@ export type SkinProps = {
   disabled: boolean
   reduced: boolean // prefers-reduced-motion: без анимаций и свечения
   compact: boolean // столбец «Универсального» — та же вёрстка, размеры меньше
-  onStep?: (delta: number) => void // кнопки ±5 («Капсула»)
+  fill?: boolean // «Капсула» в карточке «Громкость»: растянуться на всю высоту родителя (у того — явная высота), а не фиксированные h-48/h-64
+  onStep?: (delta: number) => void // не используется видами напрямую, поле оставлено для совместимости типа
 }
 
 const accentOf = (p: SkinProps) => (p.active ? '#22d3ee' : '#0e9bb8')
@@ -143,41 +143,25 @@ export function MixerSkin(p: SkinProps) {
   )
 }
 
-// ---------- «Капсула»: пилюля с заливкой, значок динамика и кнопки ±5 ----------
-const STEP_BY = 5
+// ---------- «Капсула»: iOS-подобный HUD — сплошная пилюля, заливка одним цветом снизу вверх,
+// без делений/циферблата/чисел поверх; число — только короткий бейдж в углу, и только во время протяжки ----------
 export function CapsuleSkin(p: SkinProps) {
   const frac = levelOf(p.value, p.max)
+  const accent = accentOf(p)
   return (
-    <div data-skin='capsule' className={cn('relative mx-auto flex w-full items-center justify-center gap-3', p.compact ? 'h-40' : 'h-52')}>
-      <div className='relative h-full w-12 shrink-0 overflow-hidden rounded-full' style={{ background: '#121820', boxShadow: 'inset 0 0 0 1px #ffffff14, inset 0 2px 6px #0008' }}>
-        <div data-fill className='absolute inset-x-0 bottom-0' style={{ height: `${frac * 100}%`, background: 'linear-gradient(0deg,#124f4a,#0f6d80 65%,#128ba3)', opacity: p.disabled ? 0.35 : 1 }} />
-        <Volume2 aria-hidden className='pointer-events-none absolute bottom-2 left-1/2 size-4 -translate-x-1/2 text-white/75' />
+    <div data-skin='capsule' className={cn('relative mx-auto w-full', p.fill ? 'h-full' : p.compact ? 'h-48' : 'h-64')}>
+      <div className='relative h-full w-full overflow-hidden rounded-full' style={{ background: '#121820', boxShadow: 'inset 0 0 0 1px #ffffff14, inset 0 2px 6px #0008' }}>
+        <div data-fill className='absolute inset-x-0 bottom-0' style={{ height: `${frac * 100}%`, background: accent, opacity: p.disabled ? 0.35 : 1 }} />
       </div>
-      {/* кнопки-кольца: шаг ±5 через тот же POST /receiver/volume (потолок и лимиты — на сервере) */}
-      <div className='flex shrink-0 flex-col gap-2'>
-        {([
-          ['up', STEP_BY, Plus, `Громче на ${STEP_BY}`],
-          ['down', -STEP_BY, Minus, `Тише на ${STEP_BY}`],
-        ] as const).map(([name, delta, Icon, label]) => (
-          <button
-            key={name}
-            type='button'
-            data-step={name}
-            aria-label={label}
-            disabled={p.disabled || !p.onStep}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => p.onStep?.(delta)}
-            className={cn(
-              'grid size-10 place-items-center rounded-full border-2 border-border text-foreground disabled:opacity-40',
-              ease(p, 'transition-colors duration-150'),
-              'hover:bg-muted active:bg-muted/70',
-            )}
-            style={{ touchAction: 'manipulation' }}
-          >
-            <Icon className='size-5' />
-          </button>
-        ))}
-      </div>
+      {/* бейдж-число — как временный HUD iOS: в углу капсулы, только пока палец на регуляторе */}
+      {p.active && !p.disabled && (
+        <span
+          aria-hidden
+          className='pointer-events-none absolute -top-1.5 -right-1.5 rounded-full bg-foreground px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums text-background shadow'
+        >
+          {volumeUnits(p.value)}
+        </span>
+      )}
     </div>
   )
 }

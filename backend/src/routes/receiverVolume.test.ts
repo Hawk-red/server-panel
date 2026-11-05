@@ -147,22 +147,22 @@ describe('POST /api/receiver/volume', () => {
 describe('скин регулятора', () => {
   const get = () => app.inject({ method: 'GET', url: '/api/receiver/volume/skin', cookies: { [SESSION_COOKIE]: SID } })
   const put = (skin: unknown) => app.inject({ method: 'PUT', url: '/api/receiver/volume/skin', cookies: { [SESSION_COOKIE]: SID }, payload: { skin } })
-  it('по умолчанию «Крутилка», сохраняется в настройке receiver.volumeSkin', async () => {
-    assert.deepEqual(JSON.parse((await get()).body), { skin: 'knob', skins: ['knob', 'mixer', 'capsule'] })
-    assert.equal((await put('capsule')).statusCode, 200)
-    assert.equal(JSON.parse((await get()).body).skin, 'capsule')
-    assert.equal(getSetting('receiver.volumeSkin', 'knob'), 'capsule')
+  it('по умолчанию «Капсула», сохраняется в настройке receiver.volumeSkin', async () => {
+    assert.deepEqual(JSON.parse((await get()).body), { skin: 'capsule', skins: ['knob', 'mixer', 'capsule'] })
+    assert.equal((await put('knob')).statusCode, 200)
+    assert.equal(JSON.parse((await get()).body).skin, 'knob')
+    assert.equal(getSetting('receiver.volumeSkin', 'capsule'), 'knob')
   })
   it('неизвестный и прежний скин — 400, настройка не меняется', async () => {
     for (const v of ['neon', '', 42, null, {}, 'fader', 'bar', 'led', 'dial']) assert.equal((await put(v)).statusCode, 400, JSON.stringify(v))
-    assert.equal(JSON.parse((await get()).body).skin, 'capsule')
+    assert.equal(JSON.parse((await get()).body).skin, 'knob')
   })
-  it('сохранённый прежний вид откатывается на «Крутилку»', async () => {
+  it('сохранённый прежний вид откатывается на «Капсулу» (вид по умолчанию)', async () => {
     for (const old of ['fader', 'bar', 'led', 'dial']) {
       setSetting('receiver.volumeSkin', old)
-      assert.equal(JSON.parse((await get()).body).skin, 'knob', old)
+      assert.equal(JSON.parse((await get()).body).skin, 'capsule', old)
     }
     assert.equal((await put('mixer')).statusCode, 200)
-    assert.equal(getSetting('receiver.volumeSkin', 'knob'), 'mixer')
+    assert.equal(getSetting('receiver.volumeSkin', 'capsule'), 'mixer')
   })
 })

@@ -110,8 +110,8 @@ describe('доступность и скины', () => {
     for (const s of VOLUME_SKINS) assert.equal(isVolumeSkin(s), true)
     for (const s of ['neon', '', null, 42, {}]) assert.equal(isVolumeSkin(s), false)
   })
-  it('прежние виды регулятора откатываются на «Крутилку»', () => {
-    for (const s of ['fader', 'bar', 'led', 'dial', 'neon', '', null, undefined, 42, {}]) assert.equal(parseVolumeSkin(s), 'knob', String(s))
+  it('прежние и неизвестные виды регулятора откатываются на «Капсулу» (вид по умолчанию)', () => {
+    for (const s of ['fader', 'bar', 'led', 'dial', 'neon', '', null, undefined, 42, {}]) assert.equal(parseVolumeSkin(s), 'capsule', String(s))
     for (const s of VOLUME_SKINS) assert.equal(parseVolumeSkin(s), s)
   })
 })

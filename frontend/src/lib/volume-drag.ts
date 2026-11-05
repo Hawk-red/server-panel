@@ -6,7 +6,8 @@ export type VolumeSkin = (typeof VOLUME_SKINS)[number]
 export const VOLUME_SKIN_TITLE: Record<VolumeSkin, string> = { knob: 'Крутилка', mixer: 'Пульт', capsule: 'Капсула' }
 export const isVolumeSkin = (v: unknown): v is VolumeSkin => typeof v === 'string' && (VOLUME_SKINS as readonly string[]).includes(v)
 /** Прежние виды («Фейдер», «Полоса», «LED», «Циферблат») заменены новыми: сохранённое значение откатывается на вид по умолчанию */
-export const parseVolumeSkin = (v: unknown): VolumeSkin => (isVolumeSkin(v) ? v : VOLUME_SKINS[0])
+// По умолчанию — «Капсула» (iOS-подобный HUD); порядок чипов в переключателе при этом не меняем
+export const parseVolumeSkin = (v: unknown): VolumeSkin => (isVolumeSkin(v) ? v : 'capsule')
 
 /** Шаг шкалы: ресивер понимает половины */
 export const STEP = 0.5

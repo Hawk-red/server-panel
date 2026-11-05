@@ -15,10 +15,12 @@ import { getSetting, setSetting } from '../settings.js'
 export const VOLUME_SKINS = ['knob', 'mixer', 'capsule'] as const
 export const VOLUME_SKIN_KEY = 'receiver.volumeSkin'
 // Прежние виды (fader, bar, led, dial) заменены новыми: сохранённое значение отдаём как вид по умолчанию,
-// чтобы фронт не получил неизвестный скин; PUT со старым именем — 400 (список выше)
+// чтобы фронт не получил неизвестный скин; PUT со старым именем — 400 (список выше).
+// Вид по умолчанию — «Капсула» (capsule), не первый элемент списка
+const DEFAULT_SKIN = 'capsule'
 const readSkin = () => {
-  const saved = getSetting<string>(VOLUME_SKIN_KEY, VOLUME_SKINS[0])
-  return (VOLUME_SKINS as readonly string[]).includes(saved) ? saved : VOLUME_SKINS[0]
+  const saved = getSetting<string>(VOLUME_SKIN_KEY, DEFAULT_SKIN)
+  return (VOLUME_SKINS as readonly string[]).includes(saved) ? saved : DEFAULT_SKIN
 }
 
 // Результат подисточника: данные или причина «нет данных» — страница не падает целиком
