@@ -37,18 +37,16 @@ describe('пульт Samsung AA59-00602A: рендер', () => {
   it('ТВ в сети и сопряжён — все кнопки активны', () => {
     assert.equal((html().match(/data-state="on"/g) ?? []).length, 44)
   })
-  it('ТВ не отвечает: серые все, кроме питания', () => {
+  it('ТВ не отвечает — как у ИК-пульта: активны все кнопки, не только питание', () => {
     const h = html({ st: TV_OFFLINE })
     assert.equal(state(h, 'power'), 'on')
-    assert.equal((h.match(/data-state="on"/g) ?? []).length, 1)
-    assert.match(h, /VOL \+ — ТВ не отвечает/)
+    assert.equal((h.match(/data-state="on"/g) ?? []).length, 44)
   })
-  it('через Home Assistant без remote-сущности: активны только кнопки с сервисом', () => {
+  it('через Home Assistant без remote-сущности: кнопки с привязкой всё равно активны', () => {
     const h = html({ st: TV_MEDIA_ONLY })
-    assert.equal((h.match(/data-state="on"/g) ?? []).length, 7) // громкость ×2, mute, питание, play, pause, stop
+    assert.equal((h.match(/data-state="on"/g) ?? []).length, 44)
     assert.equal(state(h, 'vol-up'), 'on')
-    assert.equal(state(h, 'num-1'), 'off')
-    assert.match(h, /1 — через Home Assistant недоступно/)
+    assert.equal(state(h, 'num-1'), 'on')
   })
   it('кнопка без ключа серая с подсказкой «команда не назначена»', () => {
     const cfg = { ...TV_CFG, bindings: { ...TV_CFG.bindings, ad: null } }
@@ -56,8 +54,8 @@ describe('пульт Samsung AA59-00602A: рендер', () => {
     assert.equal(state(h, 'ad'), 'off')
     assert.match(h, /AD\/SUBT\. — команда не назначена/)
   })
-  it('нет данных и нет привязок — всё серое, без падения', () => {
-    assert.equal((html({ st: undefined }).match(/data-state="on"/g) ?? []).length, 0)
+  it('нет данных о ТВ — кнопки с привязкой всё равно активны; без привязок (cfg) — всё серое, без падения', () => {
+    assert.equal((html({ st: undefined }).match(/data-state="on"/g) ?? []).length, 44)
     assert.equal((html({ cfg: undefined }).match(/data-state="on"/g) ?? []).length, 0)
   })
   it('режим настройки: все 44 кнопки выбираются, изменённая помечена', () => {

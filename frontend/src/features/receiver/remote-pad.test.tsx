@@ -24,23 +24,21 @@ describe('пульт RC042SR: рендер', () => {
     assert.ok(h.includes('IPAD')) // CBL/SAT
     assert.ok(h.includes('PS4 &amp; TV')) // TV AUDIO
   })
-  it('входов нет в живом списке и кнопки без команды — серые', () => {
+  it('серые — только кнопки без назначенной команды; «чужой» вход (не из живого списка) всё равно нажимается', () => {
     const h = html()
     for (const id of ['in-8k', 'in-usb', 'in-bt', 'in-heos', 'in-phono', 'play']) assert.equal(state(h, id), 'off', id) // команда не назначена
-    assert.equal(state(h, 'in-cd'), 'off') // CD нет в живом списке
-    for (const id of ['in-cblsat', 'in-bd', 'in-tv', 'vol-up', 'power', 'nav-up', 'ss-1', 'sm-movie']) assert.equal(state(h, id), 'on', id)
+    for (const id of ['in-cd', 'in-cblsat', 'in-bd', 'in-tv', 'vol-up', 'power', 'nav-up', 'ss-1', 'sm-movie']) assert.equal(state(h, id), 'on', id) // CD нет в живом списке, но команда есть
     assert.match(h, /PHONO — команда не назначена/)
-    assert.match(h, /CD — такого входа нет в списке ресивера/)
   })
-  it('ресивер выключен: активны только питание и зоны', () => {
+  it('ресивер выключен — как у ИК-пульта: активны все кнопки, не только питание и зоны', () => {
     const h = html({ st: { ...MOCK_STATE, power: 'STANDBY' } })
-    for (const id of ['power', 'zone-main', 'zone-2']) assert.equal(state(h, id), 'on', id)
-    for (const id of ['vol-up', 'mute', 'nav-up', 'in-bd', 'sm-music']) assert.equal(state(h, id), 'off', id)
+    for (const id of ['power', 'zone-main', 'zone-2', 'vol-up', 'mute', 'nav-up', 'in-bd', 'sm-music']) assert.equal(state(h, id), 'on', id)
   })
-  it('нет связи (состояния нет) или привязки не загрузились — всё серое, без падения', () => {
+  it('нет связи с ресивером — кнопки с командой всё равно активны; без привязок (cfg) — всё серое, без падения', () => {
     const a = html({ st: undefined })
+    assert.ok((a.match(/data-state="on"/g) ?? []).length > 0)
     const b = html({ cfg: undefined })
-    for (const h of [a, b]) assert.equal((h.match(/data-state="on"/g) ?? []).length, 0)
+    assert.equal((b.match(/data-state="on"/g) ?? []).length, 0) // без привязок у каждой кнопки cmd=null
   })
   it('удержание только у громкости и стрелок: у остальных обычный onClick (в разметке не видно) — команды в data-command', () => {
     const h = html()

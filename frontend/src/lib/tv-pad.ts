@@ -27,16 +27,10 @@ export const powerVia = (st: Pick<TvStatus, 'online'> | undefined): 'scene' | 'k
 
 type StatusInput = Pick<TvStatus, 'online' | 'paired'> & Partial<Pick<TvStatus, 'keys' | 'driver'>>
 
-export function tvKeyStatus(key: string | null, st: StatusInput | undefined): KeyStatus {
-  if (key === null) return { enabled: false, reason: 'команда не назначена' }
-  if (!st) return { enabled: false, reason: 'нет данных о телевизоре' }
-  // выключенный ТВ включает сцена, поэтому питание активно всегда
-  const power = key === 'KEY_POWER' && !st.online
-  if (!power && st.keys && !st.keys.includes(key)) return { enabled: false, reason: st.driver === 'direct' ? 'кнопка недоступна' : 'через Home Assistant недоступно' }
-  if (key === 'KEY_POWER') return { enabled: true, reason: null }
-  if (!st.online) return { enabled: false, reason: 'ТВ не отвечает' }
-  if (!st.paired) return { enabled: false, reason: st.driver === 'ha' ? 'телевизора нет в Home Assistant' : 'ТВ не сопряжён' }
-  return { enabled: true, reason: null }
+/** Можно ли нажать кнопку: только есть ли у неё ключ — как у ИК-пульта, статус ТВ (online, paired,
+ *  список доступных ключей) на нажатие не влияет, нажатие просто отправляет команду */
+export function tvKeyStatus(key: string | null, _st?: StatusInput): KeyStatus {
+  return key === null ? { enabled: false, reason: 'команда не назначена' } : { enabled: true, reason: null }
 }
 
 /** Связь — отдельно от «в сети»: через HA это наличие сущности ТВ, в прямом режиме — полученный токен */

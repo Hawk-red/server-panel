@@ -11,19 +11,17 @@ export type RemoteConfig = {
 const REPEATABLE = new Set(['MVUP', 'MVDOWN', 'MNCUP', 'MNCDN', 'MNCLT', 'MNCRT', 'TFANUP', 'TFANDOWN'])
 export const isRepeatable = (cmd: string | null) => cmd !== null && REPEATABLE.has(cmd)
 
-// Питание и зоны можно переключать из режима ожидания, всё остальное — только при включённом ресивере
+// Питание и зоны можно переключать из режима ожидания, остальное раньше требовало включённого ресивера —
+// сейчас это не влияет на нажатие (см. keyStatus), но остаётся для будущего визуального индикатора
 const ALWAYS = /^(PWON|PWSTANDBY|PWTOGGLE|ZMON|ZMOFF|ZMTOGGLE|Z2ON|Z2OFF|Z2TOGGLE)$/
 export const needsPower = (cmd: string) => !ALWAYS.test(cmd)
 
 export type KeyStatus = { enabled: boolean; reason: string | null }
 
-/** Можно ли нажать кнопку: есть ли команда, включён ли ресивер, есть ли вход в живом списке ресивера */
-export function keyStatus(cmd: string | null, st: Pick<ReceiverFullState, 'power' | 'inputs'> | undefined): KeyStatus {
-  if (cmd === null) return { enabled: false, reason: 'команда не назначена' }
-  if (!st) return { enabled: false, reason: 'нет связи с ресивером' }
-  if (/^SI./.test(cmd) && !st.inputs.some((i) => `SI${i.code}` === cmd)) return { enabled: false, reason: 'такого входа нет в списке ресивера' }
-  if (needsPower(cmd) && st.power !== 'ON') return { enabled: false, reason: st.power === 'STANDBY' ? 'ресивер выключен' : 'нет связи с ресивером' }
-  return { enabled: true, reason: null }
+/** Можно ли нажать кнопку: только есть ли у неё команда — как у ИК-пульта, статус ресивера (питание,
+ *  связь, живой список входов) на нажатие не влияет, нажатие просто отправляет команду */
+export function keyStatus(cmd: string | null, _st?: Pick<ReceiverFullState, 'power' | 'inputs'>): KeyStatus {
+  return cmd === null ? { enabled: false, reason: 'команда не назначена' } : { enabled: true, reason: null }
 }
 
 /** Живое имя входа под подписью кнопки (если кнопка привязана ко входу из списка ресивера) */

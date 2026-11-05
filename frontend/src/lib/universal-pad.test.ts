@@ -12,38 +12,36 @@ describe('универсальный пульт: доступность плит
   it('кнопка без команды серая', () => {
     assert.deepEqual(uniStatus(tile({ resolved: null, available: false }), { receiver: recvOn, tv: tvOn }), { enabled: false, reason: 'команда не назначена' })
   })
-  it('ресивер: правила его пульта (выключен, чужой вход)', () => {
+  it('ресивер: кнопка с командой активна всегда — статус его пульта (питание, чужой вход) ни при чём', () => {
     const st = { receiver: recvOn, tv: tvOn }
     assert.equal(uniStatus(tile(), st).enabled, true)
-    assert.equal(uniStatus(tile(), { ...st, receiver: { power: 'STANDBY', inputs: [] } }).reason, 'ресивер выключен')
-    assert.equal(uniStatus(tile(), { ...st, receiver: undefined }).reason, 'нет связи с ресивером')
+    assert.equal(uniStatus(tile(), { ...st, receiver: { power: 'STANDBY', inputs: [] } }).enabled, true)
+    assert.equal(uniStatus(tile(), { ...st, receiver: undefined }).enabled, true)
     const input = tile({ command: 'in-cblsat', resolved: 'SISAT/CBL' })
-    assert.equal(uniStatus(input, st).reason, 'такого входа нет в списке ресивера')
+    assert.equal(uniStatus(input, st).enabled, true)
     assert.equal(uniStatus(tile({ command: 'in-tv', resolved: 'SITV' }), st).enabled, true)
-    // питание ресивера работает и из режима ожидания
-    assert.equal(uniStatus(tile({ command: 'power', resolved: 'PWTOGGLE' }), { ...st, receiver: { power: 'STANDBY', inputs: [] } }).enabled, true)
   })
-  it('телевизор: правила его пульта (нет сервиса в HA, ТВ не отвечает)', () => {
+  it('телевизор: кнопка с ключом активна всегда — статус его пульта (HA, online) ни при чём', () => {
     const st = { receiver: recvOn, tv: tvOn }
     assert.equal(uniStatus(tile({ source: 'tv', resolved: 'KEY_UP' }), st).enabled, true)
-    assert.equal(uniStatus(tile({ source: 'tv', resolved: 'KEY_MENU' }), st).reason, 'через Home Assistant недоступно')
-    assert.equal(uniStatus(tile({ source: 'tv', resolved: 'KEY_UP' }), { ...st, tv: { ...tvOn, online: false } }).reason, 'ТВ не отвечает')
-    assert.equal(uniStatus(tile({ source: 'tv', resolved: 'KEY_POWER' }), { ...st, tv: { ...tvOn, online: false } }).enabled, true) // питание — сценой
+    assert.equal(uniStatus(tile({ source: 'tv', resolved: 'KEY_MENU' }), st).enabled, true)
+    assert.equal(uniStatus(tile({ source: 'tv', resolved: 'KEY_UP' }), { ...st, tv: { ...tvOn, online: false } }).enabled, true)
+    assert.equal(uniStatus(tile({ source: 'tv', resolved: 'KEY_POWER' }), { ...st, tv: { ...tvOn, online: false } }).enabled, true)
   })
-  it('сцена: серая, пока недоступна', () => {
+  it('сцена: активна всегда, даже если отмечена недоступной на сервере', () => {
     const st = { receiver: recvOn, tv: tvOn }
     assert.equal(uniStatus(tile({ source: 'scene', command: 'scene.tv_on', resolved: 'scene.tv_on' }), st).enabled, true)
-    assert.deepEqual(uniStatus(tile({ source: 'scene', command: 'scene.fire', resolved: 'scene.fire', available: false }), st), { enabled: false, reason: 'сцена недоступна' })
+    assert.equal(uniStatus(tile({ source: 'scene', command: 'scene.fire', resolved: 'scene.fire', available: false }), st).enabled, true)
   })
-  it('выключатель: включён, выключен, недоступен', () => {
+  it('выключатель: активен всегда (включён, выключен, недоступен) — бейдж статуса считается отдельно', () => {
     const base = { receiver: recvOn, tv: tvOn }
     const b = tile({ source: 'switch', command: 'switch.balcon', resolved: 'switch.balcon', title: 'SonOff: Balcon' })
     const withSw = (state: 'on' | 'off' | 'unavailable') => ({ ...base, switches: { 'switch.balcon': state } })
     assert.equal(uniSwitchState(b, withSw('on')), 'on')
     assert.equal(uniStatus(b, withSw('on')).enabled, true)
-    assert.equal(uniStatus(b, withSw('off')).enabled, true) // «выключен» — состояние реле, плитка нажимается
-    assert.deepEqual(uniStatus(b, withSw('unavailable')), { enabled: false, reason: 'выключатель недоступен' })
-    assert.equal(uniSwitchState(b, base), 'unknown') // состояний ещё нет — доступность с сервера
+    assert.equal(uniStatus(b, withSw('off')).enabled, true)
+    assert.equal(uniStatus(b, withSw('unavailable')).enabled, true) // бейдж покажет «недоступен», но кнопка нажимается
+    assert.equal(uniSwitchState(b, base), 'unknown') // состояний ещё нет — доступность с сервера (только для бейджа)
     assert.equal(uniStatus({ ...b, resolved: null }, withSw('on')).reason, 'команда не назначена')
     assert.equal(uniRepeatable(b), false) // выключатель не повторяется при удержании
   })

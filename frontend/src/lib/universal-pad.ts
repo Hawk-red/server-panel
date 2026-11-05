@@ -1,9 +1,9 @@
-// UNIVERSAL (два столбца: TV и MARANTZ): правила плиток без React. Плитки-выключатели берут живое состояние из «Умного дома». Команды берутся с сервера уже развёрнутыми (universal.remote),
-// доступность считается теми же функциями, что и у оригинальных пультов, — свои правила не заводим.
-import { isRepeatable, keyStatus, type KeyStatus } from './receiver-pad.ts'
+// UNIVERSAL (два столбца: TV и MARANTZ): правила плиток без React. Плитки-выключатели берут живое состояние из «Умного дома» (только для бейджа — на нажатие не влияет).
+// Команды берутся с сервера уже развёрнутыми (universal.remote); нажатие всегда отправляет команду, как у ИК-пульта (см. uniStatus).
+import { isRepeatable, type KeyStatus } from './receiver-pad.ts'
 import type { ReceiverFullState } from './receiver-remote.ts'
 import type { ControlState, SceneColor, SceneIcon } from './smarthome.ts'
-import { isTvRepeatable, tvKeyStatus, type TvStatus } from './tv-pad.ts'
+import { isTvRepeatable, type TvStatus } from './tv-pad.ts'
 
 export type UniSource = 'receiver' | 'tv' | 'scene' | 'switch'
 export type UniButton = { id: string; source: UniSource; command: string; label: string; icon: SceneIcon; color: SceneColor }
@@ -40,13 +40,10 @@ export function uniSwitchState(b: UniButtonView, st: DeviceState): ControlState 
   return b.available ? 'unknown' : 'unavailable'
 }
 
-/** Можно ли нажать плитку: правила — от исходного пульта (ресивер) или телевизора; сцена и выключатель — доступны ли они */
-export function uniStatus(b: UniButtonView, st: DeviceState): KeyStatus {
-  if (!b.resolved) return { enabled: false, reason: 'команда не назначена' }
-  if (b.source === 'receiver') return keyStatus(b.resolved, st.receiver)
-  if (b.source === 'tv') return tvKeyStatus(b.resolved, st.tv)
-  if (b.source === 'switch') return uniSwitchState(b, st) === 'unavailable' ? { enabled: false, reason: 'выключатель недоступен' } : { enabled: true, reason: null }
-  return b.available ? { enabled: true, reason: null } : { enabled: false, reason: 'сцена недоступна' }
+/** Можно ли нажать плитку: только есть ли у неё команда — как у ИК-пульта, статус устройства (ресивер,
+ *  ТВ, выключатель, сцена) на нажатие не влияет, нажатие просто отправляет команду */
+export function uniStatus(b: UniButtonView, _st: DeviceState): KeyStatus {
+  return b.resolved ? { enabled: true, reason: null } : { enabled: false, reason: 'команда не назначена' }
 }
 
 /** Удержание с автоповтором — там же, где и на оригинальных пультах (громкость, стрелки) */

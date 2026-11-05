@@ -18,21 +18,17 @@ describe('пульт: доступность кнопок', () => {
   it('без команды — неактивна с подсказкой «команда не назначена»', () => {
     assert.deepEqual(keyStatus(null, st), { enabled: false, reason: 'команда не назначена' })
   })
-  it('вход из живого списка активен, отсутствующий в списке — серый', () => {
-    assert.equal(keyStatus('SIBD', st).enabled, true)
-    const r = keyStatus('SICD', st)
-    assert.equal(r.enabled, false)
-    assert.match(r.reason ?? '', /нет в списке/)
-  })
-  it('в режиме ожидания работают только питание и зоны', () => {
+  it('кнопка с командой активна всегда — как у ИК-пульта, статус ресивера (питание, связь, живой список входов) ни при чём', () => {
     const off = { ...st, power: 'STANDBY' as const }
-    for (const c of ['PWTOGGLE', 'PWON', 'ZMTOGGLE', 'Z2ON', 'Z2TOGGLE']) assert.equal(keyStatus(c, off).enabled, true, c)
-    for (const c of ['MVUP', 'MNCUP', 'SIBD', 'MUTOGGLE', 'ECOCYCLE', 'MSMOVIE']) assert.equal(keyStatus(c, off).enabled, false, c)
+    for (const c of ['PWTOGGLE', 'PWON', 'ZMTOGGLE', 'Z2ON', 'Z2TOGGLE', 'MVUP', 'MNCUP', 'SIBD', 'SICD', 'MUTOGGLE', 'ECOCYCLE', 'MSMOVIE']) {
+      assert.equal(keyStatus(c, st).enabled, true, c)
+      assert.equal(keyStatus(c, off).enabled, true, c)
+      assert.equal(keyStatus(c, undefined).enabled, true, c)
+    }
+  })
+  it('needsPower: какие команды работают из режима ожидания (для будущего индикатора, на нажатие не влияет)', () => {
     assert.equal(needsPower('MVUP'), true)
     assert.equal(needsPower('PWON'), false)
-  })
-  it('нет данных от ресивера — всё серое', () => {
-    assert.equal(keyStatus('PWTOGGLE', undefined).enabled, false)
   })
   it('живое имя входа под подписью — только для привязки ко входу', () => {
     assert.equal(liveInputName('SISAT/CBL', st), 'IPAD')

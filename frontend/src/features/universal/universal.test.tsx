@@ -16,6 +16,12 @@ const html = (over: { buttons?: UniButtonView[]; editing?: boolean; st?: typeof 
   renderToStaticMarkup(<UniversalPad buttons={over.buttons ?? UNI_TV} st={over.st ?? st} editing={over.editing ?? false} busy={over.busy} onPress={noop} onEdit={noop} onRemove={noop} />)
 const state = (h: string, id: string) => new RegExp(`data-tile="${id}"[^>]*data-state="(\\w+)"`).exec(h)?.[1]
 const tile = (h: string, id: string) => new RegExp(`<button[^>]*data-tile="${id}"[^>]*>`).exec(h)?.[0] ?? ''
+// Весь блок плитки (кнопка + бейдж-индикатор справа от неё, если выключатель) — до начала следующей плитки
+const tileBlock = (h: string, id: string) => {
+  const start = h.indexOf(`data-tile="${id}"`)
+  const next = h.indexOf('data-tile="', start + 1)
+  return h.slice(start, next === -1 ? h.length : next)
+}
 const sw = (id: string): UniButtonView => UNI_TV.find((b) => b.id === id)!
 
 describe('универсальный пульт: два столбца', () => {
@@ -44,27 +50,25 @@ describe('универсальный пульт: два столбца', () => {
     assert.match(html({ buttons: UNI_TV }), /data-tile="tv-enter" data-command="KEY_ENTER"/)
     assert.ok(html({ buttons: UNI_RECEIVER }).includes('Громче'))
   })
-  it('серые: вход не из живого списка, кнопка без команды, сцена недоступна', () => {
+  it('серые — только без назначенной команды; статус устройства/сцены на нажатие не влияет', () => {
     const h = html({ buttons: UNI_RECEIVER })
     assert.equal(state(h, 'av-in-tv'), 'on')
-    assert.equal(state(h, 'av-in-satcbl'), 'off') // такого входа нет в списке ресивера
-    assert.match(h, /ANDROID — такого входа нет в списке ресивера/)
+    assert.equal(state(h, 'av-in-satcbl'), 'on') // такого входа нет в живом списке ресивера — но команда есть, кнопка активна
     const noCmd: UniButtonView = { ...UNI_RECEIVER[1], id: 'uni-x', resolved: null, available: false, title: 'без команды' }
     const offScene: UniButtonView = { ...UNI_TV.find((b) => b.source === 'scene')!, id: 'uni-y', available: false }
     const h2 = html({ buttons: [noCmd, offScene] })
     assert.equal(state(h2, 'uni-x'), 'off')
-    assert.equal(state(h2, 'uni-y'), 'off')
+    assert.equal(state(h2, 'uni-y'), 'on') // сцена отмечена недоступной на сервере — кнопка всё равно активна
     assert.match(h2, /команда не назначена/)
-    assert.match(h2, /сцена недоступна/)
   })
-  it('выключенный ресивер и молчащий ТВ: активны только питание', () => {
+  it('выключенный ресивер и молчащий ТВ — как у ИК-пульта: активны все кнопки, не только питание', () => {
     const off = { receiver: { ...RECEIVER_ON, power: 'STANDBY' as const }, tv: { ...TV_ON, online: false } }
     const hr = html({ buttons: UNI_RECEIVER, st: off })
     const ht = html({ buttons: UNI_TV, st: off })
     assert.equal(state(hr, 'av-power'), 'on')
     assert.equal(state(ht, 'tv-power'), 'on') // ТВ включит сцена
-    assert.equal(state(hr, 'av-vol-up'), 'off')
-    assert.equal(state(ht, 'tv-up'), 'off')
+    assert.equal(state(hr, 'av-vol-up'), 'on')
+    assert.equal(state(ht, 'tv-up'), 'on')
   })
   it('режим «Изменить»: у каждой плитки меню действий, нажатие не шлёт команду', () => {
     const h = html({ buttons: UNI_TV, editing: true })
@@ -86,17 +90,18 @@ describe('универсальный пульт: плитки-выключате
     assert.equal(state(h, 'sw-balcon'), 'on') // нажимается: «выключен» — это состояние реле, а не плитки
     assert.ok(tile(h, 'sw-tv-socket').includes('bg-fuchsia-600'))
     assert.ok(tile(h, 'sw-balcon').includes('bg-muted')) // приглушённая
-    assert.match(h, /Розетка ТВ<\/span><span[^>]*>вкл</)
-    assert.match(h, /Балкон<\/span><span[^>]*>выкл</)
+    // текстовую строку статуса убрали — теперь это цветной бейдж-точка в углу плитки
+    assert.match(tileBlock(h, 'sw-tv-socket'), /bg-emerald-400/)
+    assert.match(tileBlock(h, 'sw-balcon'), /bg-white\/50/)
     assert.match(tile(h, 'sw-tv-socket'), /aria-pressed="true"/)
     assert.match(tile(h, 'sw-balcon'), /aria-pressed="false"/)
   })
-  it('недоступный — серый и неактивный', () => {
+  it('недоступный выключатель — кнопка всё равно нажимаема (gating снят), бейдж статуса — отдельно', () => {
     const h = html({ buttons: [sw('sw-lamp')] })
-    assert.equal(state(h, 'sw-lamp'), 'off')
-    assert.match(tile(h, 'sw-lamp'), /aria-disabled="true"/)
-    assert.match(h, /выключатель недоступен/)
-    assert.deepEqual(uniStatus(sw('sw-lamp'), st), { enabled: false, reason: 'выключатель недоступен' })
+    assert.equal(state(h, 'sw-lamp'), 'on')
+    assert.match(tile(h, 'sw-lamp'), /aria-disabled="false"/)
+    assert.deepEqual(uniStatus(sw('sw-lamp'), st), { enabled: true, reason: null })
+    assert.equal(uniSwitchState(sw('sw-lamp'), st), 'unavailable') // статус для бейджа считается отдельно от нажимаемости
   })
   it('пока состояний нет — берётся доступность с сервера', () => {
     const bare = { receiver: RECEIVER_ON, tv: TV_ON }
@@ -112,7 +117,7 @@ describe('универсальный пульт: плитки-выключате
   it('в режиме «Изменить» состояние не показывается, плитка открывает правку', () => {
     const h = html({ buttons: [sw('sw-tv-socket')], editing: true })
     assert.equal(state(h, 'sw-tv-socket'), 'edit')
-    assert.ok(!/>вкл</.test(h))
+    assert.ok(!tileBlock(h, 'sw-tv-socket').includes('ring-2 ring-background')) // бейдж статуса скрыт в режиме правки
     assert.match(h, /Действия с кнопкой/)
   })
 })
@@ -212,10 +217,22 @@ describe('универсальный пульт: правка состава', (
     const src = readFileSync(new URL('./index.tsx', import.meta.url), 'utf8')
     assert.match(src, /api\.put<UniData>\(`\/universal\/remote\/\$\{v\.column\}`, \{ buttons: v\.buttons \}\)/)
     assert.match(src, /api\.post<UniData>\(`\/universal\/remote\/\$\{column\}\/reset`\)/)
-    assert.match(src, /universal-edit-\$\{column\}/) // у каждого столбца свой переключатель «Изменить»
+    assert.match(src, /const \[editing, setEditing\] = useState/) // своё переключение, не общее с шапкой (сортировкой вкладок)
     assert.match(src, /defaultSource=\{column\}/) // диалог предлагает кнопки своего устройства
-    assert.match(src, /UNI_COLUMNS\.map/)
-    assert.match(src, /md:grid-cols-2/) // на узком экране столбцы идут друг под другом
+    assert.match(src, /<Column column='tv'/)
+    assert.match(src, /<Column column='receiver'/)
+    // все кнопки карточки — один общий UniversalPad на весь список, без деления на независимые половины-под-гриды
+    assert.match(src, /<UniversalPad[\s\S]*?buttons=\{buttons\}/)
+    assert.ok(!/buttons\.slice\(0, half\)/.test(src))
+  })
+  it('TV, Громкость и Marantz — три независимые карточки-блока с общим перетаскиваемым порядком (шапка, /layout/media-control)', () => {
+    const src = readFileSync(new URL('./index.tsx', import.meta.url), 'utf8')
+    assert.match(src, /import \{ type Block, SortableBlocks \} from '@\/components\/sortable-blocks'/)
+    assert.match(src, /<SortableBlocks grid blocks=\{blocks\} className=/)
+    // свой ключ порядка не передаём — он берётся из edit.page ('media-control'), чтобы не конфликтовать с /layout/media-tabs
+    assert.ok(!/pageKey=/.test(src))
+    for (const id of ['tv', 'volume', 'marantz']) assert.match(src, new RegExp(`id: '${id}'`))
+    assert.match(src, /node: <VolumeControl \/>/)
   })
   it('вкладка сохраняет только модель кнопки и шлёт команды прежними маршрутами', () => {
     const src = readFileSync(new URL('./index.tsx', import.meta.url), 'utf8')
