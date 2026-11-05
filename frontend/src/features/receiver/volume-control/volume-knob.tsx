@@ -2,6 +2,7 @@
 // Положение следует за пальцем сразу (оптимистично), на сервер уходит не чаще кадра и только последнее значение
 // (этим занимается use-volume). Опрос состояния во время протяжки положение не перезаписывает: показывается своё значение.
 import { useEffect, useRef, useState } from 'react'
+import { ArrowUpToLine, Volume2, VolumeX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dragSensitivity, dragSpan, dragToVolume, stepVolume, volumeUnits, VOLUME_SKIN_TITLE, VOLUME_SKINS, type VolumeSkin } from '@/lib/volume-drag'
 import { buzz } from '../use-hold'
@@ -19,6 +20,8 @@ export type VolumeKnobProps = {
   onMute?: () => void
   onExpand?: () => void // тап (без протяжки) по регулятору — открыть полноэкранный вид (сейчас только «Капсула»)
   compact?: boolean
+  fullScreen?: boolean
+  fill?: boolean // «Капсула» в карточке «Громкость»: растянуться на всю высоту родителя вместо фиксированных h-48/h-64
 }
 
 /** prefers-reduced-motion: упрощённая подсветка без анимаций */
@@ -38,7 +41,7 @@ const SKIN_VIEW = { knob: KnobSkin, mixer: MixerSkin, capsule: CapsuleSkin } as 
 
 const HOLD_AFTER_RELEASE_MS = 1800 // сколько показываем своё значение после отпускания (дольше, чем сверка состояния в use-volume)
 
-export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, onSend, onMute, onExpand, compact = false }: VolumeKnobProps) {
+export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, onSend, onMute, onExpand, compact = false, fill = false }: VolumeKnobProps) {
   const reduced = useReducedMotion()
   const [drag, setDrag] = useState<{ value: number; dragging: boolean; dir: -1 | 0 | 1 } | null>(null)
   const d = useRef({ pid: -1, startY: 0, start: 0, sens: 0, last: 0, next: null as number | null, raf: 0, bumped: false, movedPx: 0 })
@@ -128,9 +131,9 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
   }
 
   const active = drag?.dragging === true
-  const skinProps = { value: shown, max, active, dir: drag?.dir ?? 0, mute, disabled, reduced, compact, onStep: step }
+  const skinProps = { value: shown, max, active, dir: drag?.dir ?? 0, mute, disabled, reduced, compact, fill, onStep: step }
   return (
-    <div data-volume-knob data-skin={skin} data-state={disabled ? 'off' : active ? 'active' : 'on'} className='flex min-w-0 flex-col gap-2'>
+    <div data-volume-knob data-skin={skin} data-state={disabled ? 'off' : active ? 'active' : 'on'} className={cn('flex min-w-0 flex-col gap-2', fill && 'h-full')}>
       {onSkin && (
         <div className='flex flex-wrap items-center gap-1' role='group' aria-label='Вид регулятора'>
           {VOLUME_SKINS.map((s) => (
@@ -148,34 +151,40 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
           ))}
         </div>
       )}
-      {/* область протяжки: высоту задаёт сам вид регулятора, лишних полей вокруг нет */}
-      <div
-        role='slider'
-        tabIndex={disabled ? -1 : 0}
-        aria-label='Громкость ресивера'
-        aria-valuemin={0}
-        aria-valuemax={max}
-        aria-valuenow={shown}
-        aria-valuetext={volumeUnits(value === null ? null : shown)}
-        aria-disabled={disabled}
-        data-surface
-        className={cn(
-          'relative w-full min-w-0 select-none rounded-2xl py-1 outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-ring',
-          disabled ? 'pointer-events-none opacity-45 grayscale' : 'cursor-ns-resize',
-          !reduced && 'transition-[filter,opacity] duration-300',
-        )}
-        style={{ touchAction: 'none' }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onKeyDown={onKeyDown}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        <Skin {...skinProps} />
+      {/* область протяжки: высоту задаёт сам вид регулятора, лишних полей вокруг нет (fill — высоту вместо этого
+          задаёт родитель, см. комментарий у VolumeKnobProps.fill). Обёртка — relative, не серая: бейдж связи
+          рисуется на ней, чтобы не гаснуть под grayscale внутренней поверхности */}
+      <div className={cn('relative', fill && 'flex-1 min-h-0')}>
+        <div
+          role='slider'
+          tabIndex={disabled ? -1 : 0}
+          aria-label='Громкость ресивера'
+          aria-valuemin={0}
+          aria-valuemax={max}
+          aria-valuenow={shown}
+          aria-valuetext={volumeUnits(value === null ? null : shown)}
+          aria-disabled={disabled}
+          data-surface
+          className={cn(
+            'w-full min-w-0 select-none rounded-2xl outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-ring',
+            fill ? 'h-full' : 'py-1',
+            disabled ? 'pointer-events-none opacity-45 grayscale' : 'cursor-ns-resize',
+            !reduced && 'transition-[filter,opacity] duration-300',
+          )}
+          style={{ touchAction: 'none' }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onKeyDown={onKeyDown}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <Skin {...skinProps} />
+        </div>
       </div>
-      {/* значение шкалы обычным числом (как в приложении ресивера, без дБ); тап по нему — Mute */}
-      <div className='flex items-end justify-between gap-2'>
+      {/* Значение, Mute и потолок — видно при любом виде, включая «Капсулу»: раньше там звуком управляла
+          только протяжка, отдельной кнопки Mute не было */}
+      <div className='flex items-center justify-between gap-2'>
         <button
           type='button'
           data-mute
@@ -187,16 +196,18 @@ export function VolumeKnob({ value, max, mute, disabled, reason, skin, onSkin, o
             buzz()
             onMute?.()
           }}
-          className={cn('-mx-1 rounded-xl px-1 text-left font-bold tabular-nums leading-none', compact ? 'text-2xl' : 'text-3xl', mute ? 'text-destructive' : 'text-foreground', !reduced && 'transition-colors duration-200')}
+          className={cn('-mx-1 flex items-center gap-1.5 rounded-xl px-1 font-bold tabular-nums leading-none', compact ? 'text-2xl' : 'text-3xl', mute ? 'text-destructive' : 'text-foreground', !reduced && 'transition-colors duration-200')}
           style={{ touchAction: 'manipulation' }}
         >
-          <span aria-live='polite'>{volumeUnits(value === null ? null : shown)}</span>
-          <span className='block text-[10px] font-medium uppercase tracking-wide text-muted-foreground'>{mute ? 'Звук выключен' : 'тап — Mute'}</span>
+          {mute ? <VolumeX className='size-4 shrink-0' aria-hidden /> : <Volume2 className='size-4 shrink-0' aria-hidden />}
+          <span className='flex flex-col items-start'>
+            <span aria-live='polite'>{volumeUnits(value === null ? null : shown)}</span>
+            <span className='text-[10px] font-normal text-muted-foreground'>{mute ? 'Звук выключен' : 'тап — Mute'}</span>
+          </span>
         </button>
-        <span className='text-right text-[10px] leading-tight text-muted-foreground'>
-          потолок
-          <br />
-          {volumeUnits(max)}
+        <span className='inline-flex items-center gap-1 text-xs text-muted-foreground'>
+          <ArrowUpToLine className='size-3.5' aria-hidden />
+          потолок <span className='tabular-nums'>{volumeUnits(max)}</span>
         </span>
       </div>
       {disabled && reason && <p className='text-xs text-muted-foreground'>{reason}</p>}

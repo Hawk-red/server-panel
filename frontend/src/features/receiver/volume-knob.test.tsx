@@ -54,15 +54,13 @@ describe('регулятор громкости: рендер', () => {
     assert.match(h, /data-led="off"/) // палец не держит фейдер
     for (const v of [0, 10, 20, 30, 40, 50, 60]) assert.ok(h.includes(`data-tick="${v}"`), String(v))
   })
-  it('«Капсула»: одна заливка, значок динамика и кнопки ±5 под палец', () => {
+  it('«Капсула»: одна заливка на всю капсулу, без побочных элементов (ни кнопок шага, ни делений)', () => {
     const h = html({ skin: 'capsule' })
     assert.match(h, /data-skin="capsule"/)
     assert.equal(count(h, /data-fill/g), 1)
     assert.match(h, /data-fill[^>]*height:86\.6\d*%/)
-    assert.match(h, /<svg/) // значок динамика
-    assert.match(h, /data-step="up"[^>]*aria-label="Громче на 5"/)
-    assert.match(h, /data-step="down"[^>]*aria-label="Тише на 5"/)
-    assert.equal(count(h, /size-10 place-items-center rounded-full/g), 2) // 40 px — размер под палец
+    assert.match(h, /<svg/) // значок динамика (Mute)
+    assert.ok(!h.includes('data-step'), 'кнопок ±5 больше нет')
     assert.ok(!h.includes('data-handle') && !h.includes('data-tick'))
   })
   it('у положения регулятора нет CSS-переходов (иначе картинка отстаёт от пальца)', () => {
@@ -112,13 +110,13 @@ describe('регулятор громкости: рендер', () => {
     assert.ok(h.includes('Ресивер выключен — громкость недоступна'))
     assert.ok(h.includes('>—<')) // значения нет
     assert.equal(count(html({ st: VOLUME_OFF, skin: 'knob' }), /data-mark="on"/g), 0) // дуга не горит
-    assert.equal(count(html({ st: VOLUME_OFF, skin: 'capsule' }), /data-step="\w+" aria-label="[^"]*" disabled=""/g), 2)
+    assert.match(html({ st: VOLUME_OFF, skin: 'capsule' }), /data-mute[^>]*disabled=""/)
   })
   it('карточка облегает регулятор: высоту задаёт сам вид, пустых полей нет', () => {
     assert.ok(!html().includes('min-height'), 'фиксированной высоты области больше нет')
     assert.ok(html({ skin: 'knob' }).includes('max-w-[12.5rem]') && html({ skin: 'knob', compact: true }).includes('max-w-[9.5rem]'))
     assert.ok(html({ skin: 'mixer' }).includes('h-52') && html({ skin: 'mixer', compact: true }).includes('h-40'))
-    assert.ok(html({ skin: 'capsule' }).includes('h-52') && html({ skin: 'capsule', compact: true }).includes('h-40'))
+    assert.ok(html({ skin: 'capsule' }).includes('h-64') && html({ skin: 'capsule', compact: true }).includes('h-48'))
   })
   it('у потолка диапазон пройден до конца во всех видах', () => {
     assert.equal(levelOf(60, 60), 1)
