@@ -4,14 +4,13 @@ import { closestCenter, DndContext, type DragEndEvent, KeyboardSensor, PointerSe
 import { rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { AxiosError } from 'axios'
-import { Plus, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { moveItem } from '@/lib/layout-order'
 import { bumpVolume } from '@/lib/receiver-remote'
 import { controlStateOf, performToggle, runScene, type ControlState, type SmartHomeData, type ToggleResult } from '@/lib/smarthome'
 import { removeButton, stripView, uniRepeatable, UNI_COLUMNS, UNI_COLUMN_TITLE, upsertButton, type DeviceState, type UniButton, type UniButtonView, type UniColumn, type UniData } from '@/lib/universal-pad'
-import { Button } from '@/components/ui/button'
+import { type Block, SortableBlocks } from '@/components/sortable-blocks'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useReceiver } from '@/features/receiver/use-receiver'
@@ -101,20 +100,17 @@ type ColumnProps = {
   pending: boolean
   onPress: (b: UniButtonView) => void
   onSave: (column: UniColumn, buttons: UniButton[]) => void
-  onReset: (column: UniColumn) => void
-  above?: React.ReactNode // над плитками столбца (у «Marantz» — компактный регулятор громкости)
 }
 
-/** Один столбец: свой переключатель «Изменить», своё добавление, перетаскивание и сброс */
-function Column({ column, data, st, busy, pending, onPress, onSave, onReset, above }: ColumnProps) {
+function Column({ column, data, st, busy, pending, onPress, onSave }: ColumnProps) {
+  // Своё, независимое от шапки, переключение режима изменения: тумблер «Изменить» ниже отвечает только за кнопки
+  // этой карточки (порядок самих вкладок UNIVERSAL/TV/MARANTZ/VOLUME — отдельная сортировка в шапке страницы)
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editTile, setEditTile] = useState<{ b: UniButton; isNew: boolean } | null>(null)
   const col = data?.columns?.[column]
   const buttons = col?.buttons ?? []
   const list = () => buttons.map(stripView)
-  const max = data?.max ?? 48
-  const sw = `universal-edit-${column}`
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -131,6 +127,9 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset, abo
     setEditTile(null)
   }
 
+  // Одна общая сетка на всю карточку (UniversalPad сам распределяет колонки по своей ширине через @container) —
+  // раньше кнопки делились на две независимые половины со своими отступами, из-за чего последняя (например, MUTE)
+  // могла оказаться одна в своём под-гриде и визуально «съезжать» относительно остальных
   const grid = (
     <UniversalPad
       buttons={buttons}
@@ -138,31 +137,14 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset, abo
       editing={editing}
       busy={busy}
       onPress={onPress}
-      onEdit={(b) => setEditTile({ b: stripView(b), isNew: false })}
-      onRemove={(b) => onSave(column, removeButton(list(), b.id))}
+      onEdit={(b: UniButtonView) => setEditTile({ b: stripView(b), isNew: false })}
+      onRemove={(b: UniButtonView) => onSave(column, removeButton(list(), b.id))}
       wrap={editing ? (b, node) => <SortableTile id={b.id}>{node}</SortableTile> : undefined}
     />
   )
 
-  // Title + Изменить switch at bottom, buttons at top
   return (
     <section className='space-y-3 rounded-xl border p-3' aria-label={`UNIVERSAL: ${UNI_COLUMN_TITLE[column]}`} data-column={column}>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <h2 className='text-sm font-medium'>{UNI_COLUMN_TITLE[column]}</h2>
-        {editing && (
-          <>
-            <Button type='button' size='sm' variant='outline' onClick={() => setAdding(true)} disabled={!data || buttons.length >= max}>
-              <Plus /> Добавить кнопку
-            </Button>
-            <Button type='button' size='sm' variant='outline' onClick={() => onReset(column)} disabled={col?.isDefault}>
-              <RotateCcw /> Сбросить
-            </Button>
-          </>
-        )}
-      </div>
-
-      {above}
-
       {editing ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={buttons.map((b) => b.id)} strategy={rectSortingStrategy}>
@@ -171,15 +153,6 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset, abo
         </DndContext>
       ) : (
         grid
-      )}
-
-      {editing && (
-        <div className='flex items-center gap-2 pt-2'>
-          <Label htmlFor={sw} className='text-sm'>
-            Изменить
-          </Label>
-          <Switch id={sw} checked={editing} onCheckedChange={setEditing} disabled={!data} />
-        </div>
       )}
 
       {adding && data && (
@@ -197,13 +170,18 @@ function Column({ column, data, st, busy, pending, onPress, onSave, onReset, abo
       {editTile && (
         <TileDialog b={editTile.b} title={editTile.isNew ? 'Новая кнопка' : `Кнопка «${editTile.b.label}»`} pending={pending} onSave={saveTile} onClose={() => setEditTile(null)} />
       )}
+
+      <div className='flex items-center justify-end gap-2 pt-2'>
+        <Label htmlFor={`${column}-edit`} className='text-sm'>Изменить</Label>
+        <Switch id={`${column}-edit`} checked={editing} onCheckedChange={setEditing} disabled={!data} />
+      </div>
     </section>
   )
 }
 
 /** Вкладка «Универсальный»: два столбца частых кнопок — слева телевизор, сцены и выключатели, справа ресивер */
 export function UniversalTab() {
-  const { data, save, pending, reset } = useUniversal()
+  const { data, save, pending } = useUniversal()
   const { q: receiver, send, patch } = useReceiver()
   const tv = useTvStatus()
   const tvPress = useTvPress(tv.data)
@@ -227,24 +205,14 @@ export function UniversalTab() {
     )
   }
 
-  return (
-    <div className='space-y-4'>
-      <div className='grid gap-6 md:grid-cols-2'>
-        {UNI_COLUMNS.map((c) => (
-          <Column
-            key={c}
-            column={c}
-            data={data}
-            st={st}
-            busy={sw.busy}
-            pending={pending}
-            onPress={press}
-            onSave={(column, buttons) => save({ column, buttons })}
-            onReset={reset}
-            above={c === 'receiver' ? <VolumeControl compact /> : undefined}
-          />
-        ))}
-      </div>
-    </div>
-  )
+  const onSave = (column: UniColumn, buttons: UniButton[]) => save({ column, buttons })
+  // Три самостоятельные карточки-блока — TV, Громкость, Marantz — с общим порядком, который можно менять
+  // перетаскиванием при включённом режиме сортировки в шапке (как у порядка вкладок, но отдельный ключ)
+  const blocks: Block[] = [
+    { id: 'tv', title: 'TV — кнопки', node: <Column column='tv' data={data} st={st} busy={sw.busy} pending={pending} onPress={press} onSave={onSave} /> },
+    { id: 'volume', title: 'Громкость', node: <VolumeControl /> },
+    { id: 'marantz', title: 'Marantz — кнопки', node: <Column column='receiver' data={data} st={st} busy={sw.busy} pending={pending} onPress={press} onSave={onSave} /> },
+  ]
+  // items-start: блоки не вытягиваются по самому высокому — иначе под коротким висит пустота
+  return <SortableBlocks grid blocks={blocks} className='grid gap-6 items-start md:grid-cols-2' />
 }

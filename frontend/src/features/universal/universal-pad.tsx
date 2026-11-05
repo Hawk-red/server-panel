@@ -73,9 +73,14 @@ export function UniTile({ b, st, editing, busy = false, onPress, onEdit, onRemov
         </span>
         <span className='flex min-w-0 flex-col gap-0.5'>
           <span className='line-clamp-2 text-base leading-tight font-semibold break-words'>{b.label}</span>
-          {sw && !editing && <span className={cn('text-xs font-medium', swOn ? 'text-white/80' : 'text-muted-foreground')}>{status.enabled ? (swOn ? 'вкл' : 'выкл') : 'недоступно'}</span>}
         </span>
       </button>
+      {sw && !editing && (
+        <span
+          className={cn('absolute end-1.5 top-1.5 size-2.5 rounded-full ring-2 ring-background', !status.enabled ? 'bg-red-500' : swOn ? 'bg-emerald-400' : 'bg-white/50')}
+          aria-hidden
+        />
+      )}
       {editing && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -112,12 +117,15 @@ export function UniversalPad({ buttons, st, editing, busy, onPress, onEdit, onRe
   if (buttons.length === 0) {
     return <p className='rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground'>Кнопок нет. Включите «Изменить» и добавьте нужные или сбросьте набор по умолчанию.</p>
   }
+  // Число столбцов — по ширине самого блока, а не экрана: половина пульта уже, чем весь столбец
   return (
-    <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4'>
-      {buttons.map((b) => {
-        const node = <UniTile key={b.id} b={b} st={st} editing={editing} busy={Boolean(b.resolved && busy?.has(b.resolved))} onPress={onPress} onEdit={onEdit} onRemove={onRemove} />
-        return wrap ? <div key={b.id}>{wrap(b, node)}</div> : node
-      })}
+    <div className='@container'>
+      <div className='grid grid-cols-2 gap-3 @[26rem]:grid-cols-3 @[42rem]:grid-cols-4'>
+        {buttons.map((b) => {
+          const node = <UniTile key={b.id} b={b} st={st} editing={editing} busy={Boolean(b.resolved && busy?.has(b.resolved))} onPress={onPress} onEdit={onEdit} onRemove={onRemove} />
+          return wrap ? <div key={b.id}>{wrap(b, node)}</div> : node
+        })}
+      </div>
     </div>
   )
 }
