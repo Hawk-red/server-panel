@@ -1,0 +1,27 @@
+{
+  "service": "adguardhome",
+  "container": "adguardhome",
+  "project": "adguardhome",
+  "image": "adguard/adguardhome:latest",
+  "danger": true,
+  "warning": "AdGuard Home — DNS для всей домашней сети. На время пересоздания (несколько секунд) DNS и веб-интерфейс (3000) будут недоступны. Перед пересозданием делается снимок конфигурации и данных (контейнер коротко останавливается для согласованной копии).",
+  "rollback_warning": "Откат вернёт прежний образ AdGuard Home И снимок конфигурации/данных на момент перед обновлением: журнал запросов и изменения настроек после обновления будут потеряны. Текущие тома не удаляются, а откладываются рядом с остальными снимками.",
+  "health": {
+    "checks": [
+      { "type": "http", "url": "http://127.0.0.1:3000/", "status": [200, 302] },
+      { "type": "dns", "server": "127.0.0.1", "port": 53, "name": "example.com" }
+    ],
+    "timeout": 90,
+    "stable": 15
+  },
+  "backup": [
+    "/var/lib/docker/volumes/adguardhome_conf/_data",
+    "/var/lib/docker/volumes/adguardhome_work/_data"
+  ],
+  "backup_stopped": true,
+  "backup_required": true,
+  "backup_max_gb": 2,
+  "backup_keep": 3,
+  "rollback_restore_backup": true,
+  "min_free_gb": 1
+}

@@ -1,0 +1,36 @@
+# AdGuard Home (DNS для всей домашней сети) — кандидат compose-файла по `docker inspect adguardhome` (06.11.2026).
+# Контейнер сейчас создан через `docker run`. Файл НЕ используется, пока его не установит
+# deploy/docker/install-project.sh adguardhome (корневая копия в /etc/server-panel/docker/adguardhome/, хэш в белом списке).
+# Подключение контейнер не трогает.
+#
+# Capabilities: NET_ADMIN/host-сеть НЕ нужны — контейнер слушает порт 53 через обычный bridge
+# с явным port-mapping (как и сейчас), без CapAdd и без network_mode: host (проверено docker inspect).
+#
+# Тома — существующие named volumes adguardhome_conf/adguardhome_work (данные и конфиг AdGuard Home),
+# external: true — значит compose подключается к уже существующим томам по их буквальным именам,
+# не создаёт и не переименовывает их (без project-префикса) и не трогает данные при пересоздании.
+#
+# Пересоздание — только кнопкой «Обновить…» в панели (через помощника server-panel-docker, с бэкапом
+# и health-check), либо вручную `docker compose -f compose.yaml -p adguardhome up -d --no-deps --pull never`.
+# Кратковременная остановка DNS (секунды) при пересоздании — ожидаемо.
+name: adguardhome
+
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    restart: always
+    network_mode: bridge
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "3000:3000/tcp"
+    volumes:
+      - adguardhome_conf:/opt/adguardhome/conf
+      - adguardhome_work:/opt/adguardhome/work
+
+volumes:
+  adguardhome_conf:
+    external: true
+  adguardhome_work:
+    external: true
