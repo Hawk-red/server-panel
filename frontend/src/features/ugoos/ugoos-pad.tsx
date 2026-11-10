@@ -70,15 +70,15 @@ export function UgoosPad({ st, cfg, configure, onPress, onPick }: PadProps) {
         </UgoosKey>
       </div>
 
-      {/* 2. mute, курсор/аэромышь, backspace — без привязки у двух последних по умолчанию */}
+      {/* 2. mute, курсор/аэромышь, backspace — круглые, как кнопки питания; без привязки у двух последних по умолчанию */}
       <div className='mt-4 grid grid-cols-3 gap-2'>
-        <UgoosKey id='mute' label='Mute' {...c} className='h-10 rounded-full justify-self-center'>
+        <UgoosKey id='mute' label='Mute' {...c} className='size-12 rounded-full justify-self-center'>
           <VolumeX className='size-5' aria-hidden />
         </UgoosKey>
-        <UgoosKey id='cursor' label='Курсор (аэромышь)' {...c} className='h-10 rounded-full justify-self-center'>
+        <UgoosKey id='cursor' label='Курсор (аэромышь)' {...c} className='size-12 rounded-full justify-self-center'>
           <MousePointer2 className='size-4' aria-hidden />
         </UgoosKey>
-        <UgoosKey id='settings' label='Backspace' {...c} className='h-10 rounded-full justify-self-center'>
+        <UgoosKey id='settings' label='Backspace' {...c} className='size-12 rounded-full justify-self-center'>
           <SquareX className='size-4' aria-hidden />
         </UgoosKey>
       </div>
@@ -108,21 +108,21 @@ export function UgoosPad({ st, cfg, configure, onPress, onPick }: PadProps) {
         </div>
       </div>
 
-      {/* 4. назад, домой (светлый круг — заметно светлее остальных кнопок), меню */}
+      {/* 4. назад, домой (светлый круг — заметно светлее остальных кнопок), меню — круглые, одного диаметра */}
       <div className='mt-4 grid grid-cols-3 gap-2'>
-        <UgoosKey id='back' label='Назад' {...c} className='h-10 rounded-full'>
+        <UgoosKey id='back' label='Назад' {...c} className='size-12 rounded-full justify-self-center'>
           <ChevronLeft className='size-5' aria-hidden />
         </UgoosKey>
-        <UgoosKey id='home' label='Домой' {...c} className='h-10 rounded-full from-zinc-100 to-zinc-300 text-zinc-900'>
+        <UgoosKey id='home' label='Домой' {...c} className='size-12 rounded-full justify-self-center from-zinc-100 to-zinc-300 text-zinc-900'>
           <Home className='size-5' aria-hidden />
         </UgoosKey>
-        <UgoosKey id='menu' label='Меню' {...c} className='h-10 rounded-full'>
+        <UgoosKey id='menu' label='Меню' {...c} className='size-12 rounded-full justify-self-center'>
           <Menu className='size-5' aria-hidden />
         </UgoosKey>
       </div>
 
-      {/* 5. громкость/голос — не строка, а вертикальные качельки слева и справа от микрофона */}
-      <div className='mt-4 flex items-stretch justify-center gap-6'>
+      {/* 5. громкость/голос — не строка, а вертикальные качельки слева и справа от микрофона; правая (доп.) заметно длиннее левой и микрофона */}
+      <div className='mt-4 flex items-center justify-center gap-6'>
         <div className='flex w-11 flex-col overflow-hidden rounded-full shadow-[0_2px_0_0_#000,0_4px_5px_rgba(0,0,0,.55)]'>
           <UgoosKey id='vol-up' label='Громкость +' {...c} className='h-9 w-full rounded-none'>
             <span className='text-base leading-none'>+</span>
@@ -132,28 +132,26 @@ export function UgoosPad({ st, cfg, configure, onPress, onPick }: PadProps) {
             <span className='text-base leading-none'>−</span>
           </UgoosKey>
         </div>
-        <UgoosKey id='mic' label='Микрофон' {...c} className='size-11 self-center rounded-full'>
+        <UgoosKey id='mic' label='Микрофон' {...c} className='size-11 rounded-full'>
           <Mic className='size-5' aria-hidden />
         </UgoosKey>
         <div className='flex w-11 flex-col overflow-hidden rounded-full shadow-[0_2px_0_0_#000,0_4px_5px_rgba(0,0,0,.55)]'>
-          <UgoosKey id='arrow-up2' label='Канал/страница вверх (доп.)' {...c} className='h-9 w-full rounded-none from-zinc-500 to-zinc-600'>
+          <UgoosKey id='arrow-up2' label='Канал/страница вверх (доп.)' {...c} className='h-16 w-full rounded-none from-zinc-500 to-zinc-600'>
             <ChevronUp className='size-4' aria-hidden />
           </UgoosKey>
           <div className='h-px bg-black/40' />
-          <UgoosKey id='arrow-down2' label='Канал/страница вниз (доп.)' {...c} className='h-9 w-full rounded-none from-zinc-500 to-zinc-600'>
+          <UgoosKey id='arrow-down2' label='Канал/страница вниз (доп.)' {...c} className='h-16 w-full rounded-none from-zinc-500 to-zinc-600'>
             <ChevronDown className='size-4' aria-hidden />
           </UgoosKey>
         </div>
       </div>
 
-      {/* 6. быстрый запуск приложений — сетка 2×3, иконка + цветная точка-индикатор, пустые слоты */}
+      {/* 6. быстрый запуск приложений — сетка 2×3, компактные квадратные плитки, цветная точка-бейдж в углу, пустые слоты */}
       <div className='mt-4 grid grid-cols-2 gap-2'>
         {APP_SLOTS.map(([id, Icon, dot]) => (
-          <UgoosKey key={id} id={id} label={`Приложение ${id.slice(-1)}`} {...c} className='h-10 rounded-full'>
-            <span className='flex items-center gap-1.5'>
-              <Icon className='size-4' aria-hidden />
-              <span aria-hidden className={`size-1.5 rounded-full ${dot}`} />
-            </span>
+          <UgoosKey key={id} id={id} label={`Приложение ${id.slice(-1)}`} {...c} className='size-14 rounded-2xl justify-self-center'>
+            <Icon className='size-5' aria-hidden />
+            <span aria-hidden className={`absolute bottom-1 right-1 size-2 rounded-full ring-1 ring-black/40 ${dot}`} />
           </UgoosKey>
         ))}
       </div>
