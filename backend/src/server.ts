@@ -19,6 +19,7 @@ import { bluetoothRoutes } from './routes/bluetooth.js'
 import { homeassistantRoutes } from './routes/homeassistant.js'
 import { smarthomeRoutes } from './routes/smarthome.js'
 import { tvRoutes } from './routes/tv.js'
+import { ugoosRoutes } from './routes/ugoos.js'
 import { universalRoutes } from './routes/universal.js'
 import { startLive, stopLive } from './services/smarthome.js'
 import { accessRoutes } from './routes/access.js'
@@ -123,6 +124,7 @@ await app.register(bluetoothRoutes)
 await app.register(smarthomeRoutes)
 await app.register(homeassistantRoutes)
 await app.register(tvRoutes)
+await app.register(ugoosRoutes)
 await app.register(universalRoutes)
 // Манифест PWA (без входа) — до статики: перекрывает одноимённый файл из сборки фронта
 await app.register(manifestRoutes)

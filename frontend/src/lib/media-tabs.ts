@@ -1,9 +1,9 @@
 // Страница «Медиа» (/media-control): четыре вкладки и совместимость со старыми адресами.
 // Прежние вкладки («Ресивер» блоками, «Телевизор», «Пульт ресивера», «Пульт ТВ») из навигации убраны:
 // их адреса переносятся сюда — ТВ на «Samsung», ресиверные на «Marantz», остальное на «Универсальный».
-export const MEDIA_TABS = ['universal', 'samsung', 'marantz', 'volume'] as const
+export const MEDIA_TABS = ['universal', 'samsung', 'marantz', 'ugoos', 'volume'] as const
 export type MediaTab = (typeof MEDIA_TABS)[number]
-export const MEDIA_TAB_TITLES: Record<MediaTab, string> = { universal: 'UNIVERSAL', samsung: 'TV', marantz: 'MARANTZ', volume: 'VOLUME' }
+export const MEDIA_TAB_TITLES: Record<MediaTab, string> = { universal: 'UNIVERSAL', samsung: 'TV', marantz: 'MARANTZ', ugoos: 'UGOOS', volume: 'VOLUME' }
 
 export const isMediaTab = (v: unknown): v is MediaTab => typeof v === 'string' && (MEDIA_TABS as readonly string[]).includes(v)
 

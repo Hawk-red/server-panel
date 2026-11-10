@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { isMediaTab, legacyReceiverTab, MEDIA_TABS, MEDIA_TAB_TITLES, parseMediaTab } from './media-tabs.ts'
 
 describe('вкладки страницы «Медиа»', () => {
-  it('ровно четыре вкладки в заданном порядке с названиями', () => {
-    assert.deepEqual([...MEDIA_TABS], ['universal', 'samsung', 'marantz', 'volume'])
-    assert.deepEqual(MEDIA_TABS.map((t) => MEDIA_TAB_TITLES[t]), ['UNIVERSAL', 'TV', 'MARANTZ', 'VOLUME'])
+  it('ровно пять вкладок в заданном порядке с названиями', () => {
+    assert.deepEqual([...MEDIA_TABS], ['universal', 'samsung', 'marantz', 'ugoos', 'volume'])
+    assert.deepEqual(MEDIA_TABS.map((t) => MEDIA_TAB_TITLES[t]), ['UNIVERSAL', 'TV', 'MARANTZ', 'UGOOS', 'VOLUME'])
   })
   it('?tab= разбирается; неизвестное и мусор → «Универсальный»', () => {
     for (const t of MEDIA_TABS) assert.equal(parseMediaTab(t), t)
@@ -30,10 +30,11 @@ import { readFileSync } from 'node:fs'
 describe('страница «Медиа»: состав вкладок', () => {
   const hub = readFileSync(new URL('../features/media-hub/index.tsx', import.meta.url), 'utf8')
   it('каждая вкладка показывает своё содержимое, выбор пишется в адрес (?tab=)', () => {
-    for (const v of ['universal', 'samsung', 'marantz', 'volume']) assert.ok(hub.includes(`value='${v}'`), v)
+    for (const v of ['universal', 'samsung', 'marantz', 'ugoos', 'volume']) assert.ok(hub.includes(`value='${v}'`), v)
     assert.ok(hub.includes('<UniversalTab />'))
     assert.ok(hub.includes('<SamsungTab />'))
     assert.ok(hub.includes('<MarantzTab />'))
+    assert.ok(hub.includes('<UgoosTab />'))
     assert.ok(hub.includes('<VolumeTab />'))
     assert.match(hub, /navigate\(\{ to: '\/media-control', search: \{ tab: t as MediaTab \}, replace: true \}\)/)
   })

@@ -5,7 +5,7 @@ import { closestCenter, DndContext, type DragEndEvent, KeyboardSensor, PointerSe
 import { horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import * as TabsPrimitive from '@radix-ui/react-tabs'
-import { Gamepad2, GripVertical, RadioReceiver, Tv, Volume2 } from 'lucide-react'
+import { Cast, Gamepad2, GripVertical, RadioReceiver, Tv, Volume2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { applyOrder, moveItem } from '@/lib/layout-order'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,7 @@ import { Page } from '@/components/layout/page'
 import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs'
 import { MarantzTab } from '@/features/receiver/marantz-tab'
 import { SamsungTab } from '@/features/tv-remote/samsung-tab'
+import { UgoosTab } from '@/features/ugoos'
 import { UniversalTab } from '@/features/universal'
 import { VolumeTab } from '@/features/receiver/volume-tab'
 import { MEDIA_TABS, MEDIA_TAB_TITLES, parseMediaTab, type MediaTab } from '@/lib/media-tabs'
@@ -22,8 +23,9 @@ import { MEDIA_TABS, MEDIA_TAB_TITLES, parseMediaTab, type MediaTab } from '@/li
 type TabOrderResponse = { order: string[] }
 
 // Иконки вкладок в шапке: UNIVERSAL — геймпад/пульт (несколько устройств кнопками), TV (Samsung) — классический
-// телевизор с антенной (чтобы отличался от Universal), MARANTZ — приёмник (буквально «ресивер»), VOLUME — громкость
-const MEDIA_TAB_ICONS: Record<MediaTab, typeof Tv> = { universal: Gamepad2, samsung: Tv, marantz: RadioReceiver, volume: Volume2 }
+// телевизор с антенной (чтобы отличался от Universal), MARANTZ — приёмник (буквально «ресивер»), UGOOS — Cast
+// (Android TV/Chromecast, чтобы отличался от Tv), VOLUME — громкость
+const MEDIA_TAB_ICONS: Record<MediaTab, typeof Tv> = { universal: Gamepad2, samsung: Tv, marantz: RadioReceiver, ugoos: Cast, volume: Volume2 }
 
 // Порядок самих вкладок (не кнопок внутри пульта): отдельный ключ /layout/media-tabs, чтобы не конфликтовать
 // с порядком блоков ресивера (тот хранится под media-control через тот же переключатель «Изменить порядок» в шапке)
@@ -68,7 +70,14 @@ function SortableTabHandle({ id, title }: { id: MediaTab; title: string }) {
 // useLayoutEdit() должен звать потомок провайдера LayoutEditContext, а не MediaHubPage: тот сам рендерит <Page>,
 // то есть стоит в дереве ВЫШЕ провайдера — его собственный вызов useLayoutEdit() всегда получал бы null,
 // и кнопка в шапке молча ничего не переключала бы (edit.editing менялся, но сюда это никак не доходило)
-function MediaTabsList() {
+//
+// tab передаём явно и сравниваем сами (active={tab === t}), а не полагаемся на data-[state=active] от Radix:
+// у «Громкости» этот Tabs.Root в шапке не содержит ни одной TabsContent (все TabsContent — в отдельном,
+// втором Tabs-дереве ниже, вокруг самих вкладок на странице) — для universal/samsung/marantz Radix всё равно
+// считает data-state верно по одному лишь совпадению value с контекстом, но наблюдалось, что именно для
+// «Volume» (последняя вкладка) подсветка не применялась. Явное сравнение не зависит от этой internals-механики
+// Radix вовсе и гарантированно работает одинаково для всех вкладок.
+function MediaTabsList({ tab }: { tab: MediaTab }) {
   const edit = useLayoutEdit()
   const reordering = Boolean(edit?.editing)
   const tabOrder = useTabOrder()
@@ -106,11 +115,7 @@ function MediaTabsList() {
             // Без обёртки — чистый <HeaderIconButton>, тот же самый компонент, что и у остальных кнопок.
             // Активное состояние — через data-[state=active] (Radix сам выставляет его на потомке)
             <TabsPrimitive.Trigger key={t} value={t} asChild>
-              <HeaderIconButton
-                title={MEDIA_TAB_TITLES[t]}
-                aria-label={MEDIA_TAB_TITLES[t]}
-                className='data-[state=active]:border-ring data-[state=active]:bg-background'
-              >
+              <HeaderIconButton title={MEDIA_TAB_TITLES[t]} aria-label={MEDIA_TAB_TITLES[t]} active={tab === t}>
                 <Icon className='size-5' aria-hidden />
               </HeaderIconButton>
             </TabsPrimitive.Trigger>
@@ -128,7 +133,7 @@ export function MediaHubPage({ tab: raw }: { tab?: string }) {
   const setTab = (t: string) => void navigate({ to: '/media-control', search: { tab: t as MediaTab }, replace: true })
 
   return (
-    <Page layoutPage={tab === 'universal' ? 'media-hub' : undefined} headerCenter={<Tabs value={tab} onValueChange={setTab}><MediaTabsList /></Tabs>}>
+    <Page layoutPage={tab === 'universal' ? 'media-hub' : undefined} headerCenter={<Tabs value={tab} onValueChange={setTab}><MediaTabsList tab={tab} /></Tabs>}>
       <Tabs value={tab} onValueChange={setTab} className='gap-2'>
         <TabsContent value='universal' className='mt-0'>
           <UniversalTab />
@@ -138,6 +143,9 @@ export function MediaHubPage({ tab: raw }: { tab?: string }) {
         </TabsContent>
         <TabsContent value='marantz' className='mt-0'>
           <MarantzTab />
+        </TabsContent>
+        <TabsContent value='ugoos' className='mt-0'>
+          <UgoosTab />
         </TabsContent>
         <TabsContent value='volume' className='mt-0'>
           <VolumeTab />
