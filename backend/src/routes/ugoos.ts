@@ -5,8 +5,8 @@ import { errText } from '../mask.js'
 import * as ugoos from '../services/ugoos.js'
 import * as remote from '../services/ugoosRemote.js'
 
-// Android TV бокс UGOOS SK1: статус, ключи пульта из белого списка, привязки кнопок. Только через Home Assistant,
-// сопряжения нет (ADB уже настроен в интеграции HA) — в отличие от tv.ts (Samsung) здесь нет /pair.
+// Android TV бокс UGOOS SK1: статус, ключи пульта из белого списка, привязки кнопок. Управление напрямую по ADB,
+// без Home Assistant — в отличие от tv.ts (Samsung) здесь нет /pair, сопряжения как такового нет.
 export async function ugoosRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth)
   const who = (req: { clientIp?: string }) => ({ ip: req.clientIp ?? '', user: 'admin' })

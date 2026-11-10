@@ -60,9 +60,9 @@ export const config = {
   marantz: { host: env.MARANTZ_HOST ?? '192.168.31.94', webPort: 80, maxVolume: Number(env.MARANTZ_MAX_VOLUME ?? 98) },
   // Телевизор Samsung (статическая аренда); управление по WebSocket (порты 8001/8002), токен сопряжения — в настройках панели, зашифрован
   tv: { host: env.TV_HOST ?? '192.168.31.181', sceneOn: env.TV_SCENE_ON ?? 'scene.tv_on' },
-  // Android TV бокс UGOOS SK1: управление только через Home Assistant (интеграция Android Debug Bridge),
-  // сущности фиксированы — автопоиска по имени, как у tvHa.ts (Samsung), здесь нет
-  ugoos: { remoteEntity: env.UGOOS_REMOTE_ENTITY ?? 'remote.android_tv_192_168_31_6', mediaEntity: env.UGOOS_MEDIA_ENTITY ?? 'media_player.android_tv_192_168_31_6' },
+  // Android TV бокс UGOOS SK1: управление напрямую по ADB (без Home Assistant — тот только путал дело:
+  // ADB-сессия между HA и боксом сама обрывается от сна/Wi-Fi, и HA из-за этого считал кнопки «недоступны»)
+  ugoos: { host: env.UGOOS_HOST ?? '192.168.31.6', port: Number(env.UGOOS_PORT ?? 5555) },
   // Адрес сервера в локальной сети: на него ведут ссылки на веб-интерфейсы служб (панель может быть открыта по panel.pulsdev.net,
   // а у такого имени этих портов нет, да и HSTS принудительно включает https). Задаётся LAN_HOST в .env, по умолчанию 192.168.31.112
   lanHost: env.LAN_HOST ?? '192.168.31.112',

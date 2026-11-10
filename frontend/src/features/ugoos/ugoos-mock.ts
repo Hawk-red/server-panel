@@ -3,11 +3,10 @@ import type { RemoteConfig } from '@/lib/receiver-pad'
 import type { UgoosStatus } from '@/lib/ugoos-pad'
 
 const KEYS_ALL = ['POWER', 'HOME', 'BACK', 'MENU', 'DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'DPAD_CENTER', 'VOL_UP', 'VOL_DOWN', 'MUTE']
-/** Бокс через Home Assistant: есть remote-сущность, работают все кнопки */
-export const UGOOS_ONLINE: UgoosStatus = { online: true, paired: true, entity: 'media_player.android_tv_192_168_31_6', keys: KEYS_ALL }
-export const UGOOS_NOT_PAIRED: UgoosStatus = { online: false, paired: false, entity: null, keys: [] }
-/** Только медиаплеер (remote-сущности нет): работают громкость, mute и питание */
-export const UGOOS_MEDIA_ONLY: UgoosStatus = { ...UGOOS_ONLINE, keys: ['VOL_UP', 'VOL_DOWN', 'MUTE', 'POWER'] }
+/** Бокс на связи по ADB: работают все кнопки */
+export const UGOOS_ONLINE: UgoosStatus = { online: true, keys: KEYS_ALL }
+/** Частичный список «доступных» ключей от бэкенда — кнопки с привязкой всё равно активны (ugoosKeyStatus его игнорирует) */
+export const UGOOS_PARTIAL_KEYS: UgoosStatus = { ...UGOOS_ONLINE, keys: ['VOL_UP', 'VOL_DOWN', 'MUTE', 'POWER'] }
 export const UGOOS_OFFLINE: UgoosStatus = { ...UGOOS_ONLINE, online: false }
 
 const defaults: Record<string, string | null> = {

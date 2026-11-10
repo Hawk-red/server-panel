@@ -5,7 +5,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { CommandPicker } from '@/features/receiver/remote-tab'
-import { UGOOS_CFG, UGOOS_MEDIA_ONLY, UGOOS_OFFLINE, UGOOS_ONLINE } from './ugoos-mock'
+import { UGOOS_CFG, UGOOS_OFFLINE, UGOOS_ONLINE, UGOOS_PARTIAL_KEYS } from './ugoos-mock'
 import { UgoosPad } from './ugoos-pad'
 
 const noop = () => {}
@@ -53,8 +53,8 @@ describe('пульт UGOOS SK1: рендер', () => {
     assert.equal(state(h, 'power'), 'on')
     assert.equal(state(h, 'vol-up'), 'on')
   })
-  it('через Home Assistant без remote-сущности: кнопки с привязкой всё равно активны (как у ИК-пульта)', () => {
-    const h = html({ st: UGOOS_MEDIA_ONLY })
+  it('бэкенд считает часть ключей «недоступной»: кнопки с привязкой всё равно активны (как у ИК-пульта)', () => {
+    const h = html({ st: UGOOS_PARTIAL_KEYS })
     assert.equal(state(h, 'vol-up'), 'on')
     assert.equal(state(h, 'dpad-up'), 'on')
   })
