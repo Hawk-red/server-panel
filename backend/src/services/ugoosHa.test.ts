@@ -105,11 +105,11 @@ describe('сопоставление кнопок', () => {
     assert.equal(ha.planKey('POWER', v)?.service, 'turn_on')
     ha.setHaReader(null)
   })
-  it('недоступная сущность не получает команд', async () => {
+  it('недоступная (unavailable) сущность всё равно получает команду — как у ИК-пульта, статус не проверяется', async () => {
     ha.setHaReader(async () => [ent(MEDIA, 'ТВ', 'unavailable'), ent(REMOTE, 'ТВ', 'unavailable')])
     const v = await ha.findUgoos(true)
-    assert.equal(ha.planKey('VOL_UP', v), null)
-    assert.equal(ha.planKey('HOME', v), null)
+    assert.deepEqual(ha.planKey('VOL_UP', v), { domain: 'media_player', service: 'volume_up' })
+    assert.deepEqual(ha.planKey('HOME', v), { domain: 'remote', service: 'send_command', data: { command: ['HOME'] } })
     ha.setHaReader(null)
   })
   it('список рабочих ключей для серых кнопок', async () => {

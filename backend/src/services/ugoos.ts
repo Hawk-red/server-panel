@@ -61,7 +61,7 @@ export async function sendKey(key: string): Promise<KeyResult> {
     throw haErr(e)
   }
   if (!ha.entityOf(v)) throw new TvError('Бокс не найден в Home Assistant: проверьте сущности UGOOS в конфиге панели', 'unpaired')
-  if (!ha.isLinked(v)) throw new TvError('Home Assistant не видит бокс (сущность недоступна)', 'offline')
+  // Текущее состояние сущности (online/unavailable) команду не блокирует — как у ИК-пульта, см. planKey
   if (!ha.planKey(key, v)) throw new TvError('Эта кнопка через Home Assistant недоступна', 'bad')
   try {
     const plan = await ha.callKey(key, v)

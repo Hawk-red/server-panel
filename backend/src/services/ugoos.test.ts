@@ -64,6 +64,12 @@ describe('кнопки идут в HA', () => {
     await ugoos.sendKey('VOL_UP')
     assert.deepEqual(sent, [{ domain: 'media_player', service: 'volume_up', entityId: MEDIA, data: undefined }])
   })
+  it('unavailable-сущность (бокс спит/не в сети) не блокирует команду — как у ИК-пульта', async () => {
+    entities = [ent(MEDIA, 'unavailable'), ent(REMOTE, 'unavailable')]
+    const r = await ugoos.sendKey('HOME')
+    assert.deepEqual(sent, [{ domain: 'remote', service: 'send_command', entityId: REMOTE, data: { command: ['HOME'] } }])
+    assert.match(r.via, /Home Assistant/)
+  })
   it('без remote-сущности D-pad недопустим', async () => {
     entities = [ent(MEDIA)]
     await assert.rejects(() => ugoos.sendKey('DPAD_UP'), (e: { code?: string; message: string }) => e.code === 'bad' && /через Home Assistant недоступна/.test(e.message))

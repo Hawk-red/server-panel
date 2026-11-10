@@ -57,11 +57,14 @@ const REMOTE_KEYS = new Set(['HOME', 'BACK', 'MENU', 'DPAD_UP', 'DPAD_DOWN', 'DP
 /**
  * Что делает кнопка пульта. D-pad/HOME/BACK/MENU — только через remote-сущность (ADB), для них у медиаплеера
  * нет аналога. Громкость/mute/питание — через медиаплеер; остальные ключи неизвестны — кнопка серая.
+ * Команда отправляется, если нужная сущность вообще найдена в HA — как у ИК-пульта, её текущее состояние
+ * (unavailable и т.п.) не проверяется: бокс часто уходит в сон и выпадает из сети, а раньше это полностью
+ * блокировало кнопку. Пусть сама попытка решает — HA/ADB ответят ошибкой, если бокс правда не отвечает.
  */
 export function planKey(key: string, v: UgoosView): HaAction | null {
-  if (REMOTE_KEYS.has(key)) return v.remote && !DEAD.has(v.remote.state) ? { domain: 'remote', service: 'send_command', data: { command: [key] } } : null
+  if (REMOTE_KEYS.has(key)) return v.remote ? { domain: 'remote', service: 'send_command', data: { command: [key] } } : null
   const m = v.media
-  if (!m || DEAD.has(m.state)) return null
+  if (!m) return null
   switch (key) {
     case 'VOL_UP':
       return { domain: 'media_player', service: 'volume_up' }
