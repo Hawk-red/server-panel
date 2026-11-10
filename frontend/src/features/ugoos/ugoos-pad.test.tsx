@@ -15,10 +15,10 @@ const state = (h: string, id: string) => new RegExp(`data-key="${id}"[^>]*data-s
 const command = (h: string, id: string) => new RegExp(`data-key="${id}" data-command="([^"]*)"`).exec(h)?.[1]
 
 describe('пульт UGOOS SK1: рендер', () => {
-  it('24 кнопки (12 назначенных + 12 без команды) и модель внизу', () => {
+  it('24 кнопки (12 назначенных + 12 без команды) и логотип внизу', () => {
     const h = html()
     assert.equal((h.match(/data-key="/g) ?? []).length, 24)
-    assert.ok(h.includes('UGOOS SK1'))
+    assert.ok(h.includes('UGOOS'))
   })
   it('назначенные по умолчанию кнопки шлют правильные команды', () => {
     const h = html()
@@ -41,7 +41,7 @@ describe('пульт UGOOS SK1: рендер', () => {
       assert.equal(state(h, id), 'off', id)
       assert.equal(command(h, id), '', id)
     }
-    assert.match(h, /Курсор — команда не назначена/)
+    assert.match(h, /Курсор \(аэромышь\) — команда не назначена/)
     assert.match(h, /Микрофон — команда не назначена/)
   })
   it('бокс в сети и связан — все назначенные кнопки активны', () => {
@@ -73,7 +73,7 @@ describe('пульт UGOOS SK1: рендер', () => {
     const h = html({ configure: true, cfg, st: UGOOS_OFFLINE })
     assert.equal((h.match(/data-state="configure"/g) ?? []).length, 24)
     assert.equal((h.match(/bg-amber-400/g) ?? []).length, 1)
-    assert.match(h, /Курсор: Меню/)
+    assert.match(h, /Курсор \(аэромышь\): Меню/)
   })
   it('окно выбора ключа закрыто, пока кнопка не выбрана', () => {
     assert.equal(renderToStaticMarkup(<CommandPicker button={null} cfg={UGOOS_CFG} onClose={noop} onChoose={noop} />), '')
